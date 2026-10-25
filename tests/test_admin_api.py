@@ -36,11 +36,10 @@ def test_select_pushes_styles_to_kid(admin):
     ws = kid(admin)
     try:
         r = admin.post("/api/admin/select", json={"topic": "space", "style": "clay",
-                                                  "view_mode": "split", "theme": "light"})
+                                                  "view_mode": "split"})
         assert r.status_code == 200
         msg = recv_until(ws, is_json("styles"))[1]
         assert msg["topic"] == "space" and msg["style"] == "clay" and msg["view_mode"] == "split"
-        assert msg["theme"] == "light" and r.json()["theme"] == "light"
         assert "v" not in msg and msg["backend"] == "mock"
     finally:
         ws.__exit__(None, None, None)
@@ -49,7 +48,6 @@ def test_select_pushes_styles_to_kid(admin):
 def test_select_validation(admin):
     assert admin.post("/api/admin/select", json={"topic": "nope"}).status_code == 400
     assert admin.post("/api/admin/select", json={"view_mode": "huge"}).status_code == 400
-    assert admin.post("/api/admin/select", json={"theme": "neon"}).status_code == 400
 
 
 def test_custom_style_appears_on_kid_socket(admin):

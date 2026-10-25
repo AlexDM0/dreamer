@@ -176,7 +176,6 @@ function renderSelects() {
   fillSelect($("sel-topic"), state.topics, state.topic);
   fillSelect($("sel-style"), state.styles, state.style);
   if (document.activeElement !== $("sel-view")) $("sel-view").value = state.view_mode || "auto";
-  if (document.activeElement !== $("sel-theme")) $("sel-theme").value = state.theme || "dark";
 }
 
 /** Only visible items can be picked: the server resolves hidden ones to a fallback. */
@@ -189,13 +188,11 @@ function fillSelect(sel, items, current) {
   }));
 }
 
-for (const [id, key] of [["sel-topic", "topic"], ["sel-style", "style"], ["sel-view", "view_mode"],
-                         ["sel-theme", "theme"]]) {
+for (const [id, key] of [["sel-topic", "topic"], ["sel-style", "style"], ["sel-view", "view_mode"]]) {
   $(id).addEventListener("change", async (e) => {
     const res = await attempt(() => api("POST", "/api/admin/select", { [key]: e.target.value }),
                               "Sent to the iPad");
-    if (res) Object.assign(state, { topic: res.topic, style: res.style, view_mode: res.view_mode,
-                                    theme: res.theme });
+    if (res) Object.assign(state, { topic: res.topic, style: res.style, view_mode: res.view_mode });
     e.target.blur();
     renderSelects();
   });
@@ -695,9 +692,8 @@ function onJson(text) {
     if (msg.state) setLive(msg.state, msg.state === "error" ? undefined : "");
     // Stats carry the current selection, so changes made elsewhere show up here too.
     if (state && (msg.topic !== state.topic || msg.style !== state.style
-                  || msg.view_mode !== state.view_mode || msg.theme !== state.theme)) {
-      Object.assign(state, { topic: msg.topic, style: msg.style, view_mode: msg.view_mode,
-                             theme: msg.theme });
+                  || msg.view_mode !== state.view_mode)) {
+      Object.assign(state, { topic: msg.topic, style: msg.style, view_mode: msg.view_mode });
       renderSelects();
     }
   }
