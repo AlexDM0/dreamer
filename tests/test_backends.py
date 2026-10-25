@@ -257,3 +257,19 @@ def test_streamdiffusion_safety_toggle_needs_loaded_checker(fake_sd):
     b.set_params(Params(safety_checker=True))
     assert w.calls[-1][1]["use_safety_checker"] is True
 
+
+
+def test_streamdiffusion_set_size_rebuilds_and_keeps_live_params(fake_sd):
+    b = make_backend(Cfg(backend="streamdiffusion"))
+    b.set_size(64, 128)  # before warmup: just remembered
+    b.warmup()
+    assert (fake_sd.instances[0].kwargs["width"], fake_sd.instances[0].kwargs["height"]) == (64, 128)
+    b.set_params(Params(seed=7, controlnet_enabled=False))
+    b.set_size(128, 64)
+    rebuilt = fake_sd.instances[1]
+    assert (rebuilt.kwargs["width"], rebuilt.kwargs["height"]) == (128, 64)
+    restored = [c[1] for c in rebuilt.calls if c[0] == "params"][0]
+    assert restored["seed"] == 7 and restored["controlnet_config"][0]["enabled"] is False
+    assert b.generate(_sketch(), None).size == (128, 64)
+    b.set_size(128, 64)
+    assert len(fake_sd.instances) == 2  # same size: no rebuild

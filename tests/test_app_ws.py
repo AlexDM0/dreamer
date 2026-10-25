@@ -36,7 +36,7 @@ def test_sketch_to_picture_echoes_seq(client):
         _, (msg_type, seq, jpeg) = recv_until(ws, is_picture())
     assert msg_type == protocol.PICTURE and seq == 42
     img = Image.open(io.BytesIO(jpeg))
-    assert img.format == "JPEG" and img.size == (256, 256)
+    assert img.format == "JPEG" and img.size == (256, 192)  # landscape: canvas_dims(size=256)
 
 
 def test_blank_sketch_gives_white_picture(client):

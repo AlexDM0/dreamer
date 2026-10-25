@@ -18,6 +18,10 @@ LINE_POLARITIES = ("white_on_black", "black_on_white")
 BACKENDS = ("streamdiffusion", "mock")
 CONFIG_ENV = "SKETCH_CONFIG"
 PIN_RE = re.compile(r"\d{4,12}")  # what the admin PIN pad can type
+ORIENTATIONS = ("landscape", "portrait")
+# Drawings have the iPad's shape: the short side is this fraction of ``size`` (rounded to
+# a multiple of 64, which the UNet needs), so 640 gives 640x448 (iPad: about 1.43:1).
+SHORT_SIDE_RATIO = 0.7
 
 
 @dataclass
@@ -44,7 +48,7 @@ class Config:
     secret_key: str = ""
     data_dir: str = "data"
     jpeg_quality: int = 85
-    size: int = 512
+    size: int = 640  # long side; see canvas_dims()
     default_view_mode: str = "auto"
     mock_delay_ms: int = 30  # simulated GPU time for the mock backend
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -97,8 +101,8 @@ def _validate(cfg: Config) -> None:
         raise ValueError(f"config: model.line_polarity must be one of {LINE_POLARITIES}")
     if not 1 <= cfg.jpeg_quality <= 100:
         raise ValueError("config: jpeg_quality must be 1..100")
-    if not 64 <= cfg.size <= 2048 or cfg.size % 8:
-        raise ValueError("config: size must be a multiple of 8 in 64..2048")
+    if not 64 <= cfg.size <= 2048 or cfg.size % 64:
+        raise ValueError("config: size must be a multiple of 64 in 64..2048")
     if not PIN_RE.fullmatch(cfg.admin_pin):
         raise ValueError("config: admin_pin must be 4 to 12 digits (the PIN pad only has "
                          'digits), written in quotes, e.g. admin_pin: "0420"')
@@ -141,3 +145,10 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
         log.info("no config file at %s; using defaults", p)
     _validate(cfg)
     return cfg
+
+
+def canvas_dims(cfg: Any) -> dict[str, tuple[int, int]]:
+    """(width, height) of a drawing and its picture per orientation."""
+    long_side = int(cfg.size)
+    short_side = max(64, round(long_side * SHORT_SIDE_RATIO / 64) * 64)
+    return {"landscape": (long_side, short_side), "portrait": (short_side, long_side)}

@@ -1,10 +1,15 @@
 """Image helpers for Dreamer: sketch decoding, line maps, blank detection, JPEG encoding.
 
+A sketch is either a *stroke layer* (RGBA: the child's strokes on transparency, drawn over
+a background colour the page reports separately) or, from older pages, an opaque RGB
+drawing on white. Ink is "opaque" in a layer and "not white" in an opaque sketch.
+
 Pure Pillow + numpy; no torch. All functions are stateless and thread-safe.
 """
 from __future__ import annotations
 
 import io
+import re
 
 import numpy as np
 from PIL import Image, ImageFilter
@@ -21,15 +26,27 @@ POLARITIES = ("white_on_black", "black_on_white")
 INIT_MODES = ("colors", "sketch", "blank")
 # Chroma (max - min channel) a stroke needs to count as colour rather than an outline.
 COLOR_CHROMA = 48
-# Neutral ground the "colors" and "blank" init images start from.
+# Neutral ground the "colors" and "blank" init images start from without a background.
 INIT_BACKGROUND = (240, 240, 240)
+COLOR_RE = re.compile(r"#[0-9a-fA-F]{6}")
 
 
-def decode_sketch(png_bytes: bytes, size: int) -> Image.Image:
-    """Decode a sketch upload into an RGB ``size`` x ``size`` image on a white background.
+def parse_color(value: str) -> tuple[int, int, int]:
+    """``"#rrggbb"`` -> (r, g, b). Raises ValueError for anything else."""
+    if not isinstance(value, str) or not COLOR_RE.fullmatch(value):
+        raise ValueError(f"not a #rrggbb colour: {value!r}")
+    return tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))  # type: ignore[return-value]
 
+
+def decode_sketch(png_bytes: bytes, size: int | tuple[int, int],
+                  layered: bool = False) -> Image.Image:
+    """Decode a sketch upload, resized to ``size`` (an int for a square, or (w, h)).
+
+    ``layered``: the page sends its stroke layer (RGBA, transparent background), returned
+    as RGBA. Otherwise the sketch is composited onto white and returned as RGB.
     Raises ValueError for oversized payloads or data that is not a decodable image.
     """
+    dims = (size, size) if isinstance(size, int) else (int(size[0]), int(size[1]))
     if not png_bytes:
         raise ValueError("empty sketch payload")
     if len(png_bytes) > MAX_SKETCH_BYTES:
@@ -46,17 +63,31 @@ def decode_sketch(png_bytes: bytes, size: int) -> Image.Image:
     except Exception as exc:  # PIL raises a variety of types for garbage input
         raise ValueError(f"not a valid image: {exc}") from exc
 
-    # Composite any transparency onto white so the canvas background is always white.
     rgba = img.convert("RGBA")
+    if layered:
+        # Pillow resizes RGBA premultiplied, so transparent pixels do not bleed colour.
+        return rgba if rgba.size == dims else rgba.resize(dims, Image.Resampling.LANCZOS)
+    # Composite any transparency onto white so the canvas background is always white.
     background = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
     rgb = Image.alpha_composite(background, rgba).convert("RGB")
-    if rgb.size != (size, size):
-        rgb = rgb.resize((size, size), Image.Resampling.LANCZOS)
+    if rgb.size != dims:
+        rgb = rgb.resize(dims, Image.Resampling.LANCZOS)
     return rgb
 
 
+def compose(sketch: Image.Image, background: str | None) -> Image.Image:
+    """The drawing as the child sees it: a stroke layer over its background (RGB)."""
+    if sketch.mode != "RGBA":
+        return sketch.convert("RGB")
+    ground = Image.new("RGBA", sketch.size, (*parse_color(background or "#ffffff"), 255))
+    return Image.alpha_composite(ground, sketch).convert("RGB")
+
+
 def _ink_mask(img: Image.Image, threshold: int) -> np.ndarray:
-    """Boolean mask of pixels whose max channel distance from white exceeds threshold."""
+    """Boolean mask of drawn pixels: alpha above ``threshold`` in a stroke layer, else
+    max channel distance from white above ``threshold``."""
+    if img.mode == "RGBA":
+        return np.asarray(img.getchannel("A"), dtype=np.uint8) > threshold
     arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
     # Max distance from white over channels == 255 - min channel value.
     distance = 255 - arr.min(axis=2)
@@ -90,6 +121,7 @@ def make_init_image(
     mode: str = "colors",
     blur: int = 24,
     threshold: int = DEFAULT_LINE_THRESHOLD,
+    background: str | None = None,
 ) -> Image.Image:
     """The image img2img starts from, so the sketch guides the picture without being traced.
 
@@ -98,18 +130,22 @@ def make_init_image(
     coloured stroke becomes a soft cloud of its colour (Gaussian ``blur`` radius) on a
     neutral ground. Dark, unsaturated strokes are outlines and add no colour; the line map
     carries the outline instead. ``blank`` starts from the neutral ground alone.
+    With a ``background`` ("#rrggbb", the page's background layer) that colour is the
+    ground, so the background choice carries into the picture.
     """
     if mode not in INIT_MODES:
         raise ValueError(f"unknown init mode: {mode!r}")
-    rgb = sketch.convert("RGB")
     if mode == "sketch":
-        return rgb
-    ground = Image.new("RGB", rgb.size, INIT_BACKGROUND)
+        return compose(sketch, background)
+    ink = _ink_mask(sketch, threshold)
+    rgb = sketch.convert("RGB")  # a layer's stroke colours (alpha dropped)
+    ground_rgb = parse_color(background) if background else INIT_BACKGROUND
+    ground = Image.new("RGB", rgb.size, ground_rgb)
     if mode == "blank":
         return ground
     arr = np.asarray(rgb, dtype=np.uint8)
     chroma = arr.max(axis=2).astype(np.int16) - arr.min(axis=2)
-    weight = _ink_mask(rgb, threshold) & (chroma >= COLOR_CHROMA)
+    weight = ink & (chroma >= COLOR_CHROMA)
     if not weight.any():
         return ground
     radius = max(1, int(blur))
@@ -125,7 +161,8 @@ def make_init_image(
 
 
 def is_blank(sketch: Image.Image, threshold: int = BLANK_THRESHOLD) -> bool:
-    """True when every pixel is (near) white, i.e. nothing has been drawn."""
+    """True when nothing has been drawn: a layer is (near) transparent everywhere, an
+    opaque sketch (near) white."""
     return not _ink_mask(sketch, threshold).any()
 
 

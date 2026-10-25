@@ -112,6 +112,9 @@ class FrameOrigin:
     topic_id: str | None
     style_id: str | None
     epoch: int = 0
+    # The page's canvas when the sketch was sent (None: an older page sending opaque
+    # sketches on white); see SessionManager.canvas.
+    canvas: dict[str, str] | None = None
 
 
 @dataclass
@@ -144,6 +147,9 @@ class SessionManager:
         # Bumped whenever the canvas starts holding a different drawing (clear, new,
         # continue, draft restore, a new page); see FrameOrigin.epoch.
         self.epoch = 0
+        # {"background": "#rrggbb", "orientation": ...} as the page last reported it
+        # ({"t":"canvas"}); None until then, meaning an older page with opaque sketches.
+        self.canvas: dict[str, str] | None = None
 
     def new_drawing(self, continuing_id: str | None = None) -> None:
         """The canvas now holds another drawing: forget what is on screen, ignore pictures

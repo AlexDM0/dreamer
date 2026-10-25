@@ -24,8 +24,9 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import protocol
 from .auth import COOKIE_MAX_AGE, COOKIE_NAME, AdminAuth, LockedOut, load_or_create_secret
-from .config import DEFAULT_PIN, VIEW_MODES, Config
+from .config import DEFAULT_PIN, ORIENTATIONS, VIEW_MODES, Config, canvas_dims
 from .gallery import FILES, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch, valid_id
+from .imaging import COLOR_RE
 from .mailbox import Mailbox
 from .params import LIMITS, GenParams, ParamsStore, defaults_from_config
 from .session import FrameOrigin, Peer, SessionManager
@@ -371,6 +372,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             return  # another socket's, or made from a drawing the kid has left behind
         worker = runtime.worker
         params = worker.params.to_dict() if worker is not None else {}
+        if origin.canvas is not None:
+            params = {**params, "canvas": origin.canvas}  # stored with the artwork
         session.last_frame = LastFrame(seq, origin.sketch_png, jpeg, origin.prompt,
                                        origin.topic_id, origin.style_id, params)
         if runtime.drafts is not None:
@@ -385,7 +388,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         art = runtime.drafts.current() if runtime.drafts is not None else None
         if art is None:
             return None
-        return {"id": art.id, "sketch": art.file_url("sketch.png"), "source": art.source_id}
+        return {"id": art.id, "sketch": art.file_url("sketch.png"), "source": art.source_id,
+                **art.canvas()}
 
     def live_artwork(artwork_id: Any) -> str | None:
         """``artwork_id`` if it names a saved (non-draft, not deleted) artwork, else None."""
@@ -402,6 +406,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         # page's own sketch comes back, nothing is on screen.
         session.new_drawing(await asyncio.to_thread(live_artwork, continuing))
         msg = session.lists_msg("ready")
+        msg["canvas"] = {name: list(dims) for name, dims in canvas_dims(config).items()}
         msg["draft"] = await asyncio.to_thread(draft_info)
         peer.send_json(msg)
         peer.send_json(session.last_status)
@@ -460,7 +465,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
                 session.select(**{t: item_id})
         cur = session.current()
         peer.send_json({"t": "continue", "id": art.id, "sketch": art.file_url("sketch.png"),
-                        "topic": cur["topic"], "style": cur["style"]})
+                        "topic": cur["topic"], "style": cur["style"], **art.canvas()})
 
     async def kid_continuing(artwork_id: Any) -> None:
         """The page loaded a saved artwork's sketch: Save updates that artwork from now on
@@ -475,6 +480,15 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         draft = await asyncio.to_thread(drafts.current) if drafts is not None else None
         source = draft.source_id if draft is not None and draft.id == draft_id else None
         session.new_drawing(await asyncio.to_thread(live_artwork, source) if source else None)
+
+    def kid_canvas(background: Any, orientation: Any) -> None:
+        """The page's background layer colour and drawing orientation. From now on its
+        sketches are stroke layers (transparent background). Bad values are ignored."""
+        if not isinstance(background, str) or not COLOR_RE.fullmatch(background):
+            return
+        if orientation not in ORIENTATIONS:
+            return
+        session.canvas = {"background": background.lower(), "orientation": orientation}
 
     async def handle_kid_text(peer: Peer, text: str) -> None:
         msg = protocol.parse_client_text(text)
@@ -499,6 +513,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             await kid_continuing(msg.get("id"))
         elif t == "restored":
             await kid_restored(msg.get("id"))
+        elif t == "canvas":
+            kid_canvas(msg.get("background"), msg.get("orientation"))
         elif t == "ping":
             peer.send_json({"t": "pong"})
         # Unknown types are ignored on purpose (forward compatibility).
@@ -518,8 +534,12 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         # The prompt is built server-side from the selection; the kid never sends text.
         cur = session.current()
         prompt = styles.build_prompt(cur["topic"], cur["style"])
-        origin = FrameOrigin(peer, payload, prompt, cur["topic"], cur["style"], session.epoch)
-        mailbox.put(FrameJob(seq, payload, prompt, owner=origin))
+        canvas = session.canvas
+        origin = FrameOrigin(peer, payload, prompt, cur["topic"], cur["style"], session.epoch,
+                             canvas)
+        mailbox.put(FrameJob(seq, payload, prompt, owner=origin,
+                             background=canvas["background"] if canvas else None,
+                             orientation=canvas["orientation"] if canvas else None))
 
     def same_origin(ws: WebSocket) -> bool:
         """Browsers always send Origin on WebSockets: refuse sockets opened by pages

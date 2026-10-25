@@ -171,7 +171,9 @@ def test_continue_restores_and_updates(client):
         ws.send_json({"t": "continue", "id": art["id"]})
         msg = recv_until(ws, is_json("continue"))[1]
         assert msg == {"t": "continue", "id": art["id"],
-                       "sketch": art["sketch"], "topic": "dinosaurs", "style": "clay"}
+                       "sketch": art["sketch"], "topic": "dinosaurs", "style": "clay",
+                       # saved by a page without layers: opaque sketch on white
+                       "background": "#ffffff", "orientation": "square"}
         assert client.get(msg["sketch"]).content == sketch_png()
         ws.send_json({"t": "continuing", "id": art["id"]})  # the page loaded the sketch
         assert save(ws)["msg"] == "Nothing to save yet"  # nothing drawn since continuing

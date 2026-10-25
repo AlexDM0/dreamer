@@ -178,3 +178,28 @@ def test_latency_backend_is_primed_and_settled():
     finally:
         worker.stop()
     assert backend.calls == 5  # 2 (primed) + 1 settle + 1 + 1 settle
+
+
+class SizedBackend(MockBackend):
+    def __init__(self):
+        super().__init__(mock_delay_ms=0)
+        self.sizes = []
+
+    def set_size(self, width, height):
+        self.sizes.append((width, height))
+
+
+def test_worker_switches_backend_size_per_orientation():
+    backend = SizedBackend()
+    worker, rec = _start(backend, Config(backend="mock", size=192))  # 192x128 / 128x192
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p", background="#000000",
+                                    orientation="landscape"))
+        rec.wait(1)
+        assert backend.sizes == []  # backends start in landscape
+        worker.mailbox.put(FrameJob(2, sketch_png(size=64), "p", background="#000000",
+                                    orientation="portrait"))
+        rec.wait(2)
+        assert backend.sizes == [(128, 192)]
+    finally:
+        worker.stop()

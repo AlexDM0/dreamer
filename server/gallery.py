@@ -116,8 +116,10 @@ def is_blank_sketch(png: bytes) -> bool:
     except Exception:
         return True
     rgba = img.convert("RGBA")
+    if rgba.getchannel("A").getextrema()[0] < 255:
+        return imaging.is_blank(rgba)  # a stroke layer: blank when nothing is opaque
     white = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
-    return imaging.is_blank(Image.alpha_composite(white, rgba))
+    return imaging.is_blank(Image.alpha_composite(white, rgba).convert("RGB"))
 
 
 def make_thumb(picture_jpeg: bytes) -> bytes:
@@ -166,9 +168,19 @@ class Artwork:
     def file_url(self, name: str, prefix: str = "/api/artworks") -> str:
         return f"{prefix}/{self.id}/{name}?v={self.version}"
 
+    def canvas(self) -> dict[str, str]:
+        """The drawing's background layer colour and orientation. Artworks from before
+        layers have an opaque sketch on white and no orientation ("square")."""
+        canvas = self.params.get("canvas") if isinstance(self.params, dict) else None
+        if not isinstance(canvas, dict):
+            return {"background": "#ffffff", "orientation": "square"}
+        return {"background": str(canvas.get("background", "#ffffff")),
+                "orientation": str(canvas.get("orientation", "landscape"))}
+
     def public(self) -> dict[str, Any]:
         """What the kid page may see: no prompt, params or deletion state."""
         return {
+            **self.canvas(),
             "id": self.id,
             "title": self.title,
             "created_at": self.created_at,

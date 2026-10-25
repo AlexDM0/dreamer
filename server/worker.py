@@ -17,6 +17,7 @@ from typing import Any, Callable
 from PIL import Image
 
 from . import imaging
+from .config import canvas_dims
 from .mailbox import Mailbox
 from .params import GenParams, defaults_from_config
 
@@ -39,6 +40,11 @@ class FrameJob:
     # Opaque tag of the socket that sent the sketch; handed back to ``on_result`` so a
     # picture finished after that socket was replaced is not sent to its successor.
     owner: Any = None
+    # The page's background layer colour; set when the PNG is a stroke layer
+    # (transparent background). None: an opaque sketch on white (older pages).
+    background: str | None = None
+    # "landscape" / "portrait": the drawing's shape (config.canvas_dims). None: landscape.
+    orientation: str | None = None
 
 
 @dataclass
@@ -96,6 +102,8 @@ class GpuWorker(threading.Thread):
         self._settle_job: FrameJob | None = None
         self._settle_left = 0
         self._needs_prime = True
+        # Picture size the backend is set up for (backends start in landscape).
+        self._dims = canvas_dims(config)["landscape"]
 
     # ----- public API (any thread) ---------------------------------------------------
 
@@ -193,6 +201,7 @@ class GpuWorker(threading.Thread):
             return False
         self._last_prompt = None  # a fresh backend needs its prompt set again
         self._needs_prime, self._settle_left = True, 0
+        self._dims = canvas_dims(self.config)["landscape"]  # a fresh backend's size
         self._failures = 0
         self._set_state("ready")
         # A fresh backend starts from config defaults: give it the current params.
@@ -274,6 +283,18 @@ class GpuWorker(threading.Thread):
         except Exception:
             return 0
 
+    def _ensure_dims(self, dims: tuple[int, int]) -> None:
+        """Switch the backend to another picture size (a drawing in the other orientation).
+        StreamDiffusion rebuilds its pipeline for that (seconds, engines are reused)."""
+        if dims == self._dims:
+            return
+        set_size = getattr(self.backend, "set_size", None)
+        if set_size is not None:
+            self._set_state("busy", "turning the page")
+            set_size(*dims)
+            self._needs_prime, self._settle_left = True, 0
+        self._dims = dims
+
     def _process_frame(self, job: FrameJob, settling: bool = False) -> None:
         """Make and send the picture for ``job``. With pipeline latency, a fresh pipeline
         is primed with extra runs, and the frame is queued to settle once drawing pauses;
@@ -281,8 +302,10 @@ class GpuWorker(threading.Thread):
         cfg = self.config
         params = self._params
         started = time.perf_counter()
+        dims = canvas_dims(cfg).get(job.orientation or "landscape", canvas_dims(cfg)["landscape"])
+        layered = job.background is not None
         try:
-            sketch = imaging.decode_sketch(job.png_bytes, cfg.size)
+            sketch = imaging.decode_sketch(job.png_bytes, dims, layered=layered)
         except ValueError as exc:
             # Bad client input, not a backend fault: skip without counting a failure.
             log.warning("dropping sketch seq=%d: %s", job.seq, exc)
@@ -290,13 +313,14 @@ class GpuWorker(threading.Thread):
         used_backend = False
         try:
             if imaging.is_blank(sketch):
-                picture = Image.new("RGB", (cfg.size, cfg.size), "white")
+                picture = Image.new("RGB", dims, job.background or "white")
                 # The pipeline still holds the old drawing: prime it before the next one.
                 self._needs_prime, self._settle_left = True, 0
             else:
                 used_backend = True
                 if self.backend is None:
                     raise RuntimeError("backend not available")
+                self._ensure_dims(dims)
                 if job.prompt != self._last_prompt:
                     self.backend.set_prompt(job.prompt)
                     self._last_prompt = job.prompt
@@ -305,10 +329,10 @@ class GpuWorker(threading.Thread):
                     line_map = imaging.make_line_map(sketch, params.line_polarity,
                                                      params.line_threshold, params.line_dilate)
                 # Without a line map the strokes are the only structure, so keep them.
-                init = sketch
+                init = imaging.compose(sketch, job.background)
                 if line_map is not None:
                     init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
-                                                   params.line_threshold)
+                                                   params.line_threshold, job.background)
                 latency = self._latency()
                 runs = 1 + (latency if self._needs_prime else 0)
                 for _ in range(runs):

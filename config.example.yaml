@@ -13,7 +13,8 @@ secret_key: ""
 
 data_dir: data           # styles.json, params.json, secret, style pictures, gallery (dreamer.db + artworks/)
 jpeg_quality: 85         # picture quality sent to the iPad (1-100)
-size: 512                # generation size in pixels (square, multiple of 8)
+size: 640                # long side of a drawing/picture in pixels (multiple of 64); the
+                         # short side is 0.7x (640 -> 640x448, the iPad's shape)
 default_view_mode: auto  # auto | sketch | picture | split (kid page default)
 mock_delay_ms: 30        # mock backend only: simulated GPU time per frame
 

@@ -16,6 +16,7 @@ from typing import Any
 
 from PIL import Image
 
+from ..config import canvas_dims
 from .base import GenParamsLike
 
 log = logging.getLogger("dreamer.backend.streamdiffusion")
@@ -43,7 +44,8 @@ class StreamDiffusionBackend:
             raise RuntimeError(_INSTALL_HINT) from exc
         self._wrapper_cls = StreamDiffusionWrapper
 
-        self._size = int(getattr(config, "size", 512))
+        # Pictures have the drawing's shape; set_size() switches orientation.
+        self._width, self._height = canvas_dims(config)["landscape"]
         self._model_id = _model_attr(config, "base", "stabilityai/sd-turbo")
         self._controlnet_id = _model_attr(config, "controlnet", "thibaud/controlnet-sd21-scribble-diffusers")
         self._engine_dir = _model_attr(config, "engine_dir", "engines")
@@ -98,8 +100,8 @@ class StreamDiffusionBackend:
             model_id_or_path=self._model_id,
             t_index_list=self._t_index_list,
             mode="img2img",
-            width=self._size,
-            height=self._size,
+            width=self._width,
+            height=self._height,
             frame_buffer_size=1,
             use_denoising_batch=True,
             # UNet batch = steps; the engine's batch range caps the live step count.
@@ -121,10 +123,40 @@ class StreamDiffusionBackend:
         if self._pending_prompt is not None:
             self._prompt, self._pending_prompt = self._pending_prompt, None
         self._wrapper = wrapper
-        log.info("Dreamer: StreamDiffusion ready")
+        log.info("Dreamer: StreamDiffusion ready (%dx%d)", self._width, self._height)
+        # A rebuilt wrapper (set_size) starts from the constructor's seed and an enabled
+        # ControlNet; carry over what the live params had changed.
+        restore: dict[str, Any] = {}
+        if self._seed is not None:
+            restore["seed"] = self._seed
+        if self._controlnet_id is not None and not self._controlnet_enabled:
+            cfg = self._controlnet_config()
+            cfg[0]["enabled"] = False
+            restore["controlnet_config"] = cfg
+        if restore:
+            wrapper.update_stream_params(**restore)
         if self._pending_params is not None:
             params, self._pending_params = self._pending_params, None
             self.set_params(params)
+
+    def set_size(self, width: int, height: int) -> None:
+        """Make pictures of another size (a drawing in the other orientation). The fork
+        restarts the pipeline for a new resolution, so the wrapper is rebuilt; its
+        TensorRT engines have dynamic shapes (384..1024), so they are reused, not rebuilt."""
+        if (width, height) == (self._width, self._height):
+            return
+        self._width, self._height = int(width), int(height)
+        if self._wrapper is None:
+            return  # warmup() builds it at the new size
+        old, self._wrapper = self._wrapper, None
+        del old
+        import gc
+
+        import torch
+
+        gc.collect()
+        torch.cuda.empty_cache()
+        self.warmup()
 
     # -- per-frame controls ----------------------------------------------------------
 
@@ -182,7 +214,7 @@ class StreamDiffusionBackend:
     def generate(self, init_image: Image.Image, line_map: Image.Image | None) -> Image.Image:
         if self._wrapper is None:
             self.warmup()
-        size = (self._size, self._size)
+        size = (self._width, self._height)
         image = init_image.convert("RGB")
         if image.size != size:
             image = image.resize(size, Image.Resampling.LANCZOS)
@@ -233,7 +265,7 @@ class StreamDiffusionBackend:
                 log.warning("Dreamer: upload screening unavailable (no safety checker loaded); "
                             "style pictures are stored unscreened")
             return True
-        size = (self._size, self._size)
+        size = (self._width, self._height)
         checker_input = self._checker_input(image.convert("RGB").resize(size, Image.Resampling.LANCZOS))
         # NSFWDetectorEngine(image_tensor, threshold) returns True when NSFW.
         result = checker(checker_input, self._safety_threshold)
