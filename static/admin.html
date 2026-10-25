@@ -7,9 +7,10 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Dreamer admin">
   <meta name="format-detection" content="telephone=no">
-  <meta name="theme-color" content="#e3f4ff">
+  <meta name="theme-color" content="#f7f5f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141311" media="(prefers-color-scheme: dark)">
   <meta name="robots" content="noindex">
-  <title>Dreamer · Grown-ups</title>
+  <title>Dreamer · Parents</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <link rel="stylesheet" href="/static/theme.css">
@@ -17,14 +18,15 @@
 </head>
 <body>
   <header class="top">
-    <img class="logo" src="/static/logo.svg" alt="Dreamer" width="146" height="40">
-    <span class="tag">Grown-ups</span>
+    <img class="logo" src="/static/logo.svg" alt="Dreamer" width="136" height="40">
+    <span class="tag">Parents</span>
   </header>
 
   <!-- PIN pad: shown until the server accepts the PIN (and again on any 401). -->
   <main id="login" class="login" hidden>
-    <h1>Hi there, grown-up!</h1>
-    <p class="muted">Type the PIN to manage Dreamer.</p>
+    <span class="login-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5M12 14.5v2"/></svg></span>
+    <h1>Parent controls</h1>
+    <p class="muted">Enter the PIN to manage Dreamer.</p>
     <div class="pin-dots" id="pin-dots" aria-live="polite" aria-label="PIN digits entered"></div>
     <p class="pin-msg" id="pin-msg" role="alert"></p>
     <div class="pin-pad" id="pin-pad">
@@ -124,7 +126,7 @@
           <small>Lower is stricter <output id="o-safety-th"></output>.</small>
         </div>
         <details class="more">
-          <summary>More settings</summary>
+          <summary>More settings<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
           <div class="ctl">
             <label for="p-line-th">Line sensitivity <output id="o-line-th"></output></label>
             <input type="range" id="p-line-th" min="10" max="120" step="1">
@@ -160,7 +162,7 @@
       <ul class="items" id="styles-list"></ul>
 
       <details class="add" id="add-style">
-        <summary>Add a style</summary>
+        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add a style</summary>
         <form id="add-style-form" class="form" autocomplete="off">
           <div class="row">
             <label class="field emoji"><span>Emoji</span><input name="emoji" maxlength="16" placeholder="🌈"></label>
@@ -182,6 +184,7 @@
         <label class="file">
           <input type="file" name="file" accept="image/*" required>
           <span class="file-box" id="file-box">
+            <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
             <img id="file-preview" alt="" hidden>
             <span id="file-label">Choose a picture</span>
           </span>
@@ -220,7 +223,7 @@
     </section>
 
     <!-- 5. Log out -->
-    <button class="btn ghost logout" type="button" id="logout">Log out</button>
+    <button class="btn ghost logout" type="button" id="logout"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h3.5a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H14M10 16.5L5.5 12 10 7.5M5.5 12H15"/></svg>Log out</button>
   </main>
 
   <!-- Artwork details: picture + drawing, rename, downloads, delete / restore. -->
@@ -244,8 +247,8 @@
         <button class="btn primary" type="submit">Save name</button>
       </form>
       <div class="row downloads">
-        <a class="btn ghost" id="art-dl-picture" download>Download picture</a>
-        <a class="btn ghost" id="art-dl-sketch" download>Download drawing</a>
+        <a class="btn ghost" id="art-dl-picture" download><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14"/></svg>Download picture</a>
+        <a class="btn ghost" id="art-dl-sketch" download><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14"/></svg>Download drawing</a>
       </div>
       <button type="button" class="btn danger" id="art-delete">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 4h4M7 7l1 13h8l1-13"/></svg>

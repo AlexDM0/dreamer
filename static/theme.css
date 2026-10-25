@@ -1,79 +1,309 @@
-/* Dreamer shared palette and tokens, used by both the kid page and the admin page.
-   Only custom properties and a couple of tiny generic rules live here, so either page
-   can import it without inheriting the other's layout. */
+/* Dreamer design tokens, shared by the kid page (index.html) and the admin page
+   (admin.html). Documented in docs/design-system.md.
+
+   Three layers:
+     1. Primitives  - raw colour ramps. ONLY this file may use hex values.
+     2. Semantic    - what a colour is for (--surface, --text, --accent, ...).
+                      Pages use these and nothing else. Dark mode swaps this layer.
+     3. Scales      - type, spacing, radii, elevation, motion, focus, touch.
+
+   Theme switching: light by default; dark follows prefers-color-scheme unless the page
+   pins a theme with <html data-theme="light|dark">. The kid page pins light (the drawing
+   paper is white); the admin page follows the phone. */
 
 :root {
-  /* Brand palette: soft sky blue, sunny yellow, coral pink, mint. */
-  --sky: #8fd3ff;
-  --sky-soft: #e3f4ff;
-  --sky-deep: #3a8fd9;
-  --sun: #ffd84d;
-  --sun-soft: #fff4c2;
-  --sun-deep: #e8a900;
-  --coral: #ff7f8e;
-  --coral-soft: #ffe1e5;
-  --coral-deep: #e5485c;
-  --mint: #7fe0c3;
-  --mint-soft: #ddf8ef;
-  --mint-deep: #1fae86;
-  --lilac: #b9a3ff;
+  /* ---------- 1. Primitives ---------------------------------------------------- */
 
-  /* Neutrals. */
-  --ink: #2d3561;          /* deep friendly navy for text and outlines */
-  --ink-soft: #6b7299;
-  --paper: #ffffff;
-  --bg: #f4fbff;
-  --bg-2: #fff8e7;
-  --line: rgba(45, 53, 97, 0.12);
+  /* Sand: warm neutrals, a little paper-like. */
+  --sand-0: #ffffff;
+  --sand-25: #fcfbf9;
+  --sand-50: #f7f5f2;
+  --sand-100: #f0ede8;
+  --sand-150: #e9e5df;
+  --sand-200: #e2ddd5;
+  --sand-300: #cfc9bf;
+  --sand-400: #9a9388;
+  --sand-500: #736c63;
+  --sand-600: #5e5850;
+  --sand-700: #46413b;
+  --sand-750: #36322e;
+  --sand-800: #2a2724;
+  --sand-850: #221f1d;
+  --sand-900: #1c1a18;
+  --sand-950: #141311;
+  --sand-1000: #0e0d0c;
 
-  /* Status colours (connection dot etc.). */
-  --ok: #34c77b;
-  --warn: #ffb020;
-  --bad: #ff5a5f;
+  /* Iris: the one accent. A dusky blue-violet, "dreamy" without being candy. */
+  --iris-50: #f3f2fe;
+  --iris-100: #e8e6fd;
+  --iris-200: #d4d0fb;
+  --iris-300: #aba3f7;
+  --iris-400: #9389f2;
+  --iris-500: #6c5fe4;
+  --iris-600: #5848d6;
+  --iris-700: #4b3bc6;
+  --iris-800: #4134ae;
+  --iris-900: #2a2550;
+  --iris-950: #211d3f;
 
-  /* Shape and depth. */
-  --radius-s: 12px;
-  --radius-m: 18px;
-  --radius-l: 28px;
+  /* Moon: the warm cream of the logo's crescent. */
+  --moon-100: #fff8ee;
+  --moon-300: #fde9c4;
+
+  /* Status ramps. */
+  --green-100: #e2f3ea;
+  --green-500: #4cbf86;
+  --green-600: #1e8556;
+  --green-900: #15302a;
+  --amber-100: #fcf0d9;
+  --amber-400: #f5b53d;
+  --amber-500: #edb04a;
+  --amber-600: #c27a00;
+  --amber-800: #8f5a00;
+  --amber-900: #33281a;
+  --red-100: #fbe9e7;
+  --red-300: #f28b84;
+  --red-500: #d2463e;
+  --red-600: #cc3a31;
+  --red-700: #b3302a;
+  --red-900: #3a1d1b;
+
+  /* ---------- 2. Semantic: light (default) -------------------------------------- */
+
+  --bg: var(--sand-50);                 /* page background */
+  --surface: var(--sand-0);             /* cards, toolbars, inputs */
+  --surface-raised: var(--sand-0);      /* things that float: dialogs, sheets, popovers */
+  --surface-sunken: var(--sand-100);    /* wells: tracks, segmented controls, stat tiles */
+  --surface-hover: var(--sand-25);
+  --surface-pressed: var(--sand-150);
+  --surface-inverse: var(--sand-900);   /* toasts / hints */
+  --glass: rgb(255 255 255 / 0.84);     /* translucent bars and labels over pictures */
+  --scrim: rgb(28 26 24 / 0.38);        /* behind dialogs and sheets */
+  --canvas: var(--sand-0);              /* drawing paper and picture frames: always white */
+
+  --text: var(--sand-900);
+  --text-muted: var(--sand-600);        /* secondary copy, labels (>= 4.5:1 on --bg) */
+  --text-subtle: var(--sand-500);       /* hints and placeholders (>= 4.5:1 on --surface) */
+  --text-inverse: var(--sand-50);
+  --text-on-accent: var(--sand-0);
+  --text-on-danger: var(--sand-0);
+
+  --border: var(--sand-200);            /* dividers, card edges */
+  --border-strong: var(--sand-400);     /* input and control outlines (>= 3:1) */
+
+  --accent: var(--iris-600);            /* primary buttons, selection */
+  --accent-hover: var(--iris-700);
+  --accent-pressed: var(--iris-800);
+  --accent-text: var(--iris-700);       /* accent-coloured text and icons on surfaces */
+  --accent-soft: var(--iris-50);        /* selected backgrounds, tinted wells */
+  --accent-soft-strong: var(--iris-100);
+  --focus-color: var(--iris-500);
+
+  --success: var(--green-600);
+  --success-soft: var(--green-100);
+  --warning: var(--amber-600);
+  --warning-text: var(--amber-800);
+  --warning-soft: var(--amber-100);
+  --danger: var(--red-600);
+  --danger-hover: var(--red-700);
+  --danger-text: var(--red-700);
+  --danger-soft: var(--red-100);
+  --celebrate: var(--amber-400);        /* the saved star, sparkles */
+
+  /* Brand (logo colours, for brand moments only). */
+  --brand-night: linear-gradient(150deg, var(--iris-500) 0%, var(--iris-800) 100%);
+  --brand-moon: var(--moon-300);
+
+  /* Elevation: soft, layered, never an offset "sticker" shadow. */
+  --shadow-color: 28 26 24;
+  --shadow-1: 0 1px 2px rgb(var(--shadow-color) / 0.06), 0 1px 1px rgb(var(--shadow-color) / 0.04);
+  --shadow-2: 0 1px 2px rgb(var(--shadow-color) / 0.05), 0 4px 14px rgb(var(--shadow-color) / 0.07);
+  --shadow-3: 0 2px 6px rgb(var(--shadow-color) / 0.06), 0 14px 36px rgb(var(--shadow-color) / 0.12);
+  --shadow-4: 0 4px 12px rgb(var(--shadow-color) / 0.08), 0 28px 72px rgb(var(--shadow-color) / 0.20);
+  --inner-edge: inset 0 0 0 1px rgb(var(--shadow-color) / 0.10); /* hairline on colour fills */
+
+  /* Fixed content colours (not themed): the rainbow on the "more colours" swatch. */
+  --spectrum: conic-gradient(#ef4d5a, #ff9f1c, #ffd23f, #3ecf6e, #2fa8ff, #8b5cf6, #ff7eb6, #ef4d5a);
+
+  /* ---------- 3. Scales --------------------------------------------------------- */
+
+  /* Type: system faces only (offline LAN app, no downloads). */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro",
+    "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", Inter, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  /* Kid page labels: SF Pro Rounded on iPad, otherwise the plain sans. */
+  --font-rounded: ui-rounded, "SF Pro Rounded", var(--font-sans);
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+
+  --text-xs: 12px;     /* captions, badges */
+  --text-sm: 13px;     /* helper text, meta */
+  --text-md: 15px;     /* secondary body */
+  --text-base: 17px;   /* body, buttons, inputs (>= 16px: no iOS focus zoom) */
+  --text-lg: 20px;     /* card titles, kid labels */
+  --text-xl: 24px;     /* page titles */
+  --text-2xl: 30px;    /* hero / PIN digits */
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.45;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.01em;
+  --tracking-wide: 0.04em;
+
+  /* Spacing: 4px grid. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Radii. */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
   --radius-pill: 999px;
-  --shadow-s: 0 2px 0 rgba(45, 53, 97, 0.10), 0 3px 8px rgba(45, 53, 97, 0.08);
-  --shadow-m: 0 4px 0 rgba(45, 53, 97, 0.10), 0 8px 24px rgba(45, 53, 97, 0.12);
-  --focus: 0 0 0 4px rgba(58, 143, 217, 0.45);
 
-  /* Type: system rounded faces first, no downloads. */
-  --font-round: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Quicksand",
-    "Comic Sans MS", "Chalkboard SE", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Motion. */
+  --dur-instant: 80ms;
+  --dur-fast: 140ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* playful overshoot, kid page */
+  --press-scale: 0.96;
 
-  --touch: 52px;           /* minimum touch target */
+  /* Focus ring: a surface-coloured gap, then the accent ring. Works on any fill. */
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--focus-color);
+
+  /* Icons: 24px viewBox, round caps and joins. */
+  --icon-stroke: 2;
+  --icon-stroke-bold: 2.25;
+
+  /* Touch targets. */
+  --touch-min: 44px;     /* admin page (phone, grown-up fingers) */
+  --touch-kid: 48px;     /* any control on the kid page */
+  --touch-kid-lg: 56px;  /* main kid tools */
+
+  color-scheme: light;
 }
+
+/* ---------- 2b. Semantic: dark --------------------------------------------------
+   Keep the two blocks below identical: one follows the OS, one is the explicit pin. */
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ink: #eef1ff;
-    --ink-soft: #aab1d6;
-    --paper: #2a2f52;
-    --bg: #1b1f3b;
-    --bg-2: #232850;
-    --line: rgba(238, 241, 255, 0.14);
-    --sky-soft: #24406a;
-    --sun-soft: #4a4226;
-    --coral-soft: #4d2a3a;
-    --mint-soft: #1f4740;
-    --shadow-s: 0 2px 0 rgba(0, 0, 0, 0.25), 0 3px 8px rgba(0, 0, 0, 0.25);
-    --shadow-m: 0 4px 0 rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --bg: var(--sand-950);
+    --surface: var(--sand-900);
+    --surface-raised: var(--sand-850);
+    --surface-sunken: var(--sand-1000);
+    --surface-hover: var(--sand-850);
+    --surface-pressed: var(--sand-800);
+    --surface-inverse: var(--sand-50);
+    --glass: rgb(28 26 24 / 0.80);
+    --scrim: rgb(0 0 0 / 0.58);
+
+    --text: var(--sand-50);
+    --text-muted: var(--sand-300);
+    --text-subtle: var(--sand-400);
+    --text-inverse: var(--sand-900);
+
+    --border: var(--sand-800);
+    --border-strong: var(--sand-600);
+
+    --accent: var(--iris-500);
+    --accent-hover: var(--iris-600);
+    --accent-pressed: var(--iris-700);
+    --accent-text: var(--iris-300);
+    --accent-soft: var(--iris-950);
+    --accent-soft-strong: var(--iris-900);
+    --focus-color: var(--iris-400);
+
+    --success: var(--green-500);
+    --success-soft: var(--green-900);
+    --warning: var(--amber-500);
+    --warning-text: var(--amber-500);
+    --warning-soft: var(--amber-900);
+    --danger: var(--red-500);
+    --danger-hover: var(--red-600);
+    --danger-text: var(--red-300);
+    --danger-soft: var(--red-900);
+
+    --shadow-color: 0 0 0;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.30);
+    --shadow-2: 0 1px 2px rgb(0 0 0 / 0.30), 0 6px 16px rgb(0 0 0 / 0.28);
+    --shadow-3: 0 2px 6px rgb(0 0 0 / 0.32), 0 16px 40px rgb(0 0 0 / 0.40);
+    --shadow-4: 0 4px 12px rgb(0 0 0 / 0.36), 0 28px 72px rgb(0 0 0 / 0.55);
+    --inner-edge: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+
+    color-scheme: dark;
   }
 }
+
 :root[data-theme="dark"] {
-  --ink: #eef1ff;
-  --ink-soft: #aab1d6;
-  --paper: #2a2f52;
-  --bg: #1b1f3b;
-  --bg-2: #232850;
-  --line: rgba(238, 241, 255, 0.14);
-  --sky-soft: #24406a;
-  --sun-soft: #4a4226;
-  --coral-soft: #4d2a3a;
-  --mint-soft: #1f4740;
-  --shadow-s: 0 2px 0 rgba(0, 0, 0, 0.25), 0 3px 8px rgba(0, 0, 0, 0.25);
-  --shadow-m: 0 4px 0 rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --bg: var(--sand-950);
+  --surface: var(--sand-900);
+  --surface-raised: var(--sand-850);
+  --surface-sunken: var(--sand-1000);
+  --surface-hover: var(--sand-850);
+  --surface-pressed: var(--sand-800);
+  --surface-inverse: var(--sand-50);
+  --glass: rgb(28 26 24 / 0.80);
+  --scrim: rgb(0 0 0 / 0.58);
+
+  --text: var(--sand-50);
+  --text-muted: var(--sand-300);
+  --text-subtle: var(--sand-400);
+  --text-inverse: var(--sand-900);
+
+  --border: var(--sand-800);
+  --border-strong: var(--sand-600);
+
+  --accent: var(--iris-500);
+  --accent-hover: var(--iris-600);
+  --accent-pressed: var(--iris-700);
+  --accent-text: var(--iris-300);
+  --accent-soft: var(--iris-950);
+  --accent-soft-strong: var(--iris-900);
+  --focus-color: var(--iris-400);
+
+  --success: var(--green-500);
+  --success-soft: var(--green-900);
+  --warning: var(--amber-500);
+  --warning-text: var(--amber-500);
+  --warning-soft: var(--amber-900);
+  --danger: var(--red-500);
+  --danger-hover: var(--red-600);
+  --danger-text: var(--red-300);
+  --danger-soft: var(--red-900);
+
+  --shadow-color: 0 0 0;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.30);
+  --shadow-2: 0 1px 2px rgb(0 0 0 / 0.30), 0 6px 16px rgb(0 0 0 / 0.28);
+  --shadow-3: 0 2px 6px rgb(0 0 0 / 0.32), 0 16px 40px rgb(0 0 0 / 0.40);
+  --shadow-4: 0 4px 12px rgb(0 0 0 / 0.36), 0 28px 72px rgb(0 0 0 / 0.55);
+  --inner-edge: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+
+  color-scheme: dark;
+}
+
+/* Reduced motion: collapse durations (pages also switch animations off). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 1ms;
+    --dur-fast: 1ms;
+    --dur-base: 1ms;
+    --dur-slow: 1ms;
+    --press-scale: 1;
+  }
 }

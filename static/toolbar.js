@@ -25,7 +25,15 @@ const CONN_LABELS = {
   replaced: "Drawing on another screen",
 };
 
-const ROW_ICONS = { topics: "🌍", styles: "🎨" };
+// Line icons that start each row: a globe for worlds (topics), a palette for styles.
+const ROW_ICONS = {
+  topics: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/>'
+    + '<path d="M3.5 12h17M12 3.5c2.4 2.5 3.6 5.3 3.6 8.5s-1.2 6-3.6 8.5c-2.4-2.5-3.6-5.3-3.6-8.5s1.2-6 3.6-8.5z"/></svg>',
+  styles: '<svg viewBox="0 0 24 24" aria-hidden="true">'
+    + '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.7-.8 1.7-1.6 0-1.2-1-1.5-1-2.6 0-.9.7-1.6 1.7-1.6h2.1a3.9 3.9 0 0 0 3.9-3.9c0-4-3.8-7.3-8.4-7.3z"/>'
+    + '<circle class="dot" cx="7.6" cy="11.4" r="1.25"/><circle class="dot" cx="10" cy="7.6" r="1.25"/>'
+    + '<circle class="dot" cx="14.6" cy="7.6" r="1.25"/></svg>',
+};
 
 export class Toolbar extends EventTarget {
   constructor(root = document) {
@@ -83,7 +91,7 @@ export class Toolbar extends EventTarget {
     const icon = document.createElement("span");
     icon.className = "row-icon";
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent = ROW_ICONS[kind];
+    icon.innerHTML = ROW_ICONS[kind]; // static markup from this file, never user data
     row.append(icon);
 
     if (!items) {
