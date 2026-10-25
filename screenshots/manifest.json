@@ -1,0 +1,936 @@
+{
+  "generated": "2026-10-25T21:26:27+0100",
+  "generator": "tools/make_showcase.py",
+  "note": "Real pictures made on the RTX 3080 PC (StreamDiffusion SD-Turbo + scribble ControlNet). UI shots are 2x device pixel ratio.",
+  "files": [
+    {
+      "file": "desktop-help-refine.png",
+      "group": "help",
+      "title": "Help: refine when they stop",
+      "caption": "The help for 'Refine when they stop': the same drawing at 0 to 20 refinement steps.",
+      "device": "desktop",
+      "theme": "light",
+      "features": [
+        "help",
+        "refine"
+      ],
+      "orientation": "landscape",
+      "width": 2560,
+      "height": 1800,
+      "bytes": 810132
+    },
+    {
+      "file": "desktop-help-top.png",
+      "group": "help",
+      "title": "Help: what the picture controls do",
+      "caption": "Every control on the parent page has a help section with real example pictures made on the PC.",
+      "device": "desktop",
+      "theme": "light",
+      "features": [
+        "help"
+      ],
+      "orientation": "landscape",
+      "width": 2560,
+      "height": 1800,
+      "bytes": 679005
+    },
+    {
+      "file": "examples/castle-picture.jpg",
+      "group": "examples",
+      "caption": "The refined, upscaled picture Dreamer made from it (Castle world, clay style, on lilac paper).",
+      "features": [
+        "example",
+        "after"
+      ],
+      "title": "Princess castle: picture",
+      "device": "none",
+      "theme": "none",
+      "artwork": "castle",
+      "topic": "castle",
+      "style": "clay",
+      "paper": "#c9b6f2",
+      "orientation": "landscape",
+      "width": 1280,
+      "height": 896,
+      "bytes": 89590
+    },
+    {
+      "file": "examples/castle-sketch.png",
+      "group": "examples",
+      "caption": "The child's drawing over its paper colour (Castle world, clay style, on lilac paper).",
+      "features": [
+        "example",
+        "before"
+      ],
+      "title": "Princess castle: drawing",
+      "device": "none",
+      "theme": "none",
+      "artwork": "castle",
+      "topic": "castle",
+      "style": "clay",
+      "paper": "#c9b6f2",
+      "orientation": "landscape",
+      "width": 640,
+      "height": 448,
+      "bytes": 68123
+    },
+    {
+      "file": "examples/cat-picture.jpg",
+      "group": "examples",
+      "caption": "The refined, upscaled picture Dreamer made from it (Ocean world, cartoon style, on night blue paper).",
+      "features": [
+        "example",
+        "after"
+      ],
+      "title": "Swimming cat: picture",
+      "device": "none",
+      "theme": "none",
+      "artwork": "cat",
+      "topic": "ocean",
+      "style": "cartoon",
+      "paper": "#1e2a5a",
+      "orientation": "landscape",
+      "width": 1280,
+      "height": 896,
+      "bytes": 114283
+    },
+    {
+      "file": "examples/cat-sketch.png",
+      "group": "examples",
+      "caption": "The child's drawing over its paper colour (Ocean world, cartoon style, on night blue paper).",
+      "features": [
+        "example",
+        "before"
+      ],
+      "title": "Swimming cat: drawing",
+      "device": "none",
+      "theme": "none",
+      "artwork": "cat",
+      "topic": "ocean",
+      "style": "cartoon",
+      "paper": "#1e2a5a",
+      "orientation": "landscape",
+      "width": 640,
+      "height": 448,
+      "bytes": 35829
+    },
+    {
+      "file": "examples/dinosaur-picture.jpg",
+      "group": "examples",
+      "caption": "The refined, upscaled picture Dreamer made from it (Dinosaurs world, crayon style, on white paper).",
+      "features": [
+        "example",
+        "after"
+      ],
+      "title": "Dino friend: picture",
+      "device": "none",
+      "theme": "none",
+      "artwork": "dinosaur",
+      "topic": "dinosaurs",
+      "style": "crayon",
+      "paper": "#ffffff",
+      "orientation": "landscape",
+      "width": 1280,
+      "height": 896,
+      "bytes": 98089
+    },
+    {
+      "file": "examples/dinosaur-sketch.png",
+      "group": "examples",
+      "caption": "The child's drawing over its paper colour (Dinosaurs world, crayon style, on white paper).",
+      "features": [
+        "example",
+        "before"
+      ],
+      "title": "Dino friend: drawing",
+      "device": "none",
+      "theme": "none",
+      "artwork": "dinosaur",
+      "topic": "dinosaurs",
+      "style": "crayon",
+      "paper": "#ffffff",
+      "orientation": "landscape",
+      "width": 640,
+      "height": 448,
+      "bytes": 70823
+    },
+    {
+      "file": "examples/house-picture.jpg",
+      "group": "examples",
+      "caption": "The refined, upscaled picture Dreamer made from it (Nature world, storybook style, on black paper).",
+      "features": [
+        "example",
+        "after"
+      ],
+      "title": "Sunny house: picture",
+      "device": "none",
+      "theme": "none",
+      "artwork": "house",
+      "topic": "nature",
+      "style": "storybook",
+      "paper": "#000000",
+      "orientation": "landscape",
+      "width": 1280,
+      "height": 896,
+      "bytes": 88750
+    },
+    {
+      "file": "examples/house-sketch.png",
+      "group": "examples",
+      "caption": "The child's drawing over its paper colour (Nature world, storybook style, on black paper).",
+      "features": [
+        "example",
+        "before"
+      ],
+      "title": "Sunny house: drawing",
+      "device": "none",
+      "theme": "none",
+      "artwork": "house",
+      "topic": "nature",
+      "style": "storybook",
+      "paper": "#000000",
+      "orientation": "landscape",
+      "width": 640,
+      "height": 448,
+      "bytes": 37745
+    },
+    {
+      "file": "examples/meadow-picture.jpg",
+      "group": "examples",
+      "caption": "The refined, upscaled picture Dreamer made from it (Nature world, watercolor style, on sky blue paper).",
+      "features": [
+        "example",
+        "after"
+      ],
+      "title": "Flower meadow: picture",
+      "device": "none",
+      "theme": "none",
+      "artwork": "meadow",
+      "topic": "nature",
+      "style": "watercolor",
+      "paper": "#8fd3ff",
+      "orientation": "portrait",
+      "width": 896,
+      "height": 1280,
+      "bytes": 95936
+    },
+    {
+      "file": "examples/meadow-sketch.png",
+      "group": "examples",
+      "caption": "The child's drawing over its paper colour (Nature world, watercolor style, on sky blue paper).",
+      "features": [
+        "example",
+        "before"
+      ],
+      "title": "Flower meadow: drawing",
+      "device": "none",
+      "theme": "none",
+      "artwork": "meadow",
+      "topic": "nature",
+      "style": "watercolor",
+      "paper": "#8fd3ff",
+      "orientation": "portrait",
+      "width": 448,
+      "height": 640,
+      "bytes": 48138
+    },
+    {
+      "file": "examples/rocket-picture.jpg",
+      "group": "examples",
+      "caption": "The refined, upscaled picture Dreamer made from it (Space world, watercolor style, on black paper).",
+      "features": [
+        "example",
+        "after"
+      ],
+      "title": "Space rocket: picture",
+      "device": "none",
+      "theme": "none",
+      "artwork": "rocket",
+      "topic": "space",
+      "style": "watercolor",
+      "paper": "#000000",
+      "orientation": "landscape",
+      "width": 1280,
+      "height": 896,
+      "bytes": 92436
+    },
+    {
+      "file": "examples/rocket-sketch.png",
+      "group": "examples",
+      "caption": "The child's drawing over its paper colour (Space world, watercolor style, on black paper).",
+      "features": [
+        "example",
+        "before"
+      ],
+      "title": "Space rocket: drawing",
+      "device": "none",
+      "theme": "none",
+      "artwork": "rocket",
+      "topic": "space",
+      "style": "watercolor",
+      "paper": "#000000",
+      "orientation": "landscape",
+      "width": 640,
+      "height": 448,
+      "bytes": 51411
+    },
+    {
+      "file": "ipad-landscape-castle-sketch.png",
+      "group": "kid",
+      "title": "Drawing: princess castle",
+      "caption": "The child's drawing (Castle world, clay style, on lilac paper), drawn with a finger.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "drawing",
+        "sketch view"
+      ],
+      "orientation": "landscape",
+      "artwork": "castle",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 346674
+    },
+    {
+      "file": "ipad-landscape-castle-split.png",
+      "group": "kid",
+      "title": "Drawing and picture side by side: princess castle",
+      "caption": "The 'Both' view: the drawing and its finished picture side by side. Castle world, clay style, on lilac paper.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "refined picture",
+        "split view"
+      ],
+      "orientation": "landscape",
+      "artwork": "castle",
+      "topic": "castle",
+      "style": "clay",
+      "paper": "#c9b6f2",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 902577
+    },
+    {
+      "file": "ipad-landscape-cat-keep-drawing.jpg",
+      "group": "kid",
+      "title": "Keep drawing a saved picture",
+      "caption": "'Keep drawing' puts the saved drawing back on the canvas (here a second fish was added); saving again updates the same picture.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "keep drawing",
+        "split view"
+      ],
+      "orientation": "landscape",
+      "artwork": "cat",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 407103
+    },
+    {
+      "file": "ipad-landscape-cat-sketch.png",
+      "group": "kid",
+      "title": "Drawing: swimming cat",
+      "caption": "The child's drawing (Ocean world, cartoon style, on night blue paper), drawn with a finger.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "drawing",
+        "sketch view"
+      ],
+      "orientation": "landscape",
+      "artwork": "cat",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 341736
+    },
+    {
+      "file": "ipad-landscape-cat-split-light.jpg",
+      "group": "kid",
+      "title": "Light look: drawing and picture",
+      "caption": "The drawing page in the light look, with the 'Both' view.",
+      "device": "ipad-landscape",
+      "theme": "light",
+      "features": [
+        "light theme",
+        "split view"
+      ],
+      "orientation": "landscape",
+      "artwork": "cat",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 425403
+    },
+    {
+      "file": "ipad-landscape-cat-split.jpg",
+      "group": "kid",
+      "title": "Drawing and picture side by side: swimming cat",
+      "caption": "The 'Both' view: the drawing and its finished picture side by side. Ocean world, cartoon style, on night blue paper.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "refined picture",
+        "split view"
+      ],
+      "orientation": "landscape",
+      "artwork": "cat",
+      "topic": "ocean",
+      "style": "cartoon",
+      "paper": "#1e2a5a",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 399127
+    },
+    {
+      "file": "ipad-landscape-dinosaur-minimised.jpg",
+      "group": "kid",
+      "title": "Minimised toolbar: a bigger drawing",
+      "caption": "One tap tucks the tools away; only the colours and the brush size stay, and the drawing gets the room.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "minimised toolbar"
+      ],
+      "orientation": "landscape",
+      "artwork": "dinosaur",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 382593
+    },
+    {
+      "file": "ipad-landscape-dinosaur-picture.jpg",
+      "group": "kid",
+      "title": "Dream picture: dino friend",
+      "caption": "When the drawing pauses, the picture refines and is upscaled. Dinosaurs world, crayon style, on white paper.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "refined picture",
+        "auto view"
+      ],
+      "orientation": "landscape",
+      "artwork": "dinosaur",
+      "topic": "dinosaurs",
+      "style": "crayon",
+      "paper": "#ffffff",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 436625
+    },
+    {
+      "file": "ipad-landscape-dinosaur-sketch.png",
+      "group": "kid",
+      "title": "Drawing: dino friend",
+      "caption": "The child's drawing (Dinosaurs world, crayon style, on white paper), drawn with a finger.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "drawing",
+        "sketch view"
+      ],
+      "orientation": "landscape",
+      "artwork": "dinosaur",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 337359
+    },
+    {
+      "file": "ipad-landscape-gallery-detail-light.jpg",
+      "group": "kid",
+      "title": "Light look: a saved picture",
+      "caption": "The drawing page can also have a light look, chosen on the parent page.",
+      "device": "ipad-landscape",
+      "theme": "light",
+      "features": [
+        "gallery",
+        "light theme"
+      ],
+      "orientation": "landscape",
+      "artwork": "cat",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 322051
+    },
+    {
+      "file": "ipad-landscape-gallery-detail.png",
+      "group": "kid",
+      "title": "A saved picture with its drawing",
+      "caption": "Tap a picture to see it next to the drawing it came from, then 'Keep drawing' to carry on.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "gallery",
+        "keep drawing"
+      ],
+      "orientation": "landscape",
+      "artwork": "cat",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 991162
+    },
+    {
+      "file": "ipad-landscape-gallery-light.jpg",
+      "group": "kid",
+      "title": "Light look: the gallery",
+      "caption": "The gallery in the light look.",
+      "device": "ipad-landscape",
+      "theme": "light",
+      "features": [
+        "gallery",
+        "light theme"
+      ],
+      "orientation": "landscape",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 329752
+    },
+    {
+      "file": "ipad-landscape-gallery.jpg",
+      "group": "kid",
+      "title": "My pictures: the gallery",
+      "caption": "Every saved picture in a big grid. Children can look and keep drawing, but not delete.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "gallery"
+      ],
+      "orientation": "landscape",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 339516
+    },
+    {
+      "file": "ipad-landscape-house-picture.jpg",
+      "group": "kid",
+      "title": "Dream picture: sunny house",
+      "caption": "When the drawing pauses, the picture refines and is upscaled. Nature world, storybook style, on black paper.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "refined picture",
+        "auto view"
+      ],
+      "orientation": "landscape",
+      "artwork": "house",
+      "topic": "nature",
+      "style": "storybook",
+      "paper": "#000000",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 409046
+    },
+    {
+      "file": "ipad-landscape-house-saving.jpg",
+      "group": "kid",
+      "title": "Save: the picture flies into the gallery",
+      "caption": "The yellow star keeps the picture and its drawing; the picture flies into the Gallery button with a little star burst.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "save",
+        "gallery"
+      ],
+      "orientation": "landscape",
+      "artwork": "house",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 449968
+    },
+    {
+      "file": "ipad-landscape-house-sketch.png",
+      "group": "kid",
+      "title": "Drawing: sunny house",
+      "caption": "The child's drawing (Nature world, storybook style, on black paper), drawn with a finger.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "drawing",
+        "sketch view"
+      ],
+      "orientation": "landscape",
+      "artwork": "house",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 341442
+    },
+    {
+      "file": "ipad-landscape-paper-picker.png",
+      "group": "kid",
+      "title": "Pick your paper",
+      "caption": "Every new drawing starts by picking a paper colour. Black paper gives night scenes; the paper can be changed later and the strokes stay.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "paper picker",
+        "new drawing"
+      ],
+      "orientation": "landscape",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 369155
+    },
+    {
+      "file": "ipad-landscape-rocket-live-split.png",
+      "group": "kid",
+      "title": "The picture follows while drawing",
+      "caption": "Side by side: while your child draws, the picture keeps up within a fraction of a second.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "live picture",
+        "split view",
+        "drawing"
+      ],
+      "orientation": "landscape",
+      "artwork": "rocket",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 527857
+    },
+    {
+      "file": "ipad-landscape-rocket-sketch.png",
+      "group": "kid",
+      "title": "Drawing: space rocket",
+      "caption": "The child's drawing (Space world, watercolor style, on black paper), drawn with a finger.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "drawing",
+        "sketch view"
+      ],
+      "orientation": "landscape",
+      "artwork": "rocket",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 403793
+    },
+    {
+      "file": "ipad-landscape-rocket-split.png",
+      "group": "kid",
+      "title": "Drawing and picture side by side: space rocket",
+      "caption": "The 'Both' view: the drawing and its finished picture side by side. Space world, watercolor style, on black paper.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "refined picture",
+        "split view"
+      ],
+      "orientation": "landscape",
+      "artwork": "rocket",
+      "topic": "space",
+      "style": "watercolor",
+      "paper": "#000000",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 984337
+    },
+    {
+      "file": "ipad-landscape-start.png",
+      "group": "kid",
+      "title": "Ready to draw",
+      "caption": "The drawing page on the iPad: colours, brush size, worlds and styles on top; Save, Gallery, New and Paper on the side.",
+      "device": "ipad-landscape",
+      "theme": "dark",
+      "features": [
+        "toolbar",
+        "topics",
+        "styles"
+      ],
+      "orientation": "landscape",
+      "width": 2360,
+      "height": 1640,
+      "bytes": 231357
+    },
+    {
+      "file": "ipad-portrait-meadow-picture.jpg",
+      "group": "kid",
+      "title": "Dream picture: flower meadow",
+      "caption": "When the drawing pauses, the picture refines and is upscaled. Nature world, watercolor style, on sky blue paper.",
+      "device": "ipad-portrait",
+      "theme": "dark",
+      "features": [
+        "refined picture",
+        "auto view"
+      ],
+      "orientation": "portrait",
+      "artwork": "meadow",
+      "topic": "nature",
+      "style": "watercolor",
+      "paper": "#8fd3ff",
+      "width": 1640,
+      "height": 2360,
+      "bytes": 424692
+    },
+    {
+      "file": "ipad-portrait-meadow-sketch.png",
+      "group": "kid",
+      "title": "Drawing: flower meadow",
+      "caption": "The child's drawing (Nature world, watercolor style, on sky blue paper), drawn with a finger.",
+      "device": "ipad-portrait",
+      "theme": "dark",
+      "features": [
+        "drawing",
+        "sketch view"
+      ],
+      "orientation": "portrait",
+      "artwork": "meadow",
+      "width": 1640,
+      "height": 2360,
+      "bytes": 364141
+    },
+    {
+      "file": "ipad-portrait-meadow-split.jpg",
+      "group": "kid",
+      "title": "Drawing and picture side by side: flower meadow",
+      "caption": "The 'Both' view: the drawing and its finished picture side by side. Nature world, watercolor style, on sky blue paper.",
+      "device": "ipad-portrait",
+      "theme": "dark",
+      "features": [
+        "refined picture",
+        "split view"
+      ],
+      "orientation": "portrait",
+      "artwork": "meadow",
+      "topic": "nature",
+      "style": "watercolor",
+      "paper": "#8fd3ff",
+      "width": 1640,
+      "height": 2360,
+      "bytes": 440095
+    },
+    {
+      "file": "phone-admin-artwork-dark.png",
+      "group": "admin",
+      "title": "Parent page: one picture",
+      "caption": "Rename a picture, download the picture or the drawing, or move it to the Trash.",
+      "device": "phone",
+      "theme": "dark",
+      "features": [
+        "admin",
+        "gallery",
+        "download"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 365929
+    },
+    {
+      "file": "phone-admin-artwork-light.png",
+      "group": "admin",
+      "title": "Parent page: one picture",
+      "caption": "Rename a picture, download the picture or the drawing, or move it to the Trash.",
+      "device": "phone",
+      "theme": "light",
+      "features": [
+        "admin",
+        "gallery",
+        "download"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 374631
+    },
+    {
+      "file": "phone-admin-gallery-dark.png",
+      "group": "admin",
+      "title": "Parent page: gallery",
+      "caption": "Saved pictures with their names; deleted ones go to the Trash first.",
+      "device": "phone",
+      "theme": "dark",
+      "features": [
+        "admin",
+        "gallery"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 440203
+    },
+    {
+      "file": "phone-admin-gallery-light.png",
+      "group": "admin",
+      "title": "Parent page: gallery",
+      "caption": "Saved pictures with their names; deleted ones go to the Trash first.",
+      "device": "phone",
+      "theme": "light",
+      "features": [
+        "admin",
+        "gallery"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 433529
+    },
+    {
+      "file": "phone-admin-login-dark.png",
+      "group": "admin",
+      "title": "Parent page: PIN pad",
+      "caption": "The parent page on a phone is protected by a PIN.",
+      "device": "phone",
+      "theme": "dark",
+      "features": [
+        "admin",
+        "login"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 64685
+    },
+    {
+      "file": "phone-admin-login-light.png",
+      "group": "admin",
+      "title": "Parent page: PIN pad",
+      "caption": "The parent page on a phone is protected by a PIN.",
+      "device": "phone",
+      "theme": "light",
+      "features": [
+        "admin",
+        "login"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 65606
+    },
+    {
+      "file": "phone-admin-memory-meter-dark.png",
+      "group": "admin",
+      "title": "Parent page: upscale, resolution and memory meter",
+      "caption": "AI upscale, resolution and an estimate of the graphics memory; settings that would not fit are disabled.",
+      "device": "phone",
+      "theme": "dark",
+      "features": [
+        "admin",
+        "picture controls",
+        "memory meter",
+        "upscale"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 171472
+    },
+    {
+      "file": "phone-admin-memory-meter-light.png",
+      "group": "admin",
+      "title": "Parent page: upscale, resolution and memory meter",
+      "caption": "AI upscale, resolution and an estimate of the graphics memory; settings that would not fit are disabled.",
+      "device": "phone",
+      "theme": "light",
+      "features": [
+        "admin",
+        "picture controls",
+        "memory meter",
+        "upscale"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 165478
+    },
+    {
+      "file": "phone-admin-now-dark.png",
+      "group": "admin",
+      "title": "Parent page: Now",
+      "caption": "The live picture from the iPad, the engine's speed, and the current topic, style, starting view and page look.",
+      "device": "phone",
+      "theme": "dark",
+      "features": [
+        "admin",
+        "live picture",
+        "topics",
+        "styles"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 391650
+    },
+    {
+      "file": "phone-admin-now-light.png",
+      "group": "admin",
+      "title": "Parent page: Now",
+      "caption": "The live picture from the iPad, the engine's speed, and the current topic, style, starting view and page look.",
+      "device": "phone",
+      "theme": "light",
+      "features": [
+        "admin",
+        "live picture",
+        "topics",
+        "styles"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 388130
+    },
+    {
+      "file": "phone-admin-picture-controls-dark.png",
+      "group": "admin",
+      "title": "Parent page: picture controls",
+      "caption": "Creativity, draw reaction, refinement and more; changes apply live. Each ⓘ opens the help page.",
+      "device": "phone",
+      "theme": "dark",
+      "features": [
+        "admin",
+        "picture controls"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 162835
+    },
+    {
+      "file": "phone-admin-picture-controls-light.png",
+      "group": "admin",
+      "title": "Parent page: picture controls",
+      "caption": "Creativity, draw reaction, refinement and more; changes apply live. Each ⓘ opens the help page.",
+      "device": "phone",
+      "theme": "light",
+      "features": [
+        "admin",
+        "picture controls"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 159174
+    },
+    {
+      "file": "phone-help-refine.png",
+      "group": "help",
+      "title": "Help: refine when they stop",
+      "caption": "The help for 'Refine when they stop': the same drawing at 0 to 20 refinement steps.",
+      "device": "phone",
+      "theme": "light",
+      "features": [
+        "help",
+        "refine"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 539348
+    },
+    {
+      "file": "phone-help-top.png",
+      "group": "help",
+      "title": "Help: what the picture controls do",
+      "caption": "Every control on the parent page has a help section with real example pictures made on the PC.",
+      "device": "phone",
+      "theme": "light",
+      "features": [
+        "help"
+      ],
+      "orientation": "portrait",
+      "width": 780,
+      "height": 1688,
+      "bytes": 259966
+    }
+  ]
+}
