@@ -6,9 +6,9 @@ actual app, driven by scripts. Nothing is mocked up by hand.
 
 **Settings used for the screenshots:** AI upscale x2 was switched on, so the refined
 pictures are 1280×896. The app's default is upscale off; say "with AI upscale on" when
-showing them. The help-page shots (`*-help-refine.png`) still show the earlier "continue
-the path" refinement strip (4/8/12/20 steps, with cumulative times), not the current
-anchored model; caption them that way until they are regenerated.
+showing them. The help-page refine strip (`*-help-refine.png`) shows the current anchored
+model: the drawing picture, then steps 3, 5 and 7, each labelled with its time after the
+pause.
 
 ## What is in it
 

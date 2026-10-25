@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-25T22:16:09+0100",
+  "generated": "2026-10-25T22:23:28+0100",
   "generator": "tools/make_showcase.py",
   "note": "Real pictures made on the RTX 3080 PC (StreamDiffusion SD-Turbo + scribble ControlNet). UI shots are 2x device pixel ratio.",
   "files": [
@@ -17,7 +17,7 @@
       "orientation": "landscape",
       "width": 2560,
       "height": 1800,
-      "bytes": 810132
+      "bytes": 758276
     },
     {
       "file": "desktop-help-top.png",
@@ -32,7 +32,7 @@
       "orientation": "landscape",
       "width": 2560,
       "height": 1800,
-      "bytes": 678189
+      "bytes": 673467
     },
     {
       "file": "examples/castle-picture.jpg",
@@ -915,7 +915,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 539348
+      "bytes": 494669
     },
     {
       "file": "phone-help-top.png",

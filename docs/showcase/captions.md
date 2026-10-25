@@ -112,10 +112,9 @@ in these shots were made with AI upscale on (2x); the app's default is off.
 
 - **Short:** Every setting explained with real pictures.
 - **Long:** Each control on the parent page has a help section with example pictures made
-  on the PC. This strip shows the earlier "continue the path" refinement: the same drawing
-  while drawing and after 4, 8, 12 and 20 steps, with the cumulative time for each. Past
-  about 6 steps the scene changes, which is why the current default is the anchored
-  model. Below it, the AI upscale zoomed in.
+  on the PC. This strip shows the refinement: the picture while drawing, then after
+  steps 3, 5 and 7 of the anchored detail ladder (about 0.1, 0.2 and 0.3 s after the
+  pause). The scene stays the same; only detail is added. Below it, the AI upscale zoomed in.
 
 ## Before/after pairs (`screenshots/examples/`)
 

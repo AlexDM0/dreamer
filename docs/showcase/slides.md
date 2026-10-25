@@ -130,11 +130,11 @@ a backlog.
 **Image:** diagram "Draw fast, then refine" from [architecture.md](architecture.md), plus
 `screenshots/desktop-help-refine.png`
 
-**Speaker notes:** Caption the help strip truthfully: it shows the *earlier* "continue the
-path" refinement, the same drawing while drawing and at 4, 8, 12 and 20 steps, with the
-cumulative time for each. It is not the current model. Use it to set up the next slide:
-look how at 8+ steps the scene starts to *change*. That was the problem the anchored
-model solves.
+**Speaker notes:** The help strip shows the current anchored refinement: the picture while
+drawing, then steps 3, 5 and 7 (about 0.1, 0.2 and 0.3 s after the pause). The scene stays
+put and gains detail. For the contrast with the earlier "continue the path" approach, which
+repainted the scene after about 6 steps, show `docs/research/img/refine-cat.png` (row 1 vs
+row "anchored").
 
 ---
 
