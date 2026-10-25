@@ -48,6 +48,10 @@ h1, h2, h3 { letter-spacing: var(--tracking-tight); line-height: var(--leading-t
   background: var(--surface-sunken); color: var(--text-muted);
   box-shadow: inset 0 0 0 1px var(--border);
 }
+/* The iPad home-screen app has no back button: show a way back to the drawing there only
+   (on a phone in Safari, opening the drawing page would take over the iPad's session). */
+.tag.to-drawing { display: none; margin-left: auto; color: var(--accent-text); text-decoration: none; }
+@media (display-mode: standalone) { .tag.to-drawing { display: inline-block; } }
 
 .muted { color: var(--text-muted); margin: 0 0 var(--space-4); font-size: var(--text-md); }
 

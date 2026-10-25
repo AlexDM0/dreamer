@@ -1128,3 +1128,47 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Parent gate (Dreamer icon → PIN → /admin). Mirrors the admin page's PIN pad. */
+button.brand { padding: 0; border: 0; background: none; border-radius: var(--radius-lg); cursor: pointer; }
+button.brand:active .mark { transform: scale(var(--press-scale)); }
+button.brand:focus-visible { box-shadow: var(--focus-ring); }
+.overlay .gate-card { width: min(380px, 100%); padding-top: var(--space-6); gap: var(--space-2); }
+.gate-card .card-icon { width: 64px; height: 64px; }
+.pin-dots { display: flex; justify-content: center; gap: var(--space-4); margin-top: var(--space-4); min-height: 14px; }
+.pin-dots span {
+  width: 14px; height: 14px; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--border-strong);
+  transition: background-color var(--dur-fast), box-shadow var(--dur-fast), transform var(--dur-fast) var(--ease-spring);
+}
+.pin-dots span.on { background: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); transform: scale(1.12); }
+.pin-dots.shake { animation: pin-shake 360ms var(--ease-in-out); }
+@keyframes pin-shake {
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+.overlay p.pin-msg {
+  min-height: 22px; margin: 0 0 var(--space-2);
+  color: var(--danger-text); font-size: var(--text-base); font-weight: var(--weight-medium);
+}
+.pin-pad { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
+.pin-pad button {
+  min-height: 64px;
+  border: 0; border-radius: var(--radius-lg);
+  background: var(--surface); color: var(--text);
+  box-shadow: 0 0 0 1px var(--border), var(--shadow-1);
+  font-size: var(--text-2xl); font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  display: grid; place-items: center;
+  transition: transform var(--dur-instant) var(--ease-out), background-color var(--dur-instant);
+}
+.pin-pad button:active { transform: scale(var(--press-scale)); background: var(--surface-pressed); }
+.pin-pad .key-soft { background: transparent; box-shadow: none; color: var(--text-muted); }
+.pin-pad .key-go { background: var(--accent); color: var(--text-on-accent); box-shadow: var(--shadow-2); }
+.pin-pad .key-go:active { background: var(--accent-pressed); }
+.pin-pad button:focus-visible { box-shadow: var(--focus-ring); }
+.pin-pad svg {
+  width: 28px; height: 28px;
+  fill: none; stroke: currentColor; stroke-width: var(--icon-stroke-bold);
+  stroke-linecap: round; stroke-linejoin: round;
+}
