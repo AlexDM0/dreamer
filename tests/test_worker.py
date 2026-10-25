@@ -158,8 +158,9 @@ def test_latency_backend_is_primed_and_settled():
 
     backend = LaggyBackend()
     # Init from the sketch itself, so the stroke colour shows up on the line.
-    worker = GpuWorker(backend, Mailbox(), on_result, rec.on_status, Config(backend="mock", size=64),
-                       params=GenParams(init_mode="sketch"))
+    cfg = Config(backend="mock", size=64)
+    worker = GpuWorker(backend, Mailbox(), on_result, rec.on_status, cfg,
+                       params=replace(defaults_from_config(cfg), init_mode="sketch"))
     worker.start()
     try:
         red, blue = sketch_png(size=64, color="red"), sketch_png(size=64, color="blue")
@@ -201,5 +202,53 @@ def test_worker_switches_backend_size_per_orientation():
                                     orientation="portrait"))
         rec.wait(2)
         assert backend.sizes == [(128, 192)]
+    finally:
+        worker.stop()
+
+
+class RefineBackend(MockBackend):
+    def __init__(self):
+        super().__init__(mock_delay_ms=0)
+        self.refined = []
+
+    def refine(self, init_image, line_map, t_index):
+        self.refined.append(tuple(t_index))
+        return self.generate(init_image, line_map)
+
+
+def test_refine_t_index_spreads_from_the_creativity():
+    from server.worker import refine_t_index
+
+    assert refine_t_index(6, 1) == (6,)
+    assert refine_t_index(6, 4) == (6, 20, 35, 49)
+    steps = refine_t_index(6, 20)
+    assert len(steps) == 20 and steps[0] == 6 and steps[-1] == 49
+    assert all(b > a for a, b in zip(steps, steps[1:]))
+    assert refine_t_index(45, 20) == (45, 46, 47, 48, 49)  # only 5 distinct values left
+
+
+def test_pause_runs_growing_refinement_passes_with_the_same_seq():
+    backend = RefineBackend()
+    cfg = Config(backend="mock", size=64)
+    worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=12))
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        rec.wait(3)  # the drawing frame, then passes at 4, 8 and 12 steps
+        time.sleep(0.4)
+        assert [seq for seq, _ in rec.results] == [1, 1, 1, 1]
+        assert [len(t) for t in backend.refined] == [4, 8, 12]
+    finally:
+        worker.stop()
+
+
+def test_refinement_off_sends_only_the_drawing_frame():
+    backend = RefineBackend()
+    cfg = Config(backend="mock", size=64)
+    worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=0))
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        rec.wait(1)
+        time.sleep(0.4)
+        assert backend.refined == [] and len(rec.results) == 1
     finally:
         worker.stop()

@@ -72,7 +72,11 @@ export class View extends EventTarget {
   setDrawing({ width, height, background }) {
     this.background = background;
     this.stage.style.setProperty("--drawing-bg", background);
-    if (width !== this.picture.width || height !== this.picture.height) {
+    // Compared with the drawing's own size: the picture canvas may hold a bigger
+    // (upscaled) picture of the same drawing.
+    const previous = this._drawingDims || [this.picture.width, this.picture.height];
+    this._drawingDims = [width, height];
+    if (width !== previous[0] || height !== previous[1]) {
       this.picture.width = width;
       this.picture.height = height;
       this.aspect = width / height;
@@ -141,6 +145,13 @@ export class View extends EventTarget {
       }
     }
     if (token !== this._token) { cleanup(); return; } // a newer frame overtook this one
+    // A picture of the drawing's shape at another resolution (an upscaled refinement, or a
+    // new resolution setting) is shown at its own resolution, not squeezed into the old one.
+    if (Math.abs(img.width / img.height - this.aspect) < 0.01 &&
+        (img.width !== this.picture.width || img.height !== this.picture.height)) {
+      this.picture.width = img.width;
+      this.picture.height = img.height;
+    }
     // Contain: a picture of another shape is letterboxed on the paper, never stretched.
     const { width, height } = this.picture;
     const scale = Math.min(width / img.width, height / img.height);

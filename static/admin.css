@@ -343,6 +343,16 @@ h1, h2, h3 { letter-spacing: var(--tracking-tight); line-height: var(--leading-t
 .params input[type="range"] { width: 100%; min-height: var(--touch-min); accent-color: var(--accent); margin: 0; }
 .params input[type="range"]:disabled { opacity: .4; }
 .params .ctl-head { display: flex; align-items: center; justify-content: space-between; }
+/* Estimated graphics memory: measured base (engines + desktop) plus live extras, out of
+   the budget; settings that would not fit are disabled. */
+.gpu-meter .meter-head { display: flex; justify-content: space-between; font-weight: var(--weight-semibold); }
+.gpu-meter .meter-bar { display: flex; height: 10px; margin-top: var(--space-2); border-radius: var(--radius-pill);
+  background: var(--surface-sunken); overflow: hidden; }
+.gpu-meter .seg { display: block; height: 100%; transition: width var(--dur-base) var(--ease-out); }
+.gpu-meter .seg-base { background: var(--accent); }
+.gpu-meter .seg-extra { background: var(--warning); }
+.gpu-meter.over .seg-base, .gpu-meter.over .seg-extra { background: var(--danger); }
+.params select option:disabled { color: var(--text-subtle); }
 /* "What does this do?" link next to a control's name: opens help.html at that control. */
 .params label { align-items: center; }
 .params label output { order: 2; }

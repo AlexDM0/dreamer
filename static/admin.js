@@ -232,16 +232,106 @@ const PARAM_VIEWS = [
   ["p-polarity", null, (p) => p.line_polarity, String],
   ["p-init", null, (p) => p.init_mode, String],
   ["p-init-blur", "o-init-blur", (p) => p.init_blur, (v) => `${v} px`],
+  ["p-refine", "o-refine", (p) => p.refine_steps, (v) => (Number(v) ? `${v} steps` : "off")],
+  ["p-upscale", null, (p) => p.upscale, String],
 ];
+
+// ----- Graphics memory estimate -----------------------------------------------------
+// From static/vram.json (tools/measure_vram.py): whole-card memory measured per engine
+// batch size and picture size. The engines' batch size is fixed until a restart; the
+// resolution and the upscaler are live and add to it. Settings that would go over the
+// budget are disabled.
+let gpu = null;
+const UPSCALER_MB_GUESS = 400; // until measured (vram.json "upscaler_mb")
+
+function engineRows(batch) {
+  const engines = (gpu && gpu.vram && gpu.vram.engines) || {};
+  if (engines[batch]) return engines[batch].sizes;
+  const measured = Object.keys(engines).map(Number).sort((a, b) => a - b);
+  if (!measured.length) return null;
+  const nearest = measured.reduce((best, b) => (Math.abs(b - batch) < Math.abs(best - batch) ? b : best));
+  // About 300 MB per batch slot between the measured engines (1-4: 8.4 GB, 1-8: 9.6 GB).
+  return engines[nearest].sizes.map((row) => ({ ...row, gpu_mb: row.gpu_mb + (batch - nearest) * 300 }));
+}
+
+/** Linear interpolation of a measured column over the picture's long side. */
+function atSide(rows, longSide, key) {
+  const points = rows.filter((row) => row[key] != null).map((row) => [row.size[0], row[key]]);
+  if (!points.length) return null;
+  points.sort((a, b) => a[0] - b[0]);
+  if (longSide <= points[0][0]) return points[0][1];
+  for (let i = 1; i < points.length; i++) {
+    const [x0, y0] = points[i - 1];
+    const [x1, y1] = points[i];
+    if (longSide <= x1) return y0 + ((y1 - y0) * (longSide - x0)) / (x1 - x0);
+  }
+  return points[points.length - 1][1];
+}
+
+function estimateMb(p) {
+  const rows = gpu && engineRows(gpu.max_batch_steps);
+  if (!rows) return null;
+  const base = atSide(rows, p.resolution, "gpu_mb");
+  const upscaler = p.upscale !== "off" ? (gpu.vram.upscaler_mb || UPSCALER_MB_GUESS) : 0;
+  return { base, upscaler, total: base + upscaler };
+}
+
+function showGpu() {
+  const meter = $("gpu-meter");
+  const estimate = params && estimateMb(params);
+  meter.hidden = !estimate;
+  if (!estimate) return;
+  const budget = gpu.budget_mb;
+  $("o-gpu").textContent = `${(estimate.total / 1024).toFixed(1)} / ${(budget / 1024).toFixed(0)} GB`;
+  meter.querySelector(".seg-base").style.width = `${Math.min(100, (estimate.base / budget) * 100)}%`;
+  meter.querySelector(".seg-extra").style.width = `${Math.min(100, (estimate.upscaler / budget) * 100)}%`;
+  meter.classList.toggle("over", estimate.total > budget);
+  $("gpu-note").textContent =
+    `Engines built for up to ${gpu.max_batch_steps} steps at once (model.max_batch_steps in config.yaml; ` +
+    `changing it needs a restart and a one-off rebuild). Includes the PC's own screen use.`;
+
+  // Resolution options with their speed, disabled when they would not fit.
+  const select = $("p-resolution");
+  const rows = engineRows(gpu.max_batch_steps);
+  const options = [...((lastLimits && lastLimits.resolution && lastLimits.resolution.options) || [])];
+  if (!options.includes(params.resolution)) options.push(params.resolution);
+  select.replaceChildren(...options.sort((a, b) => a - b).map((side) => {
+    const short = Math.max(64, Math.round((side * 0.7) / 64) * 64);
+    const ms = atSide(rows, side, "ms_1_steps");
+    const total = estimateMb({ ...params, resolution: side }).total;
+    const option = el("option", { value: String(side) },
+      `${side}×${short}` + (ms ? ` · ~${Math.round(1000 / ms)} pictures/s` : ""));
+    option.disabled = total > budget && side !== params.resolution;
+    return option;
+  }));
+  if (document.activeElement !== select) select.value = String(params.resolution);
+
+  // The upscaler needs its weights, and room in the budget.
+  const upscale = $("p-upscale");
+  const fits = estimateMb({ ...params, upscale: "x2" }).total <= budget;
+  upscale.querySelector('option[value="x2"]').disabled = !gpu.upscaler_available || (!fits && params.upscale !== "x2");
+  $("upscale-note").textContent = !gpu.upscaler_available
+    ? "Not available yet: the upscaler model is not installed on the PC (models/realesr-animevideov3.pth)."
+    : !fits ? "Does not fit in graphics memory with the current settings."
+    : "Makes refined pictures twice as big and sharper. Never used while drawing, so drawing stays fast.";
+}
 
 async function loadParams() {
   applyParams(await api("GET", "/api/admin/params"));
 }
 
 /** Show params from the server, without yanking a control the parent is touching. */
+let lastLimits = null;
+
 function applyParams(res) {
   if (!res || !res.params) return;
   params = res.params;
+  if (res.limits) lastLimits = res.limits;
+  if (res.gpu) {
+    gpu = res.gpu;
+    $("p-steps").max = String(gpu.max_batch_steps);
+    $("o-batch-max").textContent = `${gpu.max_batch_steps}`;
+  }
   for (const [id, out, read, fmt] of PARAM_VIEWS) {
     const input = $(id);
     const value = read(params);
@@ -253,6 +343,7 @@ function applyParams(res) {
   $("p-init-blur").disabled = params.init_mode !== "colors";
   $("p-safety").checked = params.safety_checker;
   $("safety-off").hidden = params.safety_checker;
+  showGpu();
 }
 
 function queueParams(changes, inputId) {
@@ -299,6 +390,10 @@ $("p-init").addEventListener("change", (e) => {
   queueParams({ init_mode: e.target.value });
 });
 onParamInput("p-init-blur", "o-init-blur", (v) => `${v} px`, (v) => ({ init_blur: Number(v) }));
+onParamInput("p-refine", "o-refine", (v) => (Number(v) ? `${v} steps` : "off"),
+  (v) => ({ refine_steps: Number(v) }));
+$("p-upscale").addEventListener("change", (e) => queueParams({ upscale: e.target.value }));
+$("p-resolution").addEventListener("change", (e) => queueParams({ resolution: Number(e.target.value) }));
 $("p-cn-on").addEventListener("change", (e) => {
   $("p-cn-scale").disabled = !e.target.checked;
   queueParams({ controlnet_enabled: e.target.checked });

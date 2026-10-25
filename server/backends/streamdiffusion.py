@@ -65,6 +65,10 @@ class StreamDiffusionBackend:
         self._safety_threshold = float(_model_attr(config, "safety_threshold", 0.5))
 
         self._wrapper: Any = None
+        # What the stream runs right now: the draw steps (_t_index_list), or a refine pass's
+        # steps one after another (refine()); generate() switches back by itself.
+        self._stream_t_index: list[int] = []
+        self._stream_batched = True
         self._prompt = DEFAULT_PROMPT
         self._pending_prompt: str | None = None
         self._pending_params: GenParamsLike | None = None
@@ -87,21 +91,38 @@ class StreamDiffusionBackend:
         more steps than the engine's batch range, one step after another at batch 1."""
         return len(t_index) <= self._batch_steps
 
-    def _update_t_index(self, wrapper: Any, updates: dict[str, Any]) -> None:
+    def _update_t_index(self, wrapper: Any, updates: dict[str, Any],
+                        batched: bool | None = None) -> None:
         """``wrapper.update_stream_params(**updates)``, switching the stream between batched
         and one-after-another steps when the new t_index_list needs it. The wrapper only
         accepts img2img with the denoising batch at construction, but the pipeline and its
         parameter updater support both: a step-count change recomputes batch size, noise and
-        buffers for the current mode, and crossing max_batch_steps always changes the count."""
+        buffers for the current mode, and crossing max_batch_steps always changes the count.
+        ``batched`` forces the mode (refine passes always run one after another)."""
         stream = wrapper.stream
         previous = stream.use_denoising_batch
-        if "t_index_list" in updates:
-            stream.use_denoising_batch = self._batched(updates["t_index_list"])
+        new_t_index = updates.get("t_index_list")
+        if new_t_index is not None:
+            mode = self._batched(new_t_index) if batched is None else batched
+            if mode != previous and len(new_t_index) == len(self._stream_t_index):
+                # The updater only rebuilds batch buffers when the step COUNT changes; pass
+                # through another count first so a mode switch gets buffers that fit.
+                stream.use_denoising_batch = mode
+                wrapper.update_stream_params(t_index_list=new_t_index[:-1] or [new_t_index[0], 49])
+            stream.use_denoising_batch = mode
         try:
             wrapper.update_stream_params(**updates)
         except Exception:
             stream.use_denoising_batch = previous
             raise
+        if new_t_index is not None:
+            self._stream_t_index, self._stream_batched = list(new_t_index), stream.use_denoising_batch
+
+    def _ensure_stream(self, t_index: list[int], batched: bool) -> None:
+        """Make the stream run ``t_index`` in the given mode (no-op when it already does)."""
+        if self._stream_t_index == t_index and self._stream_batched == batched:
+            return
+        self._update_t_index(self._wrapper, {"t_index_list": t_index}, batched=batched)
 
     # -- lifecycle -----------------------------------------------------------------
 
@@ -152,6 +173,7 @@ class StreamDiffusionBackend:
         if self._pending_prompt is not None:
             self._prompt, self._pending_prompt = self._pending_prompt, None
         self._wrapper = wrapper
+        self._stream_t_index, self._stream_batched = list(start_t_index), True
         log.info("Dreamer: StreamDiffusion ready (%dx%d)", self._width, self._height)
         # A rebuilt wrapper (set_size) starts from the constructor's seed and an enabled
         # ControlNet; carry over what the live params had changed.
@@ -246,8 +268,23 @@ class StreamDiffusionBackend:
         log.info("Dreamer: applied stream params %s", sorted(updates))
 
     def generate(self, init_image: Image.Image, line_map: Image.Image | None) -> Image.Image:
+        """A picture with the draw steps (batched up to max_batch_steps)."""
         if self._wrapper is None:
             self.warmup()
+        self._ensure_stream(self._t_index_list, self._batched(self._t_index_list))
+        return self._run(init_image, line_map)
+
+    def refine(self, init_image: Image.Image, line_map: Image.Image | None,
+               t_index: list[int]) -> Image.Image:
+        """A complete picture from ``t_index`` run one step after another: no frame lag, and
+        any step count without extra memory. Used once the drawing pauses; the next
+        generate() goes back to the draw steps (the worker primes the stream again)."""
+        if self._wrapper is None:
+            self.warmup()
+        self._ensure_stream([int(t) for t in t_index], False)
+        return self._run(init_image, line_map)
+
+    def _run(self, init_image: Image.Image, line_map: Image.Image | None) -> Image.Image:
         size = (self._width, self._height)
         image = init_image.convert("RGB")
         if image.size != size:
@@ -259,7 +296,7 @@ class StreamDiffusionBackend:
                 lm = lm.resize(size, Image.Resampling.NEAREST)
             self._wrapper.update_control_image(0, lm)
 
-        if not self._batched(self._t_index_list):
+        if not self._stream_batched:
             # One-after-another steps re-noise between steps with torch.randn_like on the
             # global CUDA generator, so every frame got new noise and the picture flickered
             # (~16/255 per frame on an unchanged drawing). Re-seeding per frame makes that

@@ -5,6 +5,7 @@ import asyncio
 import concurrent.futures
 import contextlib
 import io
+import json
 import logging
 import queue
 import secrets
@@ -181,6 +182,12 @@ def _cookie(header: str, name: str) -> str | None:
         if sep and key == name:
             return value
     return None
+
+
+# Memory budget the admin page keeps the settings within (an RTX 3080 has 10 GB), and the
+# measured memory/speed table it estimates from (written by tools/measure_vram.py).
+GPU_BUDGET_MB = 10 * 1024
+VRAM_FILE = Path(__file__).resolve().parent.parent / "static" / "vram.json"
 
 
 def create_app(config: Config, backend: Any = None) -> FastAPI:
@@ -406,7 +413,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         # page's own sketch comes back, nothing is on screen.
         session.new_drawing(await asyncio.to_thread(live_artwork, continuing))
         msg = session.lists_msg("ready")
-        msg["canvas"] = {name: list(dims) for name, dims in canvas_dims(config).items()}
+        msg["canvas"] = {name: list(dims) for name, dims
+                         in canvas_dims(config, params_store.get().resolution).items()}
         msg["draft"] = await asyncio.to_thread(draft_info)
         peer.send_json(msg)
         peer.send_json(session.last_status)
@@ -763,9 +771,22 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
 
     # ----- live diffusion params (SPEC-addendum-params) ------------------------------
 
+    def gpu_info() -> dict[str, Any]:
+        """What the admin page needs to keep the picture controls within the GPU's memory:
+        the engines' batch range (fixed until restart), whether the upscaler weights are
+        there, the memory budget, and the measured table from tools/measure_vram.py."""
+        vram: Any = None
+        try:
+            vram = json.loads(VRAM_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        return {"max_batch_steps": int(config.model.max_batch_steps),
+                "upscaler_available": Path(config.model.upscaler_model).is_file(),
+                "budget_mb": GPU_BUDGET_MB, "vram": vram}
+
     def params_payload(params: GenParams) -> dict[str, Any]:
         return {"params": params.to_dict(), "limits": LIMITS,
-                "defaults": params_store.defaults.to_dict()}
+                "defaults": params_store.defaults.to_dict(), "gpu": gpu_info()}
 
     def params_changed(params: GenParams) -> None:
         if runtime.worker is not None:

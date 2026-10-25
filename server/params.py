@@ -22,6 +22,9 @@ T_INDEX_MAX = 49
 T_INDEX_MAX_STEPS = 8
 POLARITIES = ("white_on_black", "black_on_white")
 INIT_MODES = ("colors", "sketch", "blank")
+UPSCALERS = ("off", "x2")
+RESOLUTIONS = (512, 640, 768, 896, 1024)  # long sides offered on the admin page
+REFINE_MAX_STEPS = 20
 
 # Numeric ranges (min, max, step) per field, also served to the admin UI.
 LIMITS: dict[str, dict[str, Any]] = {
@@ -36,6 +39,10 @@ LIMITS: dict[str, dict[str, Any]] = {
     "line_polarity": {"options": list(POLARITIES)},
     "init_mode": {"options": list(INIT_MODES)},
     "init_blur": {"min": 4, "max": 64, "step": 2},
+    "refine_steps": {"min": 0, "max": REFINE_MAX_STEPS, "step": 1},
+    "upscale": {"options": list(UPSCALERS)},
+    # Long side; a multiple of 64 (UNet). The TensorRT engines handle 384..1024.
+    "resolution": {"min": 64, "max": 1024, "step": 64, "options": list(RESOLUTIONS)},
 }
 
 
@@ -54,6 +61,11 @@ class GenParams:
     init_mode: str = "colors"
     init_blur: int = 24
     jpeg_quality: int = 85
+    # After drawing pauses: refine up to this many steps (0 = off), upscaling if set.
+    refine_steps: int = 8
+    upscale: str = "off"
+    # Long side of pictures in pixels (the short side follows the iPad's shape).
+    resolution: int = 640
 
     def to_dict(self) -> dict[str, Any]:
         out = asdict(self)
@@ -118,7 +130,8 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
     for name, value in changes.items():
         if name == "t_index_list":
             out[name] = _t_index_list(value)
-        elif name in ("seed", "line_threshold", "line_dilate", "init_blur", "jpeg_quality"):
+        elif name in ("seed", "line_threshold", "line_dilate", "init_blur", "jpeg_quality",
+                      "refine_steps"):
             out[name] = int(_clamp(_as_int(value, name), name))
         elif name in ("controlnet_scale", "safety_threshold"):
             out[name] = round(_clamp(_as_float(value, name), name), 4)
@@ -132,6 +145,15 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
             if value not in INIT_MODES:
                 raise ValueError(f"init_mode must be one of {INIT_MODES}")
             out[name] = value
+        elif name == "upscale":
+            if value not in UPSCALERS:
+                raise ValueError(f"upscale must be one of {UPSCALERS}")
+            out[name] = value
+        elif name == "resolution":
+            side = _as_int(value, name)
+            if side % 64 or not LIMITS[name]["min"] <= side <= LIMITS[name]["max"]:
+                raise ValueError("resolution must be a multiple of 64 from 64 to 1024")
+            out[name] = side
     return replace(base, **out)
 
 
@@ -154,6 +176,9 @@ def defaults_from_config(config: Any) -> GenParams:
         safety_threshold=round(_clamp(float(model.safety_threshold), "safety_threshold"), 4),
         line_polarity=model.line_polarity if model.line_polarity in POLARITIES else base.line_polarity,
         jpeg_quality=int(_clamp(int(config.jpeg_quality), "jpeg_quality")),
+        refine_steps=int(_clamp(int(getattr(model, "refine_steps", base.refine_steps)), "refine_steps")),
+        upscale=getattr(model, "upscaler", "off") if getattr(model, "upscaler", "off") in UPSCALERS else "off",
+        resolution=int(config.size),
     )
 
 

@@ -34,6 +34,12 @@ class ModelConfig:
     # step); more steps run one after another at batch 1. The TensorRT UNet is built for
     # batch 1..max_batch_steps, so this sets its memory; changing it rebuilds it once.
     max_batch_steps: int = 4
+    # Once the child stops drawing, the picture keeps refining with more steps (run one
+    # after another) up to this many; 0 turns refinement off. Live-changeable (1..20).
+    refine_steps: int = 8
+    # AI upscaler for refined pictures (never while drawing): "off" or "x2".
+    upscaler: str = "off"
+    upscaler_model: str = "models/realesr-animevideov3.pth"
     controlnet: str | None = "thibaud/controlnet-sd21-scribble-diffusers"  # None disables
     controlnet_scale: float = 0.55
     line_polarity: str = "white_on_black"
@@ -150,8 +156,9 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
     return cfg
 
 
-def canvas_dims(cfg: Any) -> dict[str, tuple[int, int]]:
-    """(width, height) of a drawing and its picture per orientation."""
-    long_side = int(cfg.size)
+def canvas_dims(cfg: Any, long_side: int | None = None) -> dict[str, tuple[int, int]]:
+    """(width, height) of a drawing and its picture per orientation; ``long_side``
+    overrides ``cfg.size`` (the live "resolution" param)."""
+    long_side = int(long_side or cfg.size)
     short_side = max(64, round(long_side * SHORT_SIDE_RATIO / 64) * 64)
     return {"landscape": (long_side, short_side), "portrait": (short_side, long_side)}

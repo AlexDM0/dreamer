@@ -19,7 +19,7 @@ from PIL import Image
 from . import imaging
 from .config import canvas_dims
 from .mailbox import Mailbox
-from .params import GenParams, defaults_from_config
+from .params import T_INDEX_MAX, GenParams, defaults_from_config
 
 log = logging.getLogger("dreamer.worker")
 
@@ -28,8 +28,19 @@ TAKE_TIMEOUT = 0.5
 # A backend with pipeline latency (StreamDiffusion with 2+ steps returns the picture for
 # an earlier frame) is re-run on the last sketch once no new sketch came for this long.
 SETTLE_DELAY = 0.15
+# Step counts of the refinement passes after drawing pauses (up to params.refine_steps).
+REFINE_LEVELS = (4, 8, 12, 16, 20)
 FPS_EMA_ALPHA = 0.2
 FPS_IDLE_GAP = 2.0  # seconds
+
+
+def refine_t_index(first: int, steps: int) -> tuple[int, ...]:
+    """``steps`` t_index values from ``first`` (the creativity) to the last one, evenly
+    spread; fewer if there are not that many distinct values left."""
+    steps = max(1, min(steps, T_INDEX_MAX - first + 1))
+    if steps == 1:
+        return (first,)
+    return tuple(round(first + i * (T_INDEX_MAX - first) / (steps - 1)) for i in range(steps))
 
 
 @dataclass
@@ -102,6 +113,10 @@ class GpuWorker(threading.Thread):
         self._settle_job: FrameJob | None = None
         self._settle_left = 0
         self._needs_prime = True
+        # Refinement once drawing pauses: the step lists still to run for _settle_job, and
+        # the upscaler (loaded on first use, if its weights exist).
+        self._refine_plan: list[tuple[int, ...]] = []
+        self._upscaler: Any = None
         # Picture size the backend is set up for (backends start in landscape).
         self._dims = canvas_dims(config)["landscape"]
 
@@ -164,13 +179,16 @@ class GpuWorker(threading.Thread):
         while not self._stop_event.is_set():
             self._drain_uploads()
             self._apply_pending_params()
-            job = self.mailbox.take(timeout=SETTLE_DELAY if self._settle_left else TAKE_TIMEOUT)
+            idle_work = self._settle_left or self._refine_plan
+            job = self.mailbox.take(timeout=SETTLE_DELAY if idle_work else TAKE_TIMEOUT)
             if self._stop_event.is_set():
                 continue
             if job is None:
                 if self._settle_left and self._settle_job is not None:
                     self._settle_left -= 1
                     self._process_frame(self._settle_job, settling=True)
+                elif self._refine_plan and self._settle_job is not None:
+                    self._process_frame(self._settle_job, refine=self._refine_plan.pop(0))
                 continue
             if isinstance(job, FrameJob):
                 self._apply_pending_params()  # may have arrived while we waited
@@ -234,7 +252,7 @@ class GpuWorker(threading.Thread):
             return False
         self._params = params
         # A step-count change rebuilds the stream's buffers (and may change its latency).
-        self._needs_prime, self._settle_left = True, 0
+        self._needs_prime, self._settle_left, self._refine_plan = True, 0, []
         return True
 
     def _record_failure(self, msg: str) -> None:
@@ -297,14 +315,42 @@ class GpuWorker(threading.Thread):
             self._needs_prime, self._settle_left = True, 0
         self._dims = dims
 
-    def _process_frame(self, job: FrameJob, settling: bool = False) -> None:
+    def _plan_refinement(self, params: GenParams) -> list[tuple[int, ...]]:
+        """Step lists for the passes run once drawing pauses: growing step counts up to
+        params.refine_steps (each a complete picture, steps one after another)."""
+        if getattr(self.backend, "refine", None) is None:
+            return []
+        draw_steps = len(params.t_index_list)
+        target = params.refine_steps
+        if target <= draw_steps:
+            return []
+        counts = sorted({n for n in REFINE_LEVELS if draw_steps < n < target} | {target})
+        return [refine_t_index(params.t_index_list[0], n) for n in counts]
+
+    def _upscale(self, picture: Image.Image) -> Image.Image:
+        """The refined picture through the AI upscaler (x2); unchanged if unavailable."""
+        if self._upscaler is None:
+            from .upscale import Upscaler
+
+            self._upscaler = Upscaler(self.config.model.upscaler_model)
+            if not self._upscaler.available:
+                log.warning("upscaler weights not found at %s; pictures are not upscaled",
+                            self._upscaler.model_path)
+        if not self._upscaler.available:
+            return picture
+        return self._upscaler.upscale(picture, 2)
+
+    def _process_frame(self, job: FrameJob, settling: bool = False,
+                       refine: tuple[int, ...] | None = None) -> None:
         """Make and send the picture for ``job``. With pipeline latency, a fresh pipeline
         is primed with extra runs, and the frame is queued to settle once drawing pauses;
-        a settle frame re-sends the same seq with the now up-to-date picture."""
+        a settle frame re-sends the same seq with the now up-to-date picture. After that,
+        ``refine`` passes re-send it with more steps (and upscaled, if set)."""
         cfg = self.config
         params = self._params
         started = time.perf_counter()
-        dims = canvas_dims(cfg).get(job.orientation or "landscape", canvas_dims(cfg)["landscape"])
+        all_dims = canvas_dims(cfg, params.resolution)
+        dims = all_dims.get(job.orientation or "landscape", all_dims["landscape"])
         layered = job.background is not None
         try:
             sketch = imaging.decode_sketch(job.png_bytes, dims, layered=layered)
@@ -317,7 +363,7 @@ class GpuWorker(threading.Thread):
             if imaging.is_blank(sketch):
                 picture = Image.new("RGB", dims, job.background or "white")
                 # The pipeline still holds the old drawing: prime it before the next one.
-                self._needs_prime, self._settle_left = True, 0
+                self._needs_prime, self._settle_left, self._refine_plan = True, 0, []
             else:
                 used_backend = True
                 if self.backend is None:
@@ -335,17 +381,24 @@ class GpuWorker(threading.Thread):
                 if line_map is not None:
                     init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
                                                    params.line_threshold, job.background)
-                latency = self._latency()
-                runs = 1 + (latency if self._needs_prime else 0)
-                for _ in range(runs):
-                    picture = self.backend.generate(init, line_map)
-                self._needs_prime = False
-                if not settling:
-                    self._settle_job, self._settle_left = job, latency
+                if refine is not None:
+                    picture = self.backend.refine(init, line_map, list(refine))
+                    if params.upscale == "x2":
+                        picture = self._upscale(picture)
+                    self._needs_prime = True  # the stream now runs the refine steps
+                else:
+                    latency = self._latency()
+                    runs = 1 + (latency if self._needs_prime else 0)
+                    for _ in range(runs):
+                        picture = self.backend.generate(init, line_map)
+                    self._needs_prime = False
+                    if not settling:
+                        self._settle_job, self._settle_left = job, latency
+                        self._refine_plan = self._plan_refinement(params)
             jpeg = imaging.encode_jpeg(picture, params.jpeg_quality)
         except Exception as exc:
             log.exception("frame seq=%d failed", job.seq)
-            self._needs_prime, self._settle_left = True, 0
+            self._needs_prime, self._settle_left, self._refine_plan = True, 0, []
             self._last_prompt = None  # re-send the prompt after an error, to be safe
             self._record_failure(str(exc) or type(exc).__name__)
             self._maybe_rebuild()
@@ -356,7 +409,7 @@ class GpuWorker(threading.Thread):
         if used_backend and (self._failures or self._state != "ready"):
             self._failures = 0
             self._set_state("ready")
-        if not settling:
+        if not settling and refine is None:
             self._update_stats(started)
         try:
             self.on_result(job.seq, jpeg, job.owner)
