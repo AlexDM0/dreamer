@@ -162,5 +162,24 @@ What we learned:
 - The first rung is still the most visible change (~9/255 average), mostly sharpening the soft
   1-step drawing picture.
 
-Still to try: R6 (SD 1.5 + TCD offline), lineart/HED ControlNets for drawing, and the ControlNet
-strength lowered for refinement only.
+### ControlNet alternatives for drawing (measured)
+
+`tools/controlnet_lab.py` ran the six test drawings through each SD 2.1 ControlNet from thibaud
+(1-step drawing picture, then the anchored refinement). Sheets: `img/controlnet-<drawing>.png`
+(rows = variant; columns = sketch, drawing picture, refined); numbers: `controlnet-results.json`.
+
+| variant (name:strength:dilate) | ms/frame (1 step, 640×448) | GPU memory in use | look |
+|---|---|---|---|
+| **scribble:0.55:1** (current) | 51.5 | 7.6 GB | pen lines become solid, coloured objects |
+| lineart:0.55:0 | 52.7 | 7.6 GB | traces the pen strokes as glowing tubes; houses go see-through |
+| lineart:0.4:0 | 52.9 | 7.6 GB | a little softer, same traced-tube look |
+| hed:0.55:0 | 53.7 | 7.6 GB | follows the lines closely, hazy halos around shapes |
+| hed:0.4:0 | 53.7 | 7.6 GB | best of the alternatives; still ghostlier than scribble |
+
+All three ControlNets cost the same, so speed decides nothing. Lineart and HED are trained on
+thin edges of real images and read a child's thick pen strokes as outlines to reproduce, so
+they draw the strokes instead of the thing. Scribble is trained on rough strokes and turns them
+into objects, which is what a drawing game needs. **Scribble stays.** ControlNet-XS and
+T2I-Adapter have no SD 2.1 sketch weights (see the table above), so there is no cheaper drop-in.
+
+Still to try: R6 (SD 1.5 + TCD offline) and the ControlNet strength lowered for refinement only.

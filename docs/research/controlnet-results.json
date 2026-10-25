@@ -1,0 +1,22 @@
+{
+ "scribble:0.55:1": {
+  "ms_per_frame": 51.5,
+  "gpu_mb": 7621
+ },
+ "lineart:0.55:0": {
+  "ms_per_frame": 52.7,
+  "gpu_mb": 7567
+ },
+ "lineart:0.4:0": {
+  "ms_per_frame": 52.9,
+  "gpu_mb": 7567
+ },
+ "hed:0.55:0": {
+  "ms_per_frame": 53.7,
+  "gpu_mb": 7643
+ },
+ "hed:0.4:0": {
+  "ms_per_frame": 53.7,
+  "gpu_mb": 7643
+ }
+}
