@@ -220,6 +220,29 @@ export class Toolbar extends EventTarget {
     };
     range.addEventListener("input", onInput);
     range.addEventListener("change", onInput);
+    // Touch the track anywhere and slide: iPad Safari's own slider only moves when the small
+    // thumb itself is grabbed, which is hard for little fingers.
+    const setFromPointer = (e) => {
+      const box = range.getBoundingClientRect();
+      const min = Number(range.min), max = Number(range.max), step = Number(range.step) || 1;
+      const fraction = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
+      const value = Math.round((min + fraction * (max - min)) / step) * step;
+      if (value !== Number(range.value)) {
+        range.value = String(value);
+        onInput();
+      }
+    };
+    let sliding = null; // pointerId of the finger moving the slider
+    range.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      sliding = e.pointerId;
+      setFromPointer(e);
+      try { range.setPointerCapture(e.pointerId); } catch { /* keep following moves on the slider */ }
+    });
+    range.addEventListener("pointermove", (e) => { if (e.pointerId === sliding) setFromPointer(e); });
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      range.addEventListener(type, (e) => { if (e.pointerId === sliding) sliding = null; });
+    }
   }
 
   _updatePreview() {

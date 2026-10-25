@@ -184,6 +184,9 @@ svg { display: block; }
 }
 .brush-preview span.light { box-shadow: 0 0 0 1.5px var(--border-strong); }
 
+/* The brush slider handles touches itself (toolbar.js): no scrolling or zooming on it. */
+#brush-size { touch-action: none; }
+
 /* Slider (shared look with the admin page). */
 input[type="range"] {
   -webkit-appearance: none;
