@@ -24,10 +24,10 @@
   <div class="app">
     <header class="toolbar" aria-label="Drawing tools">
       <div class="row tools">
-        <span class="brand">
-          <img class="mark" src="/static/favicon.svg" alt="Dreamer" width="52" height="52">
+        <button type="button" class="brand" id="parents" aria-label="Dreamer: parent controls" aria-haspopup="dialog">
+          <img class="mark" src="/static/favicon.svg" alt="" width="52" height="52">
           <span class="conn" id="conn" data-state="off" role="status" aria-label="Not connected" title="Not connected"></span>
-        </span>
+        </button>
 
         <div class="group swatches" id="swatches" role="radiogroup" aria-label="Colours"></div>
 
@@ -171,6 +171,38 @@
         </button>
         <p id="bg-title">Pick your paper</p>
         <div class="paper-grid" id="bg-grid" role="radiogroup" aria-labelledby="bg-title"></div>
+      </div>
+    </div>
+
+    <!-- Parent gate: tapping the Dreamer icon asks for the admin PIN, then opens /admin. -->
+    <div class="overlay" id="gate" hidden>
+      <div class="card gate-card" role="dialog" aria-modal="true" aria-labelledby="gate-title">
+        <button type="button" class="card-close" id="gate-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5M12 14.5v2"/></svg></span>
+        <p id="gate-title">For grown-ups</p>
+        <p class="sub">Enter the PIN to open the parent controls.</p>
+        <div class="pin-dots" id="gate-dots" aria-live="polite" aria-label="0 digits entered"></div>
+        <p class="pin-msg" id="gate-msg" role="alert"></p>
+        <div class="pin-pad" id="gate-pad">
+          <button type="button" data-k="1">1</button>
+          <button type="button" data-k="2">2</button>
+          <button type="button" data-k="3">3</button>
+          <button type="button" data-k="4">4</button>
+          <button type="button" data-k="5">5</button>
+          <button type="button" data-k="6">6</button>
+          <button type="button" data-k="7">7</button>
+          <button type="button" data-k="8">8</button>
+          <button type="button" data-k="9">9</button>
+          <button type="button" data-k="back" class="key-soft" aria-label="Delete last digit">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h11v14H9l-6-7zM12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>
+          </button>
+          <button type="button" data-k="0">0</button>
+          <button type="button" data-k="ok" class="key-go" aria-label="Open parent controls">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          </button>
+        </div>
       </div>
     </div>
 

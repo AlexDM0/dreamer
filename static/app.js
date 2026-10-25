@@ -2,6 +2,7 @@
 import { DEFAULT_BACKGROUND, DrawingCanvas, deviceOrientation } from "./canvas.js";
 import { Gallery } from "./gallery.js";
 import { Net } from "./net.js";
+import { ParentGate } from "./gate.js";
 import { PaperPicker } from "./paper.js";
 import { Toolbar } from "./toolbar.js";
 import { View } from "./view.js";
@@ -34,6 +35,7 @@ const view = new View($("#stage-wrap"), $("#stage"), $("#picture"));
 const net = new Net(canvas);
 const gallery = new Gallery();
 const picker = new PaperPicker();
+new ParentGate($("#parents"), $("#gate"));
 
 // The drawing's size and paper: the view frames it, the toolbar keeps the pen visible.
 const showDrawing = (drawing) => {
