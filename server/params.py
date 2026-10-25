@@ -25,6 +25,8 @@ INIT_MODES = ("colors", "sketch", "blank")
 UPSCALERS = ("off", "x2")
 RESOLUTIONS = (512, 640, 768, 896, 1024)  # long sides offered on the admin page
 REFINE_MAX_STEPS = 20
+# Refinement models (server/refine.py); listed here so params stay importable without it.
+REFINE_MODELS = ("path", "path_locked", "sdedit", "anchored", "anchored_edges")
 
 # Numeric ranges (min, max, step) per field, also served to the admin UI.
 LIMITS: dict[str, dict[str, Any]] = {
@@ -41,6 +43,7 @@ LIMITS: dict[str, dict[str, Any]] = {
     "init_blur": {"min": 4, "max": 64, "step": 2},
     "refine_steps": {"min": 0, "max": REFINE_MAX_STEPS, "step": 1},
     "upscale": {"options": list(UPSCALERS)},
+    "refine_model": {"options": list(REFINE_MODELS)},
     # Long side; a multiple of 64 (UNet). The TensorRT engines handle 384..1024.
     "resolution": {"min": 64, "max": 1024, "step": 64, "options": list(RESOLUTIONS)},
 }
@@ -63,6 +66,7 @@ class GenParams:
     jpeg_quality: int = 85
     # After drawing pauses: refine up to this many steps (0 = off), upscaling if set.
     refine_steps: int = 4
+    refine_model: str = "path"
     upscale: str = "off"
     # Long side of pictures in pixels (the short side follows the iPad's shape).
     resolution: int = 640
@@ -144,6 +148,10 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
         elif name == "init_mode":
             if value not in INIT_MODES:
                 raise ValueError(f"init_mode must be one of {INIT_MODES}")
+            out[name] = value
+        elif name == "refine_model":
+            if value not in REFINE_MODELS:
+                raise ValueError(f"refine_model must be one of {REFINE_MODELS}")
             out[name] = value
         elif name == "upscale":
             if value not in UPSCALERS:

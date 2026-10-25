@@ -116,6 +116,12 @@
             change the scene instead. A new stroke stops it straight away.</small>
         </div>
         <div class="ctl">
+          <label for="p-refine-model">Refinement model</label>
+          <select id="p-refine-model"></select>
+          <small>How the picture is refined once your child stops drawing. Experiments: try them
+            and keep the one that adds detail without changing the picture.</small>
+        </div>
+        <div class="ctl">
           <label for="p-upscale">AI upscale <a class="info" href="/static/help.html#upscale" target="_blank" rel="noopener" aria-label="What AI upscale does (opens a new tab)" title="What does this do?"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></a></label>
           <select id="p-upscale">
             <option value="off">Off</option>
@@ -252,8 +258,22 @@
     <!-- 4. Topics -->
     <section class="card" aria-labelledby="h-topics">
       <h2 id="h-topics">Topics</h2>
-      <p class="muted">Pick which topics your child can choose from.</p>
+      <p class="muted">Pick which topics your child can choose from, or write your own.</p>
       <ul class="items" id="topics-list"></ul>
+
+      <details class="add" id="add-topic">
+        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add a topic</summary>
+        <form id="add-topic-form" class="form" autocomplete="off">
+          <div class="row">
+            <label class="field emoji"><span>Emoji</span><input name="emoji" maxlength="16" placeholder="🏴‍☠️"></label>
+            <label class="field grow"><span>Name</span><input name="label" maxlength="40" required placeholder="Pirates"></label>
+          </div>
+          <label class="field"><span>What the pictures are about</span>
+            <textarea name="prompt" maxlength="120" rows="2" required placeholder="a pirate ship on a sunny sea with treasure islands"></textarea>
+          </label>
+          <button class="btn primary" type="submit">Add topic</button>
+        </form>
+      </details>
     </section>
 
     <!-- 4b. Gallery (saved artworks) -->

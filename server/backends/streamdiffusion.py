@@ -314,7 +314,8 @@ class StreamDiffusionBackend:
         return self._run(init_image, line_map)
 
     def refine_steps(self, init_image: Image.Image, line_map: Image.Image | None,
-                     t_index: list[int], first_shown: int) -> Iterator[Image.Image]:
+                     t_index: list[int], first_shown: int,
+                     noise: str = "fresh") -> Iterator[Image.Image]:
         """One denoising path over ``t_index``, run one step after another, yielding the
         picture after each step from step ``first_shown`` (1-based) on.
 
@@ -323,6 +324,8 @@ class StreamDiffusionBackend:
         same composition and each step changes less than the last, because the noise put back
         between steps shrinks along the path. With the same seed, the first steps are the
         quick drawing picture: draw 1 step + 3 more here == a 4-step picture.
+        ``noise``: what is put back between steps: "fresh" random noise (the fork's way),
+        "fixed" (the same noise every step: converges instead of wandering).
         """
         import torch
 
@@ -349,8 +352,80 @@ class StreamDiffusionBackend:
                 if idx < steps - 1:
                     sample = stream.alpha_prod_t_sqrt[idx + 1] * x_0_pred
                     if stream.do_add_noise:
-                        sample = sample + stream.beta_prod_t_sqrt[idx + 1] * torch.randn_like(
+                        added = stream.init_noise[0:1] if noise == "fixed" else torch.randn_like(
                             x_0_pred, device=stream.device, dtype=stream.dtype)
+                        sample = sample + stream.beta_prod_t_sqrt[idx + 1] * added
+
+    def latent_ladder(self, first: Image.Image, line_map: Image.Image | None,
+                      t_index: list[int], *, chain: bool, anchor_sigma: float | None,
+                      gamma: float, anchor_weights: list[float] | None = None,
+                      control_images: list[Image.Image | None] | None = None) -> Iterator[Image.Image]:
+        """Refine ``first`` (the picture on screen) in single-step rungs at ``t_index`` (rising:
+        less noise each rung), yielding the picture after every rung.
+
+        - ``chain``: each rung starts from the previous rung's result (detail accumulates);
+          otherwise every rung starts again from ``first`` (SDEdit, drift-free).
+        - ``anchor_sigma``: if set, the low frequencies of every rung's prediction are replaced
+          by ``first``'s (Gaussian low-pass on the latent, sigma in latent pixels; ILVR-style),
+          so layout, colours and light cannot move; ``anchor_weights`` per rung (default 1).
+        - ``gamma``: re-noise with sqrt(1-gamma) * the predicted noise + sqrt(gamma) * fresh
+          noise (TCD-style stochasticity): 0 is deterministic, 1 is fresh noise only.
+        - ``control_images``: per-rung ControlNet image (None keeps ``line_map``).
+        """
+        import torch
+        from torch.nn import functional as F
+
+        if self._wrapper is None:
+            self.warmup()
+        wrapper, stream = self._wrapper, self._wrapper.stream
+        self._ensure_stream([int(t) for t in t_index], False)
+        image = self._prepare_inputs(first, line_map)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(self._seed if self._seed is not None else DEFAULT_SEED)
+
+        def low_pass(latent: torch.Tensor) -> torch.Tensor:
+            radius = max(1, int(round(anchor_sigma * 3)))
+            coords = torch.arange(-radius, radius + 1, device=latent.device, dtype=torch.float32)
+            kernel = torch.exp(-(coords ** 2) / (2 * anchor_sigma ** 2))
+            kernel = (kernel / kernel.sum()).to(latent.dtype)
+            channels = latent.shape[1]
+            horizontal = kernel.view(1, 1, 1, -1).repeat(channels, 1, 1, 1)
+            vertical = kernel.view(1, 1, -1, 1).repeat(channels, 1, 1, 1)
+            padded = F.pad(latent, (radius, radius, 0, 0), mode="replicate")
+            latent = F.conv2d(padded, horizontal, groups=channels)
+            padded = F.pad(latent, (0, 0, radius, radius), mode="replicate")
+            return F.conv2d(padded, vertical, groups=channels)
+
+        with torch.no_grad():
+            from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img import (
+                retrieve_latents,
+            )
+
+            x = wrapper.preprocess_image(image).to(device=stream.device, dtype=stream.vae.dtype)
+            # The clean latent of the picture on screen (encode_image() would add noise).
+            anchor = retrieve_latents(stream.vae.encode(x), stream.generator)
+            anchor = (anchor * stream.vae.config.scaling_factor).to(stream.dtype)
+            anchor_low = low_pass(anchor) if anchor_sigma else None
+            current = anchor
+            eps = stream.init_noise[0:1]
+            for idx, timestep in enumerate(stream.sub_timesteps_tensor):
+                if control_images is not None and control_images[idx] is not None:
+                    self._wrapper.update_control_image(0, control_images[idx])
+                start = current if chain else anchor
+                noise = eps
+                if gamma > 0:
+                    noise = (1 - gamma) ** 0.5 * eps + gamma ** 0.5 * torch.randn_like(eps)
+                sample = stream.alpha_prod_t_sqrt[idx] * start + stream.beta_prod_t_sqrt[idx] * noise
+                t = timestep.to(stream.device).view(1,).repeat(stream.frame_bff_size,)
+                x_0_pred, model_pred = stream.unet_step(sample, t, idx)
+                if anchor_low is not None:
+                    weight = anchor_weights[idx] if anchor_weights else 1.0
+                    predicted_low = low_pass(x_0_pred)
+                    x_0_pred = x_0_pred - predicted_low + weight * anchor_low + (1 - weight) * predicted_low
+                current = x_0_pred
+                if model_pred is not None and model_pred.shape == eps.shape:
+                    eps = model_pred  # the model's own noise estimate, for the next rung
+                yield self._checked_picture(stream.decode_image(x_0_pred))
 
     def _checked_picture(self, image_tensor: Any) -> Image.Image:
         """Decoded tensor -> PIL, through the wrapper's safety checker like img2img()."""

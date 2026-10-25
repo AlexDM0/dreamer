@@ -237,6 +237,7 @@ const PARAM_VIEWS = [
   ["p-init-blur", "o-init-blur", (p) => p.init_blur, (v) => `${v} px`],
   ["p-refine", "o-refine", (p) => p.refine_steps, (v) => (Number(v) ? `${v} steps` : "off")],
   ["p-upscale", null, (p) => p.upscale, String],
+  ["p-refine-model", null, (p) => p.refine_model, String],
 ];
 
 // ----- Graphics memory estimate -----------------------------------------------------
@@ -347,6 +348,15 @@ let lastLimits = null;
 function applyParams(res) {
   if (!res || !res.params) return;
   params = res.params;
+  if (res.refine_models) {
+    const select = $("p-refine-model");
+    const signature = Object.keys(res.refine_models).join(",");
+    if (select.dataset.signature !== signature) { // built once: keeps an open picker intact
+      select.dataset.signature = signature;
+      select.replaceChildren(...Object.entries(res.refine_models).map(
+        ([value, label]) => el("option", { value }, label)));
+    }
+  }
   if (res.limits) lastLimits = res.limits;
   if (res.gpu) {
     gpu = res.gpu;
@@ -414,6 +424,8 @@ onParamInput("p-init-blur", "o-init-blur", (v) => `${v} px`, (v) => ({ init_blur
 onParamInput("p-refine", "o-refine", (v) => (Number(v) ? `${v} steps` : "off"),
   (v) => ({ refine_steps: Number(v) }));
 $("p-upscale").addEventListener("change", (e) => queueParams({ upscale: e.target.value }, "p-upscale"));
+$("p-refine-model").addEventListener("change",
+  (e) => queueParams({ refine_model: e.target.value }, "p-refine-model"));
 $("p-resolution").addEventListener("change",
   (e) => queueParams({ resolution: Number(e.target.value) }, "p-resolution"));
 $("p-cn-on").addEventListener("change", (e) => {
@@ -467,7 +479,8 @@ function renderList(kind, ul) {
       el("span", { className: "badge", textContent: item.emoji }),
       el("span", { className: "text" },
         el("strong", { textContent: item.label }),
-        kind === "styles" ? el("small", { textContent: KIND_LABEL[item.kind] || item.kind }) : null));
+        kind === "styles" || item.kind === "custom"
+          ? el("small", { textContent: KIND_LABEL[item.kind] || item.kind }) : null));
 
     const sw = el("input", { type: "checkbox", checked: !item.hidden, className: "switch" });
     sw.setAttribute("aria-label", `Show ${item.label} on the iPad`);
@@ -479,13 +492,14 @@ function renderList(kind, ul) {
     down.disabled = i === items.length - 1;
 
     const actions = el("div", { className: "actions" }, up, down);
-    if (kind === "styles") {
-      const key = `${kind}:${item.id}`;
-      const edit = iconButton(`Edit ${item.label}`, ICON.edit, () => {
-        openEditor = openEditor === key ? null : key;
-        renderList(kind, ul);
-      }, openEditor === key ? "active" : "");
-      actions.append(edit); // delete lives inside the editor: harder to hit by accident
+    const key = `${kind}:${item.id}`;
+    const edit = iconButton(`Edit ${item.label}`, ICON.edit, () => {
+      openEditor = openEditor === key ? null : key;
+      renderList(kind, ul);
+    }, openEditor === key ? "active" : "");
+    actions.append(edit);
+    if (item.kind !== "preset") { // your own topics and styles: one tap (and a confirm) to delete
+      actions.append(iconButton(`Delete ${item.label}`, ICON.trash, () => removeItem(kind, item), "danger"));
     }
     actions.append(sw);
     li.append(name, actions);
@@ -494,7 +508,7 @@ function renderList(kind, ul) {
   }));
 }
 
-/** Inline edit form: label + emoji for all styles, prompt only for custom ones. */
+/** Inline edit form: label + emoji for every topic/style, prompt only for custom ones. */
 function editor(kind, item) {
   const form = el("form", { className: "form editor", autocomplete: "off" });
   const emoji = el("input", { name: "emoji", value: item.emoji, maxLength: 16 });
@@ -506,17 +520,18 @@ function editor(kind, item) {
   if (item.kind === "custom") {
     prompt = el("textarea", { name: "prompt", value: item.prompt, maxLength: 120, rows: 2, required: true });
     form.append(el("label", { className: "field" },
-      el("span", { textContent: "What it should look like" }), prompt));
+      el("span", { textContent: kind === "topics" ? "What the pictures are about" : "What it should look like" }),
+      prompt));
   }
   const cancel = el("button", { type: "button", className: "btn ghost", textContent: "Cancel" });
   cancel.addEventListener("click", () => { openEditor = null; render(); });
   form.append(el("div", { className: "row buttons" }, cancel,
     el("button", { type: "submit", className: "btn primary", textContent: "Save" })));
-  if (item.kind !== "preset") { // custom and picture styles can be deleted
+  if (item.kind !== "preset") { // custom topics/styles and picture styles can be deleted
     const del = el("button", { type: "button", className: "btn danger" });
     del.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON.trash}"/></svg>`;
     del.append(`Delete ${item.label}`);
-    del.addEventListener("click", () => removeStyle(item));
+    del.addEventListener("click", () => removeItem(kind, item));
     form.append(del);
   }
 
@@ -551,9 +566,9 @@ async function move(kind, index, delta) {
   if (!ok) await refresh();
 }
 
-async function removeStyle(item) {
-  if (!confirm(`Delete the style "${item.label}"?`)) return;
-  const ok = await attempt(() => api("DELETE", itemPath("styles", item.id)), "Deleted");
+async function removeItem(kind, item) {
+  if (!confirm(`Delete the ${kind === "topics" ? "topic" : "style"} "${item.label}"?`)) return;
+  const ok = await attempt(() => api("DELETE", itemPath(kind, item.id)), "Deleted");
   if (ok) { openEditor = null; await refresh(); }
 }
 
@@ -567,6 +582,20 @@ $("add-style-form").addEventListener("submit", async (e) => {
   if (res) {
     f.reset();
     $("add-style").open = false;
+    await refresh();
+  }
+});
+
+// ----- Add a topic -------------------------------------------------------------------
+
+$("add-topic-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const body = { label: f.label.value, emoji: f.emoji.value, prompt: f.prompt.value };
+  const res = await attempt(() => api("POST", "/api/admin/topics", body), "Topic added");
+  if (res) {
+    f.reset();
+    $("add-topic").open = false;
     await refresh();
   }
 });

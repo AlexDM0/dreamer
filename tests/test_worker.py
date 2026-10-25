@@ -213,7 +213,7 @@ class RefineBackend(MockBackend):
         super().__init__(mock_delay_ms=0)
         self.paths, self.refined = [], []
 
-    def refine_steps(self, init_image, line_map, t_index, first_shown):
+    def refine_steps(self, init_image, line_map, t_index, first_shown, noise="fresh"):
         self.paths.append((tuple(t_index), first_shown))
         for step in range(first_shown, len(t_index) + 1):
             self.refined.append(step)
@@ -262,8 +262,8 @@ def test_refinement_off_sends_only_the_drawing_frame():
 
 
 class SlowRefineBackend(RefineBackend):
-    def refine_steps(self, init_image, line_map, t_index, first_shown):
-        for picture in super().refine_steps(init_image, line_map, t_index, first_shown):
+    def refine_steps(self, init_image, line_map, t_index, first_shown, noise="fresh"):
+        for picture in super().refine_steps(init_image, line_map, t_index, first_shown, noise):
             time.sleep(0.05)
             yield picture
 
