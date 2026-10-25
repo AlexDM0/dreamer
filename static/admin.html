@@ -96,9 +96,9 @@
         </div>
         <div class="ctl">
           <label for="p-steps">Steps <output id="o-steps"></output></label>
-          <input type="range" id="p-steps" min="1" max="4" step="1">
-          <small>More steps add detail but are slower. Changing this can fail on a
-            prebuilt engine; if it does, the old setting comes back.</small>
+          <input type="range" id="p-steps" min="1" max="8" step="1">
+          <small>More steps add detail but are slower: roughly 12 pictures a second at 2
+            steps, fewer with each step added. Up to model.max_steps in config.yaml.</small>
         </div>
         <div class="ctl">
           <div class="ctl-head">
@@ -144,6 +144,20 @@
               <option value="black_on_white">Black lines on white</option>
             </select>
             <small>Must match what the line model expects. Leave it unless pictures ignore the lines.</small>
+          </div>
+          <div class="ctl">
+            <label for="p-init">Starting image</label>
+            <select id="p-init">
+              <option value="colors">Colours only (sketch guides, lines don't show)</option>
+              <option value="sketch">The sketch itself (strokes show through)</option>
+              <option value="blank">Blank (only the line model guides)</option>
+            </select>
+            <small>What the picture is painted from. The line model always follows the outline; this decides whether the strokes themselves end up in the picture.</small>
+          </div>
+          <div class="ctl">
+            <label for="p-init-blur">Colour softness <output id="o-init-blur"></output></label>
+            <input type="range" id="p-init-blur" min="4" max="64" step="2">
+            <small>For "Colours only": how far each colour spreads. Higher loses more of the stroke shapes.</small>
           </div>
           <div class="ctl">
             <label for="p-jpeg">Picture quality <output id="o-jpeg"></output></label>

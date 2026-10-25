@@ -96,3 +96,41 @@ def test_decode_accepts_only_png():
     _sketch().save(buf, format="JPEG")
     with pytest.raises(ValueError):
         imaging.decode_sketch(buf.getvalue(), 64)
+
+
+def _stroke_sketch():
+    from PIL import ImageDraw
+    img = Image.new("RGB", (128, 128), "white")
+    d = ImageDraw.Draw(img)
+    d.line([(10, 64), (118, 64)], fill=(20, 20, 30), width=4)      # dark outline
+    d.line([(64, 10), (64, 118)], fill=(230, 40, 40), width=4)     # red stroke
+    return img
+
+
+def test_init_colors_drops_outlines_and_softens_colour():
+    sketch = _stroke_sketch()
+    init = imaging.make_init_image(sketch, "colors", blur=8)
+    arr = np.asarray(init, dtype=np.int16)
+    # Away from the red stroke, the dark outline leaves no trace: just the neutral ground.
+    assert (arr[60:69, :40] == np.array(imaging.INIT_BACKGROUND)).all()
+    # The red stroke survives as a reddish, softened cloud with no crisp edge.
+    centre, beside = arr[30, 64], arr[30, 70]
+    assert centre[0] > centre[1] + 40
+    assert beside[0] > beside[1] + 10
+
+
+def test_init_modes_sketch_and_blank():
+    sketch = _stroke_sketch()
+    assert imaging.make_init_image(sketch, "sketch").tobytes() == sketch.tobytes()
+    blank = np.asarray(imaging.make_init_image(sketch, "blank"))
+    assert (blank == np.array(imaging.INIT_BACKGROUND, dtype=blank.dtype)).all()
+    with pytest.raises(ValueError):
+        imaging.make_init_image(sketch, "rainbow")
+
+
+def test_init_colors_with_only_outlines_is_ground():
+    from PIL import ImageDraw
+    img = Image.new("RGB", (64, 64), "white")
+    ImageDraw.Draw(img).ellipse([8, 8, 56, 56], outline="black", width=3)
+    arr = np.asarray(imaging.make_init_image(img, "colors"))
+    assert (arr == np.array(imaging.INIT_BACKGROUND, dtype=arr.dtype)).all()

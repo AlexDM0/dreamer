@@ -304,10 +304,15 @@ class GpuWorker(threading.Thread):
                 if cfg.model.controlnet and params.controlnet_enabled:
                     line_map = imaging.make_line_map(sketch, params.line_polarity,
                                                      params.line_threshold, params.line_dilate)
+                # Without a line map the strokes are the only structure, so keep them.
+                init = sketch
+                if line_map is not None:
+                    init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
+                                                   params.line_threshold)
                 latency = self._latency()
                 runs = 1 + (latency if self._needs_prime else 0)
                 for _ in range(runs):
-                    picture = self.backend.generate(sketch, line_map)
+                    picture = self.backend.generate(init, line_map)
                 self._needs_prime = False
                 if not settling:
                     self._settle_job, self._settle_left = job, latency

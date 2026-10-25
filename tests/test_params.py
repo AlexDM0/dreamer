@@ -28,7 +28,7 @@ def test_clamping():
 
 @pytest.mark.parametrize("bad", [
     {"seed": "7"}, {"seed": True}, {"seed": 1.5}, {"controlnet_enabled": 1},
-    {"t_index_list": []}, {"t_index_list": [1, 2, 3, 4, 5]}, {"t_index_list": [30, 30]},
+    {"t_index_list": []}, {"t_index_list": [1, 2, 3, 4, 5, 6, 7, 8, 9]}, {"t_index_list": [30, 30]},
     {"t_index_list": [40, 20]}, {"t_index_list": "30"}, {"line_polarity": "rainbow"},
     {"controlnet_scale": float("nan")}, {"guidance_scale": 1.0}, [1, 2],
 ])
@@ -123,3 +123,11 @@ def test_foreign_origin_kid_socket_refused(client):
     with client.websocket_connect("/ws", headers={"origin": "http://testserver"}) as ws:
         ws.send_json({"t": "ping"})
         assert recv_until(ws, is_json("pong"))
+
+
+def test_init_mode_and_blur_validate():
+    p = apply_changes(GenParams(), {"init_mode": "sketch", "init_blur": 200})
+    assert p.init_mode == "sketch" and p.init_blur == 64
+    assert GenParams().init_mode == "colors"
+    with pytest.raises(ValueError):
+        apply_changes(GenParams(), {"init_mode": "crayon"})

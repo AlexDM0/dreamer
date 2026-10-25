@@ -207,7 +207,7 @@ let pendingParams = {};        // changes not yet sent
 const pendingInputs = {};      // ids edited since the last send (kept as typed)
 let paramsTimer = 0;
 
-/** creativity 0..100 + steps 1..4 -> strictly increasing t_index_list.
+/** creativity 0..100 + steps 1..8 -> strictly increasing t_index_list.
  * Lower first index = more noise = more creative. Later steps spread towards the end,
  * so the default (creativity 88, 2 steps) gives [6, 26] like config.example.yaml. */
 function tIndexList(creativity, steps) {
@@ -230,6 +230,8 @@ const PARAM_VIEWS = [
   ["p-jpeg", "o-jpeg", (p) => p.jpeg_quality, String],
   ["p-seed", null, (p) => p.seed, String],
   ["p-polarity", null, (p) => p.line_polarity, String],
+  ["p-init", null, (p) => p.init_mode, String],
+  ["p-init-blur", "o-init-blur", (p) => p.init_blur, (v) => `${v} px`],
 ];
 
 async function loadParams() {
@@ -248,6 +250,7 @@ function applyParams(res) {
   }
   $("p-cn-on").checked = params.controlnet_enabled;
   $("p-cn-scale").disabled = !params.controlnet_enabled;
+  $("p-init-blur").disabled = params.init_mode !== "colors";
   $("p-safety").checked = params.safety_checker;
   $("safety-off").hidden = params.safety_checker;
 }
@@ -291,6 +294,11 @@ onParamInput("p-seed", null, String, (v) => {
   return v !== "" && Number.isInteger(n) && n >= 0 ? { seed: n } : null;
 });
 $("p-polarity").addEventListener("change", (e) => queueParams({ line_polarity: e.target.value }));
+$("p-init").addEventListener("change", (e) => {
+  $("p-init-blur").disabled = e.target.value !== "colors";
+  queueParams({ init_mode: e.target.value });
+});
+onParamInput("p-init-blur", "o-init-blur", (v) => `${v} px`, (v) => ({ init_blur: Number(v) }));
 $("p-cn-on").addEventListener("change", (e) => {
   $("p-cn-scale").disabled = !e.target.checked;
   queueParams({ controlnet_enabled: e.target.checked });

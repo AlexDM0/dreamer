@@ -19,8 +19,9 @@ log = logging.getLogger("dreamer.params")
 PARAMS_FILE = "params.json"
 SEED_MAX = 2**31 - 1
 T_INDEX_MAX = 49
-T_INDEX_MAX_STEPS = 4
+T_INDEX_MAX_STEPS = 8
 POLARITIES = ("white_on_black", "black_on_white")
+INIT_MODES = ("colors", "sketch", "blank")
 
 # Numeric ranges (min, max, step) per field, also served to the admin UI.
 LIMITS: dict[str, dict[str, Any]] = {
@@ -33,6 +34,8 @@ LIMITS: dict[str, dict[str, Any]] = {
     "line_dilate": {"min": 0, "max": 3, "step": 1},
     "jpeg_quality": {"min": 50, "max": 95, "step": 1},
     "line_polarity": {"options": list(POLARITIES)},
+    "init_mode": {"options": list(INIT_MODES)},
+    "init_blur": {"min": 4, "max": 64, "step": 2},
 }
 
 
@@ -47,6 +50,9 @@ class GenParams:
     line_threshold: int = 40
     line_polarity: str = "white_on_black"
     line_dilate: int = 1
+    # What img2img starts from: "colors" (soft colour clouds, no strokes), "sketch", "blank".
+    init_mode: str = "colors"
+    init_blur: int = 24
     jpeg_quality: int = 85
 
     def to_dict(self) -> dict[str, Any]:
@@ -112,7 +118,7 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
     for name, value in changes.items():
         if name == "t_index_list":
             out[name] = _t_index_list(value)
-        elif name in ("seed", "line_threshold", "line_dilate", "jpeg_quality"):
+        elif name in ("seed", "line_threshold", "line_dilate", "init_blur", "jpeg_quality"):
             out[name] = int(_clamp(_as_int(value, name), name))
         elif name in ("controlnet_scale", "safety_threshold"):
             out[name] = round(_clamp(_as_float(value, name), name), 4)
@@ -121,6 +127,10 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
         elif name == "line_polarity":
             if value not in POLARITIES:
                 raise ValueError(f"line_polarity must be one of {POLARITIES}")
+            out[name] = value
+        elif name == "init_mode":
+            if value not in INIT_MODES:
+                raise ValueError(f"init_mode must be one of {INIT_MODES}")
             out[name] = value
     return replace(base, **out)
 

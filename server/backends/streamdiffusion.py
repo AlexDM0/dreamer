@@ -14,16 +14,11 @@ import logging
 import os
 from typing import Any
 
-from PIL import Image, ImageFilter
+from PIL import Image
 
 from .base import GenParamsLike
 
 log = logging.getLogger("dreamer.backend.streamdiffusion")
-
-# With ControlNet on, img2img starts from a blurred sketch: the child's colours and rough
-# shapes survive, but the pen strokes themselves do not end up in the picture; the lines
-# reach the model only through the ControlNet. Radius as a fraction of the image size.
-SKETCH_BLUR = 1 / 32
 
 # Used for prepare() before the first real prompt arrives from the worker.
 DEFAULT_PROMPT = "a colorful illustration, for children, friendly, bright colors, wholesome"
@@ -52,6 +47,7 @@ class StreamDiffusionBackend:
         self._model_id = _model_attr(config, "base", "stabilityai/sd-turbo")
         self._controlnet_id = _model_attr(config, "controlnet", "thibaud/controlnet-sd21-scribble-diffusers")
         self._engine_dir = _model_attr(config, "engine_dir", "engines")
+        self._max_steps = max(1, int(_model_attr(config, "max_steps", 8)))
 
         # Live params (SPEC addendum); start from config.model defaults.
         self._t_index_list = [int(t) for t in _model_attr(config, "t_index_list", [6, 26])]
@@ -106,6 +102,9 @@ class StreamDiffusionBackend:
             height=self._size,
             frame_buffer_size=1,
             use_denoising_batch=True,
+            # UNet batch = steps; the engine's batch range caps the live step count.
+            min_batch_size=1,
+            max_batch_size=self._max_steps,
             cfg_type="none",
             use_tiny_vae=True,
             acceleration="tensorrt",
@@ -193,7 +192,6 @@ class StreamDiffusionBackend:
             if lm.size != size:
                 lm = lm.resize(size, Image.Resampling.NEAREST)
             self._wrapper.update_control_image(0, lm)
-            image = image.filter(ImageFilter.GaussianBlur(self._size * SKETCH_BLUR))
 
         if self._pending_prompt is not None:
             prompt = self._pending_prompt
