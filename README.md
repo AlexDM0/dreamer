@@ -62,7 +62,7 @@ a home gaming PC. Left: the drawing on its paper. Right: the polished picture.
 - **It keeps their own lines.** The picture follows the shapes your child drew: the
   outline of the cat, the roof of the house, the flowers in a row. It is their drawing,
   told again, not a random image.
-- **It polishes when they pause.** Stop drawing, and within half a second the picture
+- **It polishes when they pause.** Stop drawing, and within about a second the picture
   gets more detail and cleaner edges. Start again, and it goes back to following the pen
   straight away.
 - **The paper sets the mood.** A new drawing starts by picking a paper colour. Black

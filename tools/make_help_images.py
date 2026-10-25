@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw  # noqa: E402
 
 from server import imaging  # noqa: E402
 from server.config import canvas_dims, load_config  # noqa: E402
-from server.params import defaults_from_config  # noqa: E402
+from server.params import GenParams, defaults_from_config  # noqa: E402
 from server.styles import PRESET_STYLES, PRESET_TOPICS, PROMPT_HEAD, SAFETY_TAIL  # noqa: E402
 
 OUT_DIR = REPO_ROOT / "static" / "help"
@@ -170,27 +170,30 @@ def main() -> int:
     sweep("init_blur", [4, defaults.init_blur, 64],
           lambda value: replace(defaults, init_blur=int(value)), extra=init_extra)
 
-    # Refinement after the drawing pauses: the drawing's own denoising path continued step by
-    # step (what the worker sends while the child looks), shown at a few steps along the way.
-    from server.worker import refine_path
+    # Refinement after the drawing pauses: the default refinement model (what the worker sends
+    # while the child looks), from the 1-step drawing picture through every rung.
+    from server import refine
 
-    backend.set_params(dataclasses.replace(defaults, t_index_list=(defaults.t_index_list[0],)))
+    draw = (defaults.t_index_list[0],)
+    backend.set_params(dataclasses.replace(defaults, t_index_list=draw))
     backend._wrapper.update_stream_params(seed=int(defaults.seed))
     line_map = imaging.make_line_map(layer, defaults.line_polarity, defaults.line_threshold,
                                      defaults.line_dilate)
     init = imaging.make_init_image(layer, defaults.init_mode, defaults.init_blur,
                                    defaults.line_threshold, BACKGROUND)
-    path = refine_path((defaults.t_index_list[0],), 20)
-    shown = {1: "while drawing", 4: "4 steps", 8: "8 steps", 12: "12 steps", 20: "20 steps"}
-    items, refined_pictures = [], {}
+    for _ in range(backend.latency_frames + 1):
+        first = backend.generate(init, line_map)
+    items = [{"value": "while drawing", "picture": save_thumb(first, "refine-1.jpg")}]
+    refined_pictures = {1: first}
     started = time.perf_counter()
-    for step, picture in enumerate(backend.refine_steps(init, line_map, list(path), 1), start=1):
-        if step in shown:
-            refined_pictures[step] = picture
-            items.append({"value": shown[step], "default": step == defaults.refine_steps,
-                          "ms": round((time.perf_counter() - started) * 1000),
+    budget = GenParams.refine_steps  # the shipped default, not this PC's config.yaml
+    rungs = refine.run(refine.DEFAULT_MODEL, backend, first, init, line_map, draw, budget)
+    for step, picture in enumerate(rungs, start=2):
+        refined_pictures[step] = picture
+        if step % 2 == 1 or step == budget:  # every other rung, and the last
+            items.append({"value": f"step {step}", "after": round((time.perf_counter() - started) * 1000),
                           "picture": save_thumb(picture, f"refine-{step}.jpg")})
-            print("refine", step, items[-1]["ms"], flush=True)
+            print("refine", step, items[-1]["after"], flush=True)
     data["controls"]["refine"] = items
 
     # AI upscale: a crop of the refined picture without and with the upscaler, enlarged.

@@ -66,7 +66,7 @@ rocket is half drawn. Backend speed while drawing is about 12-15 pictures per se
 
 **Headline:** It polishes when they pause, and keeps what they love.
 
-- Stop drawing, and within half a second the picture gains detail (and, with AI upscale on, doubles in size).
+- Stop drawing, and within about a second the picture gains detail (and, with AI upscale on, doubles in size).
 - The yellow star saves picture and drawing together; the picture flies into the gallery.
 - "My pictures": a big grid; tap one, see its drawing, and keep drawing.
 
@@ -201,7 +201,7 @@ story: always test that your conditioning actually conditions.
 
 **Headline:** Measured on one RTX 3080 (10 GB).
 
-- About 12-15 pictures/s while drawing; refinement done within half a second of the pause (about 0.3 s, facts.md).
+- About 12-15 pictures/s while drawing; refinement done about 0.6-0.7 s after the pen lifts (facts.md).
 - 7.4 GB graphics memory for the default engines; start-up about 8-10 s; first-ever engine build roughly 10-25 min, once (facts.md).
 - 256 automated tests on the mock backend (facts.md).
 

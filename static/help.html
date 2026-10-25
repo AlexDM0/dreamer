@@ -117,10 +117,10 @@
         step, so the picture visibly refines. A new stroke stops it straight away. Off keeps the quick drawing
         picture.</p>
       <div class="strip" data-control="refine"></div>
-      <p class="note">Refinement continues the drawing's own path, one step at a time, so drawing with 1 step and
-        refining to 4 gives exactly the 4-step picture. The picture model is made for 1 to 4 steps: up to about 5
-        it refines the same picture, beyond that it starts to change the scene (you can see that above). The AI
-        upscale below is what makes refined pictures sharper.</p>
+      <p class="note">With the default refinement model ("Anchored detail ladder") each step is one short
+        touch-up at a lower noise level than the last, and the broad shapes and colours stay pinned to the first
+        picture, so only detail is added; each step takes about 45 ms. The other refinement models on the
+        parent page are experiments. The AI upscale below makes refined pictures bigger and sharper.</p>
     </section>
 
     <section class="control" id="upscale">
@@ -247,7 +247,8 @@
       const value = document.createElement("b");
       value.textContent = control === "steps" ? `${item.value} step${item.value === "1" ? "" : "s"}` : item.value;
       cap.append(value);
-      const extra = item.ms ? `${item.ms} ms · ${Math.round(1000 / item.ms)}/s${item.mode ? " · " + item.mode : ""}`
+      const extra = item.after ? `+${item.after} ms after the pause`
+                  : item.ms ? `${item.ms} ms · ${Math.round(1000 / item.ms)}/s${item.mode ? " · " + item.mode : ""}`
                   : item.kb ? `${item.kb} KB` : "";
       if (extra) {
         const meta = document.createElement("span");

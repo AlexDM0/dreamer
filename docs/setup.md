@@ -163,7 +163,7 @@ Topics and styles are saved in `data/styles.json`.
 - **Dark or light:** the drawing page is dark by default; switch it under "Drawing page
   look" on the admin page (or `kid_theme` in `config.yaml`).
 - **Live, then polished:** while drawing, the picture follows every stroke quickly; when
-  your child stops, it refines for a moment, within half a second with the defaults (and
+  your child stops, it refines for a moment, within about a second with the defaults (and
   gets upscaled, if that is on). A new stroke stops the refinement after the current step.
 - **Connection dot:** the small dot on the Dreamer icon shows whether the PC is reachable
   and ready.
