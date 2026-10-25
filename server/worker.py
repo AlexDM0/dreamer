@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 from PIL import Image
 
-from . import imaging
+from . import imaging, refine
 from .config import canvas_dims
 from .mailbox import Mailbox
 from .params import T_INDEX_MAX, GenParams, defaults_from_config
@@ -32,17 +32,8 @@ FPS_EMA_ALPHA = 0.2
 FPS_IDLE_GAP = 2.0  # seconds
 
 
-def refine_path(draw: tuple[int, ...], total_steps: int) -> tuple[int, ...] | None:
-    """The denoising path refinement continues on: the draw steps, then the remaining steps
-    up to ``total_steps`` evenly spaced after the last draw step, ending at the last t_index
-    (so draw 1 step + 3 more is exactly the evenly spread 4-step path). None if there is
-    nothing to add."""
-    last = draw[-1]
-    extra = min(total_steps - len(draw), T_INDEX_MAX - last)
-    if extra <= 0:
-        return None
-    more = tuple(round(last + i * (T_INDEX_MAX - last) / extra) for i in range(1, extra + 1))
-    return tuple(draw) + more
+# The step path refinement continues on (kept here for callers of the old name).
+refine_path = refine.continue_path
 
 
 @dataclass
@@ -117,8 +108,10 @@ class GpuWorker(threading.Thread):
         self._needs_prime = True
         # Refinement once drawing pauses: the step lists still to run for _settle_job, and
         # the upscaler (loaded on first use, if its weights exist).
-        # The path to continue on once drawing pauses (see refine_path), for _settle_job.
-        self._refine_plan: tuple[int, ...] | None = None
+        # Whether to refine _settle_job once drawing pauses, and the picture now on screen
+        # (refinement models keep its broad terms).
+        self._refine_plan: bool = False
+        self._shown: Image.Image | None = None
         self._upscaler: Any = None
         # Picture size the backend is set up for (backends start in landscape).
         self._dims = canvas_dims(config)["landscape"]
@@ -192,8 +185,8 @@ class GpuWorker(threading.Thread):
                     self._settle_left -= 1
                     self._process_frame(self._settle_job, settling=True)
                 elif self._refine_plan and self._settle_job is not None:
-                    path, self._refine_plan = self._refine_plan, None
-                    self._refine_frame(self._settle_job, path)
+                    self._refine_plan = False
+                    self._refine_frame(self._settle_job)
                 continue
             if isinstance(job, FrameJob):
                 self._apply_pending_params()  # may have arrived while we waited
@@ -257,7 +250,7 @@ class GpuWorker(threading.Thread):
             return False
         self._params = params
         # A step-count change rebuilds the stream's buffers (and may change its latency).
-        self._needs_prime, self._settle_left, self._refine_plan = True, 0, None
+        self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
         return True
 
     def _record_failure(self, msg: str) -> None:
@@ -320,12 +313,9 @@ class GpuWorker(threading.Thread):
             self._needs_prime, self._settle_left = True, 0
         self._dims = dims
 
-    def _plan_refinement(self, params: GenParams) -> tuple[int, ...] | None:
-        """The path to continue once drawing pauses: params.refine_steps steps in total
-        (the draw steps included); None when off or nothing to add."""
-        if getattr(self.backend, "refine_steps", None) is None or params.refine_steps <= 0:
-            return None
-        return refine_path(tuple(params.t_index_list), params.refine_steps)
+    def _plan_refinement(self, params: GenParams) -> bool:
+        """Whether to refine once drawing pauses (on, and a backend that can)."""
+        return getattr(self.backend, "refine_steps", None) is not None and params.refine_steps > 0
 
     def _frame_inputs(self, sketch: Image.Image, job: FrameJob,
                       params: GenParams) -> tuple[Image.Image, Image.Image | None]:
@@ -341,10 +331,10 @@ class GpuWorker(threading.Thread):
                                            params.line_threshold, job.background)
         return init, line_map
 
-    def _refine_frame(self, job: FrameJob, path: tuple[int, ...]) -> None:
-        """Continue the drawing's denoising path after it paused, sending the picture after
-        every further step (same seq, upscaled if set). Stops as soon as a new sketch is
-        waiting, so drawing again is answered right away."""
+    def _refine_frame(self, job: FrameJob) -> None:
+        """Refine the drawing after it paused with params.refine_model (server/refine.py),
+        sending every picture it makes (same seq, upscaled if set). Stops as soon as a new
+        sketch is waiting, so drawing again is answered right away."""
         params = self._params
         all_dims = canvas_dims(self.config, params.resolution)
         dims = all_dims.get(job.orientation or "landscape", all_dims["landscape"])
@@ -353,12 +343,14 @@ class GpuWorker(threading.Thread):
             if imaging.is_blank(sketch):
                 return
             init, line_map = self._frame_inputs(sketch, job, params)
-            self._needs_prime = True  # the stream now runs the refine path
-            steps = self.backend.refine_steps(init, line_map, list(path),
-                                              len(params.t_index_list) + 1)
+            first = self._shown if self._shown is not None else init
+            self._needs_prime = True  # the stream now runs refinement steps
+            upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
+            steps = refine.run(params.refine_model, self.backend, first, init, line_map,
+                               tuple(params.t_index_list), params.refine_steps)
             try:
                 for picture in steps:
-                    if params.upscale == "x2":
+                    if params.upscale == "x2" and not upscales_itself:
                         picture = self._upscale(picture)
                     self.on_result(job.seq, imaging.encode_jpeg(picture, params.jpeg_quality), job.owner)
                     if self.mailbox.pending or self._stop_event.is_set():
@@ -367,7 +359,7 @@ class GpuWorker(threading.Thread):
                 steps.close()
         except Exception as exc:
             log.exception("refining seq=%d failed", job.seq)
-            self._needs_prime, self._settle_left, self._refine_plan = True, 0, None
+            self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
             self._record_failure(str(exc) or type(exc).__name__)
             self._maybe_rebuild()
 
@@ -406,7 +398,7 @@ class GpuWorker(threading.Thread):
             if imaging.is_blank(sketch):
                 picture = Image.new("RGB", dims, job.background or "white")
                 # The pipeline still holds the old drawing: prime it before the next one.
-                self._needs_prime, self._settle_left, self._refine_plan = True, 0, None
+                self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
             else:
                 used_backend = True
                 if self.backend is None:
@@ -421,13 +413,14 @@ class GpuWorker(threading.Thread):
                 for _ in range(runs):
                     picture = self.backend.generate(init, line_map)
                 self._needs_prime = False
+                self._shown = picture
                 if not settling:
                     self._settle_job, self._settle_left = job, latency
                     self._refine_plan = self._plan_refinement(params)
             jpeg = imaging.encode_jpeg(picture, params.jpeg_quality)
         except Exception as exc:
             log.exception("frame seq=%d failed", job.seq)
-            self._needs_prime, self._settle_left, self._refine_plan = True, 0, None
+            self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
             self._last_prompt = None  # re-send the prompt after an error, to be safe
             self._record_failure(str(exc) or type(exc).__name__)
             self._maybe_rebuild()

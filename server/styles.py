@@ -38,7 +38,7 @@ PRESET_TOPICS = [
     ("nature", "Nature", "🌳", "a sunny meadow with trees and flowers"),
     ("space", "Space", "🚀", "outer space with planets, stars and rockets"),
     ("dinosaurs", "Dinosaurs", "🦕", "a land of friendly dinosaurs and ferns"),
-    ("castle", "Castle", "🏰", "a fairytale castle with flags and towers"),
+    ("castle", "Castle", "🏰", "a fairytale castle with colorful pennants and towers"),
     ("city", "City", "🏙️", "a busy city with houses, cars and streets"),
     ("jungle", "Jungle", "🐒", "a lush jungle with vines, parrots and monkeys"),
     ("winter", "Winter", "❄️", "a snowy winter wonderland"),

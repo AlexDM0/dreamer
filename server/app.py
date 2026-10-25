@@ -23,7 +23,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from . import protocol
+from . import protocol, refine
 from .auth import COOKIE_MAX_AGE, COOKIE_NAME, AdminAuth, LockedOut, load_or_create_secret
 from .config import DEFAULT_PIN, KID_THEMES, ORIENTATIONS, VIEW_MODES, Config, canvas_dims
 from .gallery import FILES, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch, valid_id
@@ -803,7 +803,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
 
     def params_payload(params: GenParams) -> dict[str, Any]:
         return {"params": params.to_dict(), "limits": LIMITS,
-                "defaults": params_store.defaults.to_dict(), "gpu": gpu_info()}
+                "defaults": params_store.defaults.to_dict(), "gpu": gpu_info(),
+                "refine_models": {name: label for name, (_, label, _) in refine.MODELS.items()}}
 
     def params_changed(params: GenParams) -> None:
         if runtime.worker is not None:

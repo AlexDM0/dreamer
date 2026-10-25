@@ -237,6 +237,7 @@ const PARAM_VIEWS = [
   ["p-init-blur", "o-init-blur", (p) => p.init_blur, (v) => `${v} px`],
   ["p-refine", "o-refine", (p) => p.refine_steps, (v) => (Number(v) ? `${v} steps` : "off")],
   ["p-upscale", null, (p) => p.upscale, String],
+  ["p-refine-model", null, (p) => p.refine_model, String],
 ];
 
 // ----- Graphics memory estimate -----------------------------------------------------
@@ -347,6 +348,15 @@ let lastLimits = null;
 function applyParams(res) {
   if (!res || !res.params) return;
   params = res.params;
+  if (res.refine_models) {
+    const select = $("p-refine-model");
+    const signature = Object.keys(res.refine_models).join(",");
+    if (select.dataset.signature !== signature) { // built once: keeps an open picker intact
+      select.dataset.signature = signature;
+      select.replaceChildren(...Object.entries(res.refine_models).map(
+        ([value, label]) => el("option", { value }, label)));
+    }
+  }
   if (res.limits) lastLimits = res.limits;
   if (res.gpu) {
     gpu = res.gpu;
@@ -414,6 +424,8 @@ onParamInput("p-init-blur", "o-init-blur", (v) => `${v} px`, (v) => ({ init_blur
 onParamInput("p-refine", "o-refine", (v) => (Number(v) ? `${v} steps` : "off"),
   (v) => ({ refine_steps: Number(v) }));
 $("p-upscale").addEventListener("change", (e) => queueParams({ upscale: e.target.value }, "p-upscale"));
+$("p-refine-model").addEventListener("change",
+  (e) => queueParams({ refine_model: e.target.value }, "p-refine-model"));
 $("p-resolution").addEventListener("change",
   (e) => queueParams({ resolution: Number(e.target.value) }, "p-resolution"));
 $("p-cn-on").addEventListener("change", (e) => {
