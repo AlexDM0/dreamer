@@ -19,6 +19,11 @@ the pen stopped** (call it P0):
 | Detail gain | Variance of the Laplacian (high-frequency energy) of step k, relative to P0 | Rises with k, or at least never falls |
 | Step size | Mean absolute difference between step k-1 and step k at full size | Shrinks with k |
 
+**Time budget (Alex, 20:24):** a refinement step may take up to **500 ms**, as long as it
+refines and does not replace. That is about 15× an SD-Turbo step (33 ms), so heavier options
+are in: more ControlNets at once, a hires pass at 1024 px every step (R5), and a bigger or
+slower model for refinement only (R6), as long as memory fits in 10 GB.
+
 Plus a strip of pictures per drawing (P0, then each step) for the eye. Use the same 6 test
 drawings for every model (house, cat, rocket, dinosaur, flower, a scribble-only one), on black
 and on white paper, 2 topics.
