@@ -63,12 +63,82 @@
       </div>
     </header>
 
-    <main class="stage-wrap" id="stage-wrap">
-      <div class="stage mode-auto" id="stage">
-        <div class="pane pane-picture"><canvas id="picture" width="512" height="512" aria-label="Your dream picture"></canvas></div>
-        <div class="pane pane-sketch"><canvas id="sketch" width="512" height="512" aria-label="Drawing area"></canvas></div>
+    <div class="work">
+      <main class="stage-wrap" id="stage-wrap">
+        <div class="stage mode-auto" id="stage">
+          <div class="pane pane-picture"><canvas id="picture" width="512" height="512" aria-label="Your dream picture"></canvas></div>
+          <div class="pane pane-sketch"><canvas id="sketch" width="512" height="512" aria-label="Drawing area"></canvas></div>
+        </div>
+        <div class="hint" id="hint" role="status" aria-live="polite" hidden>
+          <span class="hint-text" id="hint-text"></span>
+          <button type="button" class="hint-btn" id="hint-btn" hidden></button>
+        </div>
+      </main>
+
+      <nav class="side" aria-label="My pictures">
+        <button type="button" class="side-btn save" id="save" aria-label="Save this picture">
+          <span class="disc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.7 5.5 6 .9-4.35 4.2 1.03 6L12 17l-5.38 2.8 1.03-6L3.3 9.6l6-.9z"/></svg></span>
+          <span class="side-label" id="save-label">Save</span>
+        </button>
+        <button type="button" class="side-btn gallery-btn" id="open-gallery" aria-label="My pictures">
+          <span class="disc"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="13.5" height="13.5" rx="2.5"/><path d="M7.5 3.5h10.5a2.5 2.5 0 0 1 2.5 2.5v10.5M6 18l3.4-3.6 2.4 2.4 1.7-1.7 2.5 2.6"/><circle cx="13" cy="11" r="1.4"/></svg></span>
+          <span class="side-label">Gallery</span>
+        </button>
+        <button type="button" class="side-btn new" id="new-drawing" aria-label="Start a new drawing">
+          <span class="disc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5l4 4v13H6zM14.5 3.5v4h4M12.25 10.5v7M8.75 14h7"/></svg></span>
+          <span class="side-label">New</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Gallery: a full-screen grid of saved pictures, and a detail view. -->
+    <section class="gallery" id="gallery" aria-label="My pictures" hidden>
+      <header class="gallery-bar">
+        <button type="button" class="btn ghost back" id="gallery-back" aria-label="Back to drawing">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          <span>Draw</span>
+        </button>
+        <h2>My pictures</h2>
+        <span class="bar-spacer" aria-hidden="true"></span>
+      </header>
+      <div class="gallery-scroll" id="gallery-scroll">
+        <div class="grid" id="gallery-grid"></div>
+        <div class="gallery-empty" id="gallery-empty" hidden>
+          <span class="big-emoji" aria-hidden="true">🖼️</span>
+          <p>No saved pictures yet.</p>
+          <p class="sub">Tap the yellow star to keep a picture here.</p>
+        </div>
+        <button type="button" class="btn more" id="gallery-more" hidden>More pictures</button>
       </div>
-    </main>
+      <div class="detail" id="detail" hidden>
+        <div class="detail-pics">
+          <figure><img id="detail-picture" alt="The picture"><figcaption>✨ Picture</figcaption></figure>
+          <figure><img id="detail-sketch" alt="The drawing"><figcaption>✏️ Drawing</figcaption></figure>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="btn ghost" id="detail-back">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+            <span>Back</span>
+          </button>
+          <button type="button" class="btn big" id="detail-continue">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"/></svg>
+            <span>Keep drawing</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <div class="overlay" id="confirm" hidden>
+      <div class="card" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-sub">
+        <span class="big-emoji" aria-hidden="true">🤔</span>
+        <p id="confirm-title">Start a new drawing?</p>
+        <p class="sub" id="confirm-sub">This drawing is not saved yet.</p>
+        <div class="card-buttons">
+          <button type="button" class="btn ghost" id="confirm-no">Keep this one</button>
+          <button type="button" class="btn big" id="confirm-yes">Start new</button>
+        </div>
+      </div>
+    </div>
 
     <div class="overlay" id="replaced" hidden>
       <div class="card">

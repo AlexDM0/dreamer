@@ -202,9 +202,58 @@
       <ul class="items" id="topics-list"></ul>
     </section>
 
+    <!-- 4b. Gallery (saved artworks) -->
+    <section class="card" aria-labelledby="h-gallery">
+      <h2 id="h-gallery">Gallery</h2>
+      <p class="muted">Pictures your child saved. Deleted ones go to the Trash first.</p>
+      <div class="tabs" role="tablist" aria-label="Gallery view">
+        <button type="button" role="tab" class="tab active" id="tab-saved" aria-selected="true">Saved <span id="count-saved"></span></button>
+        <button type="button" role="tab" class="tab" id="tab-trash" aria-selected="false">Trash <span id="count-trash"></span></button>
+      </div>
+      <div class="art-grid" id="art-grid"></div>
+      <p class="muted art-empty" id="art-empty" hidden></p>
+      <button type="button" class="btn ghost wide" id="art-more" hidden>Show more</button>
+      <button type="button" class="btn danger" id="art-purge" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 4h4M7 7l1 13h8l1-13"/></svg>
+        Empty the trash
+      </button>
+    </section>
+
     <!-- 5. Log out -->
     <button class="btn ghost logout" type="button" id="logout">Log out</button>
   </main>
+
+  <!-- Artwork details: picture + drawing, rename, downloads, delete / restore. -->
+  <div class="sheet" id="art-sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="art-title-h">
+      <div class="sheet-head">
+        <h3 id="art-title-h">Picture</h3>
+        <button type="button" class="icon" id="art-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="art-pics">
+        <figure><img id="art-picture" alt="Picture"><figcaption>Picture</figcaption></figure>
+        <figure><img id="art-sketch" alt="Drawing"><figcaption>Drawing</figcaption></figure>
+      </div>
+      <p class="art-meta muted" id="art-meta"></p>
+      <form class="form" id="art-rename" autocomplete="off">
+        <div class="row">
+          <label class="field grow"><span>Name</span><input id="art-title" maxlength="60" placeholder="Give it a name"></label>
+        </div>
+        <button class="btn primary" type="submit">Save name</button>
+      </form>
+      <div class="row downloads">
+        <a class="btn ghost" id="art-dl-picture" download>Download picture</a>
+        <a class="btn ghost" id="art-dl-sketch" download>Download drawing</a>
+      </div>
+      <button type="button" class="btn danger" id="art-delete">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 4h4M7 7l1 13h8l1-13"/></svg>
+        Move to trash
+      </button>
+      <button type="button" class="btn primary" id="art-restore" hidden>Put back in the gallery</button>
+    </div>
+  </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

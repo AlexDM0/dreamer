@@ -5,6 +5,9 @@
 //   "ready"    the server's ready/styles message (topics, styles, topic, style, view_mode, ...)
 //   "status"   {state: "busy"|"ready"|"error", msg}
 //   "picture"  {seq, jpeg: ArrayBuffer, final: boolean}
+//   "saved"    {artwork}            a Save went through (SPEC-addendum-gallery)
+//   "continue" {id, sketch, topic, style}  load this saved sketch to keep drawing it
+//   "gallery"  {}                   saved pictures changed (e.g. the parent deleted one)
 //
 // Flow control: at most one SKETCH in flight. A frame is in flight until its PICTURE
 // (any seq >= it) arrives or 2 s pass. sendNow() asks for a "final" frame of the current
@@ -74,6 +77,22 @@ export class Net extends EventTarget {
     this._sendJson({ t: "clear" });
     this.sendNow();
   }
+
+  /** Save what is on screen as an artwork; the server answers "saved" or an error status. */
+  save() { return this._sendJson({ t: "save" }); }
+
+  /** Start a fresh drawing: the server forgets the draft and what was being continued. */
+  newDrawing() {
+    this.floorSeq = this.seq + 1;
+    this._sendJson({ t: "new" });
+    this.sendNow();
+  }
+
+  /** Ask to keep drawing a saved artwork; the reply arrives as a "continue" event. */
+  continueArtwork(id) { return this._sendJson({ t: "continue", id }); }
+
+  /** Pictures made from sketches sent so far are stale (the canvas content was replaced). */
+  dropOlderPictures() { this.floorSeq = this.seq + 1; }
 
   /** Send the current drawing as a final frame, now or as soon as the in-flight slot frees. */
   sendNow() {
@@ -187,6 +206,11 @@ export class Net extends EventTarget {
         break;
       case "replaced":
         this._setState("replaced");
+        break;
+      case "saved":
+      case "continue":
+      case "gallery":
+        this._emit(msg.t, msg);
         break;
       default:
         break; // pong and unknown messages need no handling

@@ -8,6 +8,7 @@ import io
 import logging
 import queue
 import secrets
+import sqlite3
 from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
@@ -24,9 +25,10 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from . import protocol
 from .auth import COOKIE_MAX_AGE, COOKIE_NAME, AdminAuth, LockedOut, load_or_create_secret
 from .config import DEFAULT_PIN, VIEW_MODES, Config
+from .gallery import FILES, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch, valid_id
 from .mailbox import Mailbox
 from .params import LIMITS, GenParams, ParamsStore, defaults_from_config
-from .session import Peer, SessionManager
+from .session import FrameOrigin, Peer, SessionManager
 from .styles import KINDS, LABEL_MAX, StyleStore, clean_text
 from .worker import FrameJob, GpuWorker
 
@@ -49,6 +51,10 @@ STATS_INTERVAL = 1.0
 IMAGE_STYLE_NOTE = ("Style pictures need phase 2 (SD 1.5 + IP-Adapter); "
                     "stored but not applied yet.")
 NO_CACHE = "no-cache"
+IMMUTABLE = "public, max-age=31536000, immutable"  # artwork file URLs carry ?v=updated_at
+GALLERY_PAGE = 24
+DRAFT_INTERVAL = 10.0  # seconds between draft autosaves while the kid draws
+NOTHING_TO_SAVE = "Nothing to save yet"
 
 
 class LoginBody(BaseModel):
@@ -79,10 +85,15 @@ class SelectBody(BaseModel):
     view_mode: str | None = None
 
 
+class TitleBody(BaseModel):
+    title: str | None = None
+
+
 class _Runtime:
     """Things that exist only while the app is running (created in lifespan)."""
 
     worker: GpuWorker | None = None
+    drafts: DraftAutosaver | None = None
 
 
 def _bad_request(exc: Exception) -> HTTPException:
@@ -182,6 +193,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     styles = StyleStore(data_dir)
     auth = AdminAuth(config.admin_pin, load_or_create_secret(config.secret_key, data_dir))
     params_store = ParamsStore(data_dir, defaults_from_config(config))
+    gallery = GalleryStore(data_dir)
     mailbox = Mailbox()
     runtime = _Runtime()
 
@@ -228,7 +240,9 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         if backend is None:
             from .backends import make_backend
             factory = partial(make_backend, config)
-        worker = GpuWorker(backend, mailbox, threadsafe(session.send_picture),
+        runtime.drafts = DraftAutosaver(gallery, lambda: session.last_frame,
+                                        lambda: session.continuing_id, DRAFT_INTERVAL)
+        worker = GpuWorker(backend, mailbox, threadsafe(on_picture),
                            threadsafe(session.broadcast_status), config,
                            backend_factory=factory, params=params_store.get(),
                            on_params_error=threadsafe(params_reverted))
@@ -242,6 +256,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             stats_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await stats_task
+            await runtime.drafts.flush()  # keep the drawing for the next start
             await asyncio.to_thread(worker.stop)
             runtime.worker = None
             log.info("Dreamer stopped")
@@ -254,6 +269,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     app.state.auth = auth
     app.state.runtime = runtime
     app.state.params = params_store
+    app.state.gallery = gallery
     app.add_middleware(AdminGate, auth=auth)
 
     # ----- caching: always revalidate pages and modules so the iPad picks up updates -----
@@ -294,24 +310,164 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         state = runtime.worker.state if runtime.worker is not None else "stopped"
         return {"ok": True, "backend": backend_name(), "state": state}
 
+    # ----- artworks: public (kid LAN) -------------------------------------------------
+
+    def page_args(limit: int, offset: int) -> tuple[int, int]:
+        return max(1, min(limit, 100)), max(0, offset)
+
+    def artwork_file(art: Any, name: str, request: Request,
+                     download: bool = False) -> FileResponse:
+        if art is None or name not in FILES:
+            raise HTTPException(404, detail="not found")
+        try:
+            path = gallery.file_path(art, name)
+        except (KeyError, ValueError):
+            raise HTTPException(404, detail="not found")
+        if not path.is_file():
+            raise HTTPException(404, detail="not found")
+        # Versioned URLs (?v=updated_at) never change content; bare ones must revalidate.
+        headers = {"Cache-Control": IMMUTABLE if request.query_params.get("v") else NO_CACHE}
+        filename = None
+        if download:
+            stem = "".join(c if c.isalnum() else "-" for c in (art.title or "").lower()).strip("-")
+            filename = f"dreamer-{stem or art.id}-{name}"
+        return FileResponse(path, media_type=FILES[name], headers=headers, filename=filename)
+
+    @app.get("/api/artworks")
+    async def list_artworks(limit: int = GALLERY_PAGE, offset: int = 0) -> dict[str, Any]:
+        limit, offset = page_args(limit, offset)
+        rows = await asyncio.to_thread(gallery.list, limit + 1, offset)
+        return {"artworks": [a.public() for a in rows[:limit]], "more": len(rows) > limit,
+                "offset": offset}
+
+    @app.get("/api/artworks/{artwork_id}")
+    async def get_artwork(artwork_id: str) -> dict[str, Any]:
+        art = await asyncio.to_thread(gallery.get, artwork_id)
+        if art is None or art.is_draft:
+            raise HTTPException(404, detail="not found")
+        return art.public()
+
+    @app.get("/api/artworks/{artwork_id}/{name}")
+    async def get_artwork_file(artwork_id: str, name: str, request: Request) -> FileResponse:
+        # Drafts are served too: the kid page restores its draft sketch from here.
+        art = await asyncio.to_thread(gallery.get, artwork_id)
+        return artwork_file(art, name, request)
+
     # ----- kid socket ----------------------------------------------------------------
 
-    def handle_kid_text(peer: Peer, text: str) -> None:
+    def on_picture(seq: int, jpeg: bytes, owner: Any) -> None:
+        """Worker result (on the loop): fan out, and remember it as what is on screen."""
+        origin = owner if isinstance(owner, FrameOrigin) else None
+        session.send_picture(seq, jpeg, origin.peer if origin else owner)
+        if origin is None or origin.peer is not session.kid:
+            return
+        worker = runtime.worker
+        params = worker.params.to_dict() if worker is not None else {}
+        session.last_frame = LastFrame(seq, origin.sketch_png, jpeg, origin.prompt,
+                                       origin.topic_id, origin.style_id, params)
+        if runtime.drafts is not None:
+            runtime.drafts.touch()
+
+    def kid_error(peer: Peer, msg: str) -> None:
+        """A one-off error for the kid page, then the real backend state again."""
+        peer.send_json(protocol.status_msg("error", msg))
+        peer.send_json(session.last_status)
+
+    def draft_info() -> dict[str, Any] | None:
+        art = runtime.drafts.current() if runtime.drafts is not None else None
+        if art is None:
+            return None
+        return {"id": art.id, "sketch": art.file_url("sketch.png")}
+
+    async def kid_hello(peer: Peer) -> None:
+        drafts = runtime.drafts
+        if drafts is not None:
+            await drafts.flush()  # a reload must get the drawing it just left
+        msg = session.lists_msg("ready")
+        msg["draft"] = await asyncio.to_thread(draft_info)
+        if msg["draft"] is not None and session.continuing_id is None:
+            # After a restart: the draft remembers which saved artwork it continues.
+            art = await asyncio.to_thread(gallery.get, msg["draft"]["id"])
+            if art is not None and art.source_id:
+                session.continuing_id = art.source_id
+        peer.send_json(msg)
+        peer.send_json(session.last_status)
+
+    async def kid_save(peer: Peer) -> None:
+        frame = session.last_frame
+        if frame is None or await asyncio.to_thread(is_blank_sketch, frame.sketch_png):
+            kid_error(peer, NOTHING_TO_SAVE)
+            return
+        drafts = runtime.drafts
+        lock = drafts.lock if drafts is not None else asyncio.Lock()
+        try:
+            async with lock:
+                art = None
+                if session.continuing_id is not None:
+                    try:
+                        art = await asyncio.to_thread(gallery.update, session.continuing_id,
+                                                      frame.sketch_png, frame.picture_jpeg,
+                                                      frame.meta())
+                    except KeyError:
+                        art = None  # deleted meanwhile: save it as a new artwork
+                if art is None:
+                    art = await asyncio.to_thread(gallery.save, frame.sketch_png,
+                                                  frame.picture_jpeg, frame.meta())
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            log.error("could not save artwork: %s", exc)
+            kid_error(peer, "Could not save the picture. Try again.")
+            return
+        # Further saves of this drawing update the same artwork instead of piling up copies.
+        session.continuing_id = art.id
+        if drafts is not None:
+            drafts.touch()  # the draft now records which artwork it continues
+        log.info("saved artwork %s", art.id)
+        peer.send_json({"t": "saved", "artwork": art.public()})
+        session.broadcast_admin({"t": "gallery"})
+
+    async def kid_fresh() -> None:
+        """Clear / New drawing: nothing on screen, nothing being continued, no draft."""
+        mailbox.clear()
+        session.continuing_id = None
+        if runtime.drafts is not None:
+            await runtime.drafts.discard()
+        session.last_frame = None
+
+    async def kid_continue(peer: Peer, artwork_id: Any) -> None:
+        art = await asyncio.to_thread(gallery.get, artwork_id) if valid_id(artwork_id) else None
+        if art is None or art.is_draft:
+            kid_error(peer, "That picture is not there any more")
+            return
+        mailbox.clear()
+        session.continuing_id = art.id
+        session.last_frame = None  # until the restored sketch comes back as a picture
+        for t, kind, item_id in (("topic", "topics", art.topic_id), ("style", "styles", art.style_id)):
+            item = styles.get(kind, item_id) if item_id else None
+            if item is not None and not item["hidden"]:
+                session.select(**{t: item_id})
+        cur = session.current()
+        peer.send_json({"t": "continue", "id": art.id, "sketch": art.file_url("sketch.png"),
+                        "topic": cur["topic"], "style": cur["style"]})
+
+    async def handle_kid_text(peer: Peer, text: str) -> None:
         msg = protocol.parse_client_text(text)
         if msg is None:
             return
         t = msg["t"]
         if t == "hello":
-            peer.send_json(session.lists_msg("ready"))
-            peer.send_json(session.last_status)
+            await kid_hello(peer)
         elif t in ("topic", "style"):
             kind = "topics" if t == "topic" else "styles"
             item_id = msg.get("id")
             item = styles.get(kind, item_id) if isinstance(item_id, str) else None
             if item is not None and not item["hidden"]:
                 session.select(**{t: item_id})
-        elif t == "clear":
-            mailbox.clear()
+        elif t in ("clear", "new"):
+            await kid_fresh()
+        elif t == "save":
+            await kid_save(peer)
+        elif t == "continue":
+            await kid_continue(peer, msg.get("id"))
         elif t == "ping":
             peer.send_json({"t": "pong"})
         # Unknown types are ignored on purpose (forward compatibility).
@@ -329,7 +485,10 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             log.warning("ignoring frame type 0x%02x from kid", msg_type)
             return
         # The prompt is built server-side from the selection; the kid never sends text.
-        mailbox.put(FrameJob(seq, payload, session.current_prompt(), owner=peer))
+        cur = session.current()
+        prompt = styles.build_prompt(cur["topic"], cur["style"])
+        origin = FrameOrigin(peer, payload, prompt, cur["topic"], cur["style"])
+        mailbox.put(FrameJob(seq, payload, prompt, owner=origin))
 
     def same_origin(ws: WebSocket) -> bool:
         """Browsers always send Origin on WebSockets: refuse sockets opened by pages
@@ -361,12 +520,15 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
                 if message.get("bytes") is not None:
                     handle_kid_bytes(peer, message["bytes"])
                 elif message.get("text") is not None:
-                    handle_kid_text(peer, message["text"])
+                    await handle_kid_text(peer, message["text"])
         except (WebSocketDisconnect, RuntimeError):
             pass  # RuntimeError: receive after the socket was closed
         finally:
             session.detach_kid(peer)
             await peer.finish()
+            if runtime.drafts is not None and session.kid is None:
+                with contextlib.suppress(Exception):
+                    await runtime.drafts.flush()  # page closed: keep what was drawn
 
     # ----- admin watcher socket ------------------------------------------------------
 
@@ -426,7 +588,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     def params_msg(params: GenParams) -> dict[str, Any]:
         return {"t": "params", "params": params.to_dict()}
 
-    def save_failed(exc: OSError) -> HTTPException:
+    def save_failed(exc: Exception) -> HTTPException:
         log.error("could not save settings: %s", exc)
         return HTTPException(503, detail="Could not save the change on the computer. Try again.")
 
@@ -586,6 +748,79 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             raise save_failed(exc)
         params_changed(params)
         return params_payload(params)
+
+    # ----- artworks: admin (SPEC-addendum-gallery) -----------------------------------
+
+    def gallery_changed() -> None:
+        """Tell the kid page (and other admin phones) to refresh their galleries."""
+        if session.kid is not None:
+            session.kid.send_json({"t": "gallery"})
+        session.broadcast_admin({"t": "gallery"})
+
+    def artwork_404() -> HTTPException:
+        return HTTPException(404, detail="not found")
+
+    @admin.get("/artworks")
+    async def admin_list_artworks(trash: bool = False, limit: int = GALLERY_PAGE,
+                                  offset: int = 0) -> dict[str, Any]:
+        limit, offset = page_args(limit, offset)
+
+        def read() -> dict[str, Any]:
+            rows = gallery.list(limit + 1, offset, deleted=trash)
+            return {"artworks": [a.admin() for a in rows[:limit]], "more": len(rows) > limit,
+                    "offset": offset, "total": gallery.count(),
+                    "trash": gallery.count(deleted=True)}
+        return await asyncio.to_thread(read)
+
+    @admin.get("/artworks/{artwork_id}/{name}")
+    async def admin_artwork_file(artwork_id: str, name: str, request: Request,
+                                 download: bool = False) -> FileResponse:
+        art = await asyncio.to_thread(gallery.get, artwork_id, True)
+        return artwork_file(art, name, request, download)
+
+    @admin.patch("/artworks/{artwork_id}")
+    async def rename_artwork(artwork_id: str, body: TitleBody) -> dict[str, Any]:
+        try:
+            art = await asyncio.to_thread(gallery.rename, artwork_id, body.title)
+        except KeyError:
+            raise artwork_404()
+        except ValueError as exc:
+            raise _bad_request(exc)
+        except (OSError, sqlite3.Error) as exc:
+            raise save_failed(exc)
+        gallery_changed()
+        return {"ok": True, "artwork": art.admin()}
+
+    @admin.delete("/artworks/{artwork_id}")
+    async def delete_artwork(artwork_id: str) -> dict[str, Any]:
+        try:
+            art = await asyncio.to_thread(gallery.soft_delete, artwork_id)
+        except KeyError:
+            raise artwork_404()
+        except (OSError, sqlite3.Error) as exc:
+            raise save_failed(exc)
+        gallery_changed()
+        return {"ok": True, "artwork": art.admin()}
+
+    @admin.post("/artworks/{artwork_id}/restore")
+    async def restore_artwork(artwork_id: str) -> dict[str, Any]:
+        try:
+            art = await asyncio.to_thread(gallery.restore, artwork_id)
+        except KeyError:
+            raise artwork_404()
+        except (OSError, sqlite3.Error) as exc:
+            raise save_failed(exc)
+        gallery_changed()
+        return {"ok": True, "artwork": art.admin()}
+
+    @admin.post("/artworks/purge")
+    async def purge_artworks() -> dict[str, Any]:
+        try:
+            purged = await asyncio.to_thread(gallery.purge_deleted)
+        except (OSError, sqlite3.Error) as exc:
+            raise save_failed(exc)
+        log.info("emptied the gallery trash (%d artworks)", purged)
+        return {"ok": True, "purged": purged}
 
     app.include_router(admin)
     return app

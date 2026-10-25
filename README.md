@@ -17,25 +17,38 @@ Everything runs on your LAN from one Python process. Nothing goes to the cloud.
 
 ## Quick start (Windows PC with an RTX GPU)
 
-1. Install the GPU stack into `.venv` by following **[requirements-gpu.md](requirements-gpu.md)**
-   (Python 3.10, CUDA PyTorch, the StreamDiffusion fork, TensorRT).
-2. Copy `config.example.yaml` to `config.yaml` and set `admin_pin`.
-3. Start it from PowerShell:
+1. Install [Python 3.10](https://www.python.org/downloads/windows/) (64-bit, keep the *py
+   launcher* option), [Git for Windows](https://git-scm.com/download/win) and a current
+   NVIDIA driver (CUDA 12.8 or newer).
+2. In PowerShell, from the Dreamer folder, run the setup script once:
 
    ```powershell
-   .\run.ps1
+   .\setup.ps1
    ```
+
+   It creates `.venv` and installs everything into it (server packages, CUDA PyTorch, the
+   StreamDiffusion fork and TensorRT), checks that PyTorch sees the GPU, and creates
+   `config.yaml`. Nothing is installed into your system Python. Options: `-Mock` (no GPU
+   stack), `-Force` (recreate `.venv`), `-Python <path or "py -3.10">`, `-Cuda cu128`.
+   [requirements-gpu.md](requirements-gpu.md) lists the same steps for a manual install.
 
    If PowerShell says *running scripts is disabled*, allow local scripts once with
    `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. If you downloaded the repo as a
    ZIP, Windows also marks the files as "from the internet"; unblock them from the repo
    folder with `Get-ChildItem -Recurse | Unblock-File`. Alternatively, run
-   `powershell -ExecutionPolicy Bypass -File .\run.ps1`.
+   `powershell -ExecutionPolicy Bypass -File .\setup.ps1` (and the same for `run.ps1`).
+3. Set `admin_pin` in `config.yaml`.
+4. Start it:
+
+   ```powershell
+   .\run.ps1
+   ```
 
    The first run downloads the models and builds TensorRT engines into `engines/`,
    which takes a while. Later starts are quick.
-4. On the iPad, open `http://<pc-ip>:7860/` in Safari and choose *Add to Home Screen*.
-   The parent page is `http://<pc-ip>:7860/admin`. The server prints both URLs at startup.
+5. On the iPad, open `http://<pc-ip>:7860/` in Safari and choose *Add to Home Screen*.
+   The parent page is `http://<pc-ip>:7860/admin`. `run.ps1` prints both URLs at startup.
+   Allow the port through the firewall once (see [LAN access and firewall](#lan-access-and-firewall)).
 
 ## Mock mode (development, no GPU)
 
@@ -43,11 +56,13 @@ The `mock` backend needs no torch or GPU. It turns each sketch into a tinted, po
 picture, so you can work on the whole app on any machine:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt      # Windows: .venv\Scripts\pip ...
-printf 'backend: mock\nadmin_pin: "4321"\n' > config.yaml
-.venv/bin/python -m server                     # http://localhost:7860/
+./setup.sh --mock        # Linux / WSL: .venv + server packages, config.yaml with backend: mock
+./run.sh                 # http://localhost:7860/
 ```
+
+On Windows use `.\setup.ps1 -Mock` and `.\run.ps1`. Mock mode accepts Python 3.10 or newer;
+the GPU install needs exactly 3.10. `./setup.sh` without `--mock` installs the GPU stack on
+Linux/WSL with the same flags as `setup.ps1` (`--force`, `--python PATH`, `--cuda TAG`).
 
 ## Configuration
 
@@ -96,19 +111,68 @@ days in that browser; changing the PIN logs every device out. On the admin page 
 
 Settings are saved in `data/styles.json`.
 
+## Gallery
+
+Your child can keep pictures they like:
+
+- **Save** (the yellow star) keeps the picture on screen together with the drawing it
+  came from. The picture flies into the **Gallery** button. Saving again after more
+  drawing updates the same picture instead of making a copy.
+- **Gallery** shows every saved picture. Tap one to see the picture and the drawing side
+  by side, then **Keep drawing** to put that drawing back on the canvas and carry on.
+- **New** starts an empty canvas. It asks first if the current drawing is not saved.
+- **Drafts:** the drawing in progress is saved automatically (at most every 10 seconds,
+  and when the page closes). When the iPad page is reopened, the drawing comes back by
+  itself, with a **Start fresh** button for a clean canvas. Clear and New drop the draft.
+
+Children cannot delete pictures. On the admin page, the **Gallery** section lists the
+saved pictures. Tap one to rename it, download the picture (`picture.jpg`) or the drawing
+(`sketch.png`), or move it to the **Trash**. From the Trash you can put a picture back,
+or tap **Empty the trash** to delete those pictures for good.
+
+Storage: the list of pictures is kept in `data/dreamer.db` (SQLite). The images are kept
+in `data/artworks/<year-month>/<id>/`: `picture.jpg`, `sketch.png` (lossless, so a
+continued drawing keeps clean lines) and `thumb.jpg`. To back up the gallery, copy
+`dreamer.db` and the `artworks` folder while Dreamer is stopped.
+
 ## Tests
 
 ```bash
+./setup.sh --mock                      # once: creates .venv with the server + test packages
 .venv/bin/python -m pytest -q          # unit + API + WebSocket tests (mock backend)
 node tests/e2e/run.mjs                 # browser end-to-end test (needs the playwright npm package)
 ```
 
-The e2e script starts `python -m server` with a temporary config (mock backend, a free
-port, a temporary data dir, PIN 4321). It draws on the kid page in an iPad-sized
-Chromium window, checks that a picture arrives, and tests the view modes and Clear. Then
-it logs into the admin page in a phone-sized window, adds a style, and checks that the
-style appears on the kid page without a reload. Screenshots are saved to
-`tests/e2e/screenshots/`.
+If `playwright` is installed globally, run the e2e script as
+`NODE_PATH=$(npm root -g) node tests/e2e/run.mjs`.
+
+The e2e script starts `.venv`'s `python -m server` with a temporary config (mock
+backend, a free port, a temporary data dir, PIN 4321). It draws on the kid page in an
+iPad-sized Chromium window, checks that a picture arrives, and tests the view modes and
+Clear. It logs into the admin page in a phone-sized window, adds a style, and checks that
+the style appears on the kid page without a reload. It then saves a picture, opens it in
+the gallery, uses *Keep drawing*, checks draft restore and *Start fresh* after a reload,
+and renames, deletes and purges the picture from the admin page while the kid gallery is
+open. Screenshots are saved to `tests/e2e/screenshots/`.
+
+## Troubleshooting
+
+- **`setup.ps1` says Python was not found, or reports the wrong version:** install
+  Python 3.10 (64-bit) or point the script at it with `-Python "C:\path\to\python.exe"`.
+  If the existing `.venv` uses another Python, rerun with `-Force`.
+- **`run.ps1` says "run .\setup.ps1 first":** `.venv` is missing; run the setup script.
+- **The iPad cannot connect:** use the PC's address that `run.ps1` prints, check that the
+  Wi-Fi is on the *Private* profile, and see [LAN access and firewall](#lan-access-and-firewall)
+  (a *Block* rule for `python.exe` is the usual cause).
+- **The admin PIN pad is locked:** wait for the countdown; each further wrong try doubles
+  the wait. If the PIN is forgotten, change `admin_pin` in `config.yaml` and restart.
+- **No picture, or the connection dot on the logo shows a problem:** look at the server console.
+  Mock mode (`backend: mock`) shows whether the problem is the network or the GPU stack.
+- **GPU problems** (CUDA not available, StreamDiffusion missing, TensorRT engine errors,
+  a step count the engine was not built for): see the troubleshooting list in
+  [requirements-gpu.md](requirements-gpu.md#troubleshooting).
+- **Save says "Draw something first!":** there is no picture for the current drawing yet
+  (or the canvas is empty). Draw a line and wait for the picture.
 
 ## Known limits
 
@@ -121,4 +185,10 @@ style appears on the kid page without a reload. Screenshots are saved to
 - One child session at a time. A second iPad that opens the page takes over, and the
   first one shows a "Draw here" button.
 - The kid page was tested in desktop Chromium with touch emulation, not yet on a real
-  iPad.
+  iPad. That includes *Keep drawing* and draft restore, which paint the saved PNG back
+  onto the canvas.
+- **The setup scripts have not run on real Windows.** `setup.ps1` and `run.ps1` were
+  parse-checked for PowerShell 5.1 and run under PowerShell 7 on Linux; the GPU install
+  steps (CUDA PyTorch, StreamDiffusion, TensorRT) have not run anywhere yet.
+- Gallery files are replaced atomically, with a short retry on Windows when a file is
+  being read at that moment. This retry has not been tested on Windows.

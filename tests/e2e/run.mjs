@@ -233,6 +233,112 @@ async function main() {
     check((await picSig()) !== sigBefore, "picture on the kid page changes with creativity");
     await shot(admin, "08-admin-params");
 
+    // ----- gallery: save -> gallery shows it -> continue restores the sketch
+    const artworks = async () => (await (await fetch(`${base}/api/artworks`)).json()).artworks;
+    check((await artworks()).length === 0, "the gallery starts empty");
+    await kid.waitForFunction(() => !window.dreamer.net.awaitingFinal, null, { timeout: 10000 });
+    await kid.click("#save");
+    await kid.waitForSelector("#save.saved", { timeout: 10000 });
+    await kid.waitForTimeout(250);
+    await shot(kid, "09-kid-saving");
+    const saved = await artworks();
+    check(saved.length === 1, "Save stores the drawing as an artwork");
+    const art = saved[0];
+    const types = await Promise.all(["picture", "sketch", "thumb"].map(async (k) =>
+      (await fetch(base + art[k])).headers.get("content-type")));
+    check(types.join() === "image/jpeg,image/png,image/jpeg", "artwork files have the right types");
+    await kid.waitForTimeout(1200); // let the fly-into-gallery animation finish
+
+    await kid.click("#new-drawing");
+    check(await kid.isHidden("#confirm"), "New drawing after saving needs no confirmation");
+    check((await inkOn(kid, "#sketch")) === 0, "New drawing empties the canvas");
+
+    await kid.click("#open-gallery");
+    await kid.waitForSelector(`#gallery-grid .thumb[data-id="${art.id}"]`, { timeout: 10000 });
+    check((await kid.locator("#gallery-grid .thumb").count()) === 1, "kid gallery shows the saved picture");
+    await kid.waitForFunction(() => [...document.querySelectorAll("#gallery-grid img")]
+      .every((i) => i.complete && i.naturalWidth > 0), null, { timeout: 10000 });
+    await shot(kid, "10-kid-gallery");
+    await kid.click(`#gallery-grid .thumb[data-id="${art.id}"]`);
+    await kid.waitForSelector("#detail:not([hidden])");
+    await kid.waitForFunction(() => ["#detail-picture", "#detail-sketch"].every((s) => {
+      const i = document.querySelector(s);
+      return i.complete && i.naturalWidth > 0;
+    }), null, { timeout: 10000 });
+    check(true, "detail view shows the picture and the drawing");
+    await shot(kid, "11-kid-detail");
+    const n3 = await pictures(kid);
+    await kid.click("#detail-continue");
+    await kid.waitForSelector("#gallery", { state: "hidden", timeout: 10000 });
+    await kid.waitForFunction(() => {
+      const c = document.querySelector("#sketch");
+      const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+      for (let i = 0; i < d.length; i += 16) if (255 - Math.min(d[i], d[i + 1], d[i + 2]) > 40) return true;
+      return false;
+    }, null, { timeout: 10000 });
+    check((await inkOn(kid, "#sketch")) > 50, "Keep drawing restores the saved sketch on the canvas");
+    await kid.waitForFunction((k) => Number(document.querySelector("#stage").dataset.pictures) > k,
+                              n3, { timeout: 10000 });
+    check(true, "the restored sketch is sent for a new picture");
+
+    // Drawing more and saving again updates the same artwork.
+    await stroke(kid, [[0.1, 0.1], [0.3, 0.15]]);
+    await kid.waitForFunction(() => !window.dreamer.net.awaitingFinal, null, { timeout: 10000 });
+    await kid.click("#save");
+    await kid.waitForFunction(async (v) => {
+      const r = await fetch("/api/artworks");
+      const a = (await r.json()).artworks;
+      return a.length === 1 && a[0].updated_at !== v;
+    }, art.updated_at, { timeout: 10000 });
+    check(true, "saving a continued drawing updates the same artwork");
+
+    // ----- draft: a reload brings the drawing back, with a "Start fresh" option
+    await kid.waitForTimeout(1300);
+    await kid.reload();
+    await kid.waitForSelector('#conn[data-state="ready"]');
+    await kid.waitForSelector("#hint:not([hidden])", { timeout: 10000 });
+    check((await inkOn(kid, "#sketch")) > 50, "reloading restores the drawing from the draft");
+    await shot(kid, "12-kid-draft-restored");
+    await kid.click("#hint-btn");
+    check((await inkOn(kid, "#sketch")) === 0, "Start fresh empties the canvas");
+    await kid.reload();
+    await kid.waitForSelector('#conn[data-state="ready"]');
+    await kid.waitForTimeout(600);
+    check((await inkOn(kid, "#sketch")) === 0, "after Start fresh, a reload has no draft to restore");
+
+    // ----- admin: gallery section, delete -> gone from the kid gallery
+    await kid.click("#open-gallery");
+    await kid.waitForSelector(`#gallery-grid .thumb[data-id="${art.id}"]`, { timeout: 10000 });
+    await admin.waitForSelector(".art-thumb", { timeout: 10000 });
+    await admin.locator("#h-gallery").scrollIntoViewIfNeeded();
+    await shot(admin, "13-admin-gallery");
+    await admin.tap(".art-thumb");
+    await admin.waitForSelector("#art-sheet:not([hidden])");
+    const dl = await admin.$eval("#art-dl-sketch", (a) => a.href);
+    const dlRes = await adminCtx.request.get(dl);
+    check(dlRes.ok() && (dlRes.headers()["content-disposition"] || "").includes("attachment"),
+          "admin download link serves the drawing as a file");
+    await admin.fill("#art-title", "Our house");
+    await admin.tap('#art-rename button[type="submit"]');
+    await admin.waitForFunction(() => document.querySelector("#art-title-h").textContent === "Our house",
+                                null, { timeout: 10000 });
+    check(true, "admin renames the picture");
+    await shot(admin, "14-admin-artwork");
+    await admin.tap("#art-delete");
+    await admin.waitForSelector("#art-sheet", { state: "hidden", timeout: 10000 });
+    await kid.waitForSelector("#gallery-empty:not([hidden])", { timeout: 10000 });
+    check((await kid.locator("#gallery-grid .thumb").count()) === 0,
+          "a picture the admin deleted disappears from the open kid gallery");
+    check((await artworks()).length === 0, "deleted picture is gone from the kid API");
+    await admin.tap("#tab-trash");
+    await admin.waitForSelector(".art-thumb", { timeout: 10000 });
+    check(await admin.isVisible("#art-purge"), "the Trash lists the deleted picture");
+    admin.once("dialog", (d) => d.accept());
+    await admin.tap("#art-purge");
+    await admin.waitForSelector("#art-empty:not([hidden])", { timeout: 10000 });
+    check((await adminCtx.request.get(base + art.picture)).status() === 404, "emptying the trash removes the files");
+    await kid.click("#gallery-back");
+
     check(errors.length === 0, `no page errors${errors.length ? ": " + errors.join("; ") : ""}`);
     console.log(`\nPASS (${step} checks)`);
   } finally {
