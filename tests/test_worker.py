@@ -236,7 +236,7 @@ def test_refine_path_continues_the_drawing_path():
 def test_pause_continues_the_path_one_picture_per_step():
     backend = RefineBackend()
     cfg = Config(backend="mock", size=64)
-    params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=4)
+    params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=4, refine_model="path")
     worker, rec = _start(backend, cfg, params=params)
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
@@ -271,7 +271,7 @@ class SlowRefineBackend(RefineBackend):
 def test_new_stroke_stops_the_refinement_path():
     backend = SlowRefineBackend()
     cfg = Config(backend="mock", size=64)
-    params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=20)
+    params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=20, refine_model="path")
     worker, rec = _start(backend, cfg, params=params)
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))

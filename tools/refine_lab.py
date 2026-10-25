@@ -96,8 +96,14 @@ def main() -> int:
     parser.add_argument("--budget", type=int, default=8, help="refine_steps (total steps incl. the draw steps)")
     parser.add_argument("--draw", default="6", help="draw t_index list, e.g. 6 or 6,26")
     parser.add_argument("--drawings", default=",".join(DRAWINGS))
+    parser.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
+                        help="override a constant in server/refine.py, e.g. ANCHOR_SIGMA=1.5")
+    parser.add_argument("--tag", default="", help="suffix for the output files of this run")
     args = parser.parse_args()
     models = [name for name in args.models.split(",") if name]
+    for assignment in args.set:
+        name, value = assignment.split("=", 1)
+        setattr(refine, name, type(getattr(refine, name))(json.loads(value)))
     draw = tuple(int(value) for value in args.draw.split(","))
 
     config = load_config(None)
@@ -152,7 +158,7 @@ def main() -> int:
             draw_text.text((6, row_index * tile_h + tile_h // 2 - 6), name, fill="black")
             for column, frame in enumerate(frames):
                 sheet.paste(frame.resize((tile_w, tile_h)), (label_w + column * tile_w, row_index * tile_h))
-        sheet.save(OUT_IMG / f"refine-{drawing}.png")
+        sheet.save(OUT_IMG / f"refine-{drawing}{args.tag}.png")
         # Detail check: the centre of each model's last picture, at 2x the drawing's pixels.
         crop_w, crop_h = orientation_dims[0] // 4, orientation_dims[1] // 4
         zoom = Image.new("RGB", (label_w + crop_w * 2 * 2, crop_h * 2 * len(rows)), "white")
@@ -166,7 +172,7 @@ def main() -> int:
                 crop = frame.crop((cx - half_w, cy - half_h, cx + half_w, cy + half_h))
                 zoom.paste(crop.resize((crop_w * 2, crop_h * 2), Image.Resampling.LANCZOS),
                            (label_w + column * crop_w * 2, row_index * crop_h * 2))
-        zoom.save(OUT_IMG / f"refine-{drawing}-zoom.png")
+        zoom.save(OUT_IMG / f"refine-{drawing}{args.tag}-zoom.png")
 
     # Summary table.
     lines = ["# Refinement models: measured results", "",

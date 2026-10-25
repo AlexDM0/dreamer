@@ -27,7 +27,7 @@ RESOLUTIONS = (512, 640, 768, 896, 1024)  # long sides offered on the admin page
 REFINE_MAX_STEPS = 20
 # Refinement models (server/refine.py); listed here so params stay importable without it.
 REFINE_MODELS = ("path", "path_locked", "sdedit", "anchored", "anchored_edges",
-                 "hires_tiles")
+                 "hires_tiles", "anchored_hires")
 
 # Numeric ranges (min, max, step) per field, also served to the admin UI.
 LIMITS: dict[str, dict[str, Any]] = {
@@ -67,7 +67,7 @@ class GenParams:
     jpeg_quality: int = 85
     # After drawing pauses: refine up to this many steps (0 = off), upscaling if set.
     refine_steps: int = 4
-    refine_model: str = "path"
+    refine_model: str = "anchored"
     upscale: str = "off"
     # Long side of pictures in pixels (the short side follows the iPad's shape).
     resolution: int = 640

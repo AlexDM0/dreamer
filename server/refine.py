@@ -100,10 +100,13 @@ def _union(first: Image.Image, second: Image.Image) -> Image.Image:
 
 # Rungs of the latent ladders: single steps at rising t_index (less noise each time), so each
 # rung can only change less than the one before (research: ILVR/TCD-style; see docs).
-ANCHORED_RUNGS = (34, 39, 43, 45, 47, 48)
+# Starting at 38 (not 34) kept the broad terms best (drift 5.6 vs 6.1) for the same detail.
+ANCHORED_RUNGS = (38, 41, 44, 46, 47, 48)
 SDEDIT_RUNGS = (36, 40, 44, 47)
-ANCHOR_SIGMA = 2.5   # latent pixels (about 20 image pixels at 640x448)
-ANCHOR_GAMMA = 0.25  # share of fresh noise when re-noising
+# Tuned with tools/refine_lab.py on the six test drawings (sigma 1.5-4, gamma 0-0.45):
+# sigma 2.0 / gamma 0.05 had the best drift vs detail balance.
+ANCHOR_SIGMA = 2.0   # latent pixels (about 16 image pixels at 640x448)
+ANCHOR_GAMMA = 0.05  # share of fresh noise when re-noising
 SDEDIT_GAMMA = 0.15
 
 
@@ -204,6 +207,30 @@ def model_hires_tiles(backend, first, init, line_map, draw, total_steps, upscale
         yield picture
 
 
+ANCHORED_HIRES_SPLIT = 3  # anchored rungs at the drawing's size before the bigger tiled rungs
+
+
+def model_anchored_hires(backend, first, init, line_map, draw, total_steps, upscaler=None):
+    """Anchored detail rungs at the drawing's size, then the last rungs bigger and tile by
+    tile: detail first, resolution at the end; broad terms pinned to the first picture."""
+    budget = max(1, total_steps - len(draw))
+    base_rungs = min(ANCHORED_HIRES_SPLIT, budget)
+    picture = first
+    for picture in model_anchored(backend, first, init, line_map, draw, len(draw) + base_rungs):
+        yield picture
+    hires_rungs = budget - base_rungs
+    if hires_rungs <= 0:
+        return
+    size = (round(first.width * TILE_SCALE / 8) * 8, round(first.height * TILE_SCALE / 8) * 8)
+    big = upscaler.upscale(picture, 2) if upscaler is not None and upscaler.available else picture
+    anchor_big = (upscaler.upscale(first, 2) if upscaler is not None and upscaler.available else first)
+    big = big.resize(size, Image.Resampling.LANCZOS)
+    anchor_big = anchor_big.resize(size, Image.Resampling.LANCZOS)
+    for rung in TILE_RUNGS[-hires_rungs:] if hires_rungs < len(TILE_RUNGS) else TILE_RUNGS:
+        big = _tiled_pass(backend, big, line_map, rung, first.size, anchor_big)
+        yield big
+
+
 # ---- the models -----------------------------------------------------------------------
 
 def model_path(backend, first, init, line_map, draw, total_steps):
@@ -224,8 +251,9 @@ MODELS: dict[str, tuple[Callable[..., Iterator[Image.Image]], str, bool]] = {
     "anchored": (model_anchored, "D: Anchored detail ladder", False),
     "anchored_edges": (model_anchored_edges, "E: Anchored detail ladder + outlines", False),
     "hires_tiles": (model_hires_tiles, "F: Bigger, detail tile by tile", True),
+    "anchored_hires": (model_anchored_hires, "G: Anchored detail, then bigger", True),
 }
-DEFAULT_MODEL = "path"
+DEFAULT_MODEL = "anchored"
 
 
 def run(name: str, backend: Any, first: Image.Image, init: Image.Image,
