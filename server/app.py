@@ -47,6 +47,7 @@ UPLOAD_BODY_MAX = MAX_UPLOAD_BYTES + 1024 * 1024  # file + multipart overhead
 JSON_BODY_MAX = 64 * 1024
 PUBLIC_ADMIN_PATHS = ("/api/admin/login", "/api/admin/logout")
 STORED_IMAGE_MAX_SIDE = 1024
+THEMES = ("dark", "light")  # kid page look, picked on the admin page
 SCREEN_TIMEOUT = 60.0
 STATS_INTERVAL = 1.0
 IMAGE_STYLE_NOTE = ("Style pictures need phase 2 (SD 1.5 + IP-Adapter); "
@@ -84,6 +85,7 @@ class SelectBody(BaseModel):
     topic: str | None = None
     style: str | None = None
     view_mode: str | None = None
+    theme: str | None = None
 
 
 class TitleBody(BaseModel):
@@ -708,7 +710,10 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             raise HTTPException(400, detail="unknown style")
         if body.view_mode is not None and body.view_mode not in VIEW_MODES:
             raise HTTPException(400, detail=f"view_mode must be one of {VIEW_MODES}")
-        session.select(topic=body.topic, style=body.style, view_mode=body.view_mode)
+        if body.theme is not None and body.theme not in THEMES:
+            raise HTTPException(400, detail=f"theme must be one of {THEMES}")
+        session.select(topic=body.topic, style=body.style, view_mode=body.view_mode,
+                       theme=body.theme)
         mutated()
         return {"ok": True, **session.current()}
 

@@ -24,7 +24,7 @@ def test_hello_ready(client):
         ready = hello(ws)
     assert ready["v"] == 1 and ready["backend"] == "mock"
     assert ready["topic"] == "ocean" and ready["style"] == "cartoon"
-    assert ready["view_mode"] == "auto"
+    assert ready["view_mode"] == "auto" and ready["theme"] == "dark"
     assert "space" in [t["id"] for t in ready["topics"]]
     assert all("prompt" not in s for s in ready["styles"])
 

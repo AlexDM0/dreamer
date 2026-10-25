@@ -12,6 +12,18 @@ const $ = (sel) => document.querySelector(sel);
 for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
   document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
 }
+// Kid page look (dark by default), picked by the parent on the admin page. Remembered so a
+// reload starts in the right theme before the server answers.
+const THEME_KEY = "dreamer.theme";
+const THEME_COLOR = { dark: "#141311", light: "#f7f5f2" }; // --bg in theme.css
+function applyTheme(theme) {
+  if (!(theme in THEME_COLOR)) return;
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]').content = THEME_COLOR[theme];
+  try { localStorage.setItem(THEME_KEY, theme); } catch { /* private mode etc. */ }
+}
+try { applyTheme(localStorage.getItem(THEME_KEY)); } catch { /* none stored */ }
+
 let lastTouchEnd = 0;
 document.addEventListener("touchend", (e) => {
   const now = Date.now();
@@ -141,6 +153,7 @@ net.addEventListener("ready", (e) => {
   if (Array.isArray(m.topics)) toolbar.setItems("topics", m.topics, m.topic);
   if (Array.isArray(m.styles)) toolbar.setItems("styles", m.styles, m.style);
   if (m.view_mode) view.setDefaultMode(m.view_mode);
+  if (m.theme) applyTheme(m.theme);
   // A ready reply with no status yet: the server is up, assume the backend is too.
   if (m.t === "ready" && !backendState) backendState = "ready";
   showConn();

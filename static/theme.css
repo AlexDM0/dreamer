@@ -8,8 +8,8 @@
      3. Scales      - type, spacing, radii, elevation, motion, focus, touch.
 
    Theme switching: light by default; dark follows prefers-color-scheme unless the page
-   pins a theme with <html data-theme="light|dark">. The kid page pins light (the drawing
-   paper is white); the admin page follows the phone. */
+   pins a theme with <html data-theme="light|dark">. The kid page pins dark by default (the
+   parent can switch it to light on the admin page); the admin page follows the phone. */
 
 :root {
   /* ---------- 1. Primitives ---------------------------------------------------- */
