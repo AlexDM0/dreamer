@@ -62,7 +62,7 @@ class GenParams:
     init_blur: int = 24
     jpeg_quality: int = 85
     # After drawing pauses: refine up to this many steps (0 = off), upscaling if set.
-    refine_steps: int = 8
+    refine_steps: int = 4
     upscale: str = "off"
     # Long side of pictures in pixels (the short side follows the iPad's shape).
     resolution: int = 640

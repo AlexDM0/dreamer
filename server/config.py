@@ -38,9 +38,11 @@ class ModelConfig:
     # step); more steps run one after another at batch 1. The TensorRT UNet is built for
     # batch 1..max_batch_steps, so this sets its memory; changing it rebuilds it once.
     max_batch_steps: int = 4
-    # Once the child stops drawing, the picture keeps refining with more steps (run one
-    # after another) up to this many; 0 turns refinement off. Live-changeable (1..20).
-    refine_steps: int = 8
+    # Once the child stops drawing, the drawing's path continues step by step up to this many
+    # steps in total; 0 turns refinement off. Live-changeable (up to 20). SD-Turbo is made for
+    # 1-4 steps: measured, paths up to 4 refine the same picture, from about 6 the scene
+    # starts to change and at 12-20 it becomes a different picture.
+    refine_steps: int = 4
     # AI upscaler for refined pictures (never while drawing): "off" or "x2".
     upscaler: str = "off"
     upscaler_model: str = "models/realesr-animevideov3.pth"

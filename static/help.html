@@ -113,13 +113,14 @@
     <section class="control" id="refine">
       <h2>Refine when they stop</h2>
       <p class="lead">While your child draws, the picture is made fast (the draw reaction). As soon as they stop
-        for a moment, the computer keeps working on the same drawing in a few rounds with more and more steps,
-        and the iPad shows each round, so the picture visibly refines. A new stroke stops it straight away. Off
-        keeps the quick drawing picture.</p>
+        for a moment, the computer carries on with the same picture, one step at a time, and the iPad shows each
+        step, so the picture visibly refines. A new stroke stops it straight away. Off keeps the quick drawing
+        picture.</p>
       <div class="strip" data-control="refine"></div>
-      <p class="note">Rounds run at 4, 8, 12, 16 and 20 steps, up to the setting. The picture model is made for
-        few steps, so later rounds mostly change details rather than add quality; the AI upscale below is what
-        makes refined pictures sharper.</p>
+      <p class="note">Refinement continues the drawing's own path, one step at a time, so drawing with 1 step and
+        refining to 4 gives exactly the 4-step picture. The picture model is made for 1 to 4 steps: up to about 5
+        it refines the same picture, beyond that it starts to change the scene (you can see that above). The AI
+        upscale below is what makes refined pictures sharper.</p>
     </section>
 
     <section class="control" id="upscale">
