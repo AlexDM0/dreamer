@@ -20,9 +20,11 @@ document.addEventListener("touchend", (e) => {
   lastTouchEnd = now;
 }, { passive: false });
 document.addEventListener("dblclick", (e) => e.preventDefault());
-// Allow horizontal scrolling of the pick rows only; everything else stays put.
+// Allow horizontal scrolling of the pick rows only; everything else stays put. Sliders
+// too: Safari drags a range thumb with the touchmove default action, so blocking it froze
+// the brush size slider on the iPad.
 document.addEventListener("touchmove", (e) => {
-  if (!e.target.closest(".pick-row, .gallery-scroll")) e.preventDefault();
+  if (!e.target.closest('.pick-row, .gallery-scroll, input[type="range"]')) e.preventDefault();
 }, { passive: false });
 
 // ---- modules ----
