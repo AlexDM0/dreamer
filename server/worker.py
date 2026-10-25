@@ -32,10 +32,12 @@ SETTLE_DELAY = 0.15
 # noise (a later first t_index), so the picture keeps its composition and gets cleaner instead
 # of being repainted from scratch. First t_index of the first and the last round; rounds in
 # between are evenly spaced. params.refine_steps is the step budget over at most 5 rounds.
-REFINE_FIRST_START = 24
-REFINE_LAST_START = 44
+# Starting at t_index 24 re-noised about half the picture and could repaint the scene; from
+# 36 on it only polishes, and each later round is gentler still.
+REFINE_FIRST_START = 36
+REFINE_LAST_START = 47
 REFINE_MAX_ROUNDS = 5
-REFINE_STEPS_PER_ROUND = 4
+REFINE_STEPS_PER_ROUND = 3
 REFINE_POLL = 0.005  # between refinement passes: just a check for a new stroke
 FPS_EMA_ALPHA = 0.2
 FPS_IDLE_GAP = 2.0  # seconds

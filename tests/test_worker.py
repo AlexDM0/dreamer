@@ -236,10 +236,10 @@ def test_pause_refines_the_previous_picture_with_less_noise_each_round():
     worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=12))
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
-        rec.wait(4)  # the drawing frame, then 3 rounds of 4 steps
+        rec.wait(5)  # the drawing frame, then 4 rounds of 3 steps
         time.sleep(0.4)
-        assert [seq for seq, _ in rec.results] == [1, 1, 1, 1]
-        assert [len(t) for t in backend.refined] == [4, 4, 4]
+        assert [seq for seq, _ in rec.results] == [1, 1, 1, 1, 1]
+        assert [len(t) for t in backend.refined] == [3, 3, 3, 3]
         starts = [t[0] for t in backend.refined]
         assert starts == sorted(starts) and starts[0] < starts[-1]  # less noise each round
         # Each round starts from the previous round's picture, not from scratch.
