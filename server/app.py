@@ -668,6 +668,17 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         mutated()
         return {"ok": True, "style": item}
 
+    @admin.post("/topics")
+    async def add_topic(body: NewStyleBody) -> dict[str, Any]:
+        try:
+            item = styles.add_custom_topic(body.label, body.emoji, body.prompt)
+        except ValueError as exc:
+            raise _bad_request(exc)
+        except OSError as exc:
+            raise save_failed(exc)
+        mutated()
+        return {"ok": True, "topic": item}
+
     @admin.patch("/items/{kind}/{item_id}")
     async def patch_item(kind: str, item_id: str, body: PatchBody) -> dict[str, Any]:
         if kind not in KINDS:
@@ -682,10 +693,12 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         mutated()
         return {"ok": True, "item": item}
 
-    @admin.delete("/items/styles/{item_id}")
-    async def delete_style(item_id: str) -> dict[str, Any]:
+    @admin.delete("/items/{kind}/{item_id}")
+    async def delete_item(kind: str, item_id: str) -> dict[str, Any]:
+        if kind not in KINDS:
+            raise HTTPException(404, detail="not found")
         try:
-            item = styles.delete_style(item_id)
+            item = styles.delete_item(kind, item_id)
         except (KeyError, ValueError) as exc:
             raise _bad_request(exc)
         except OSError as exc:

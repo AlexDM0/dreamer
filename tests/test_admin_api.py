@@ -144,3 +144,14 @@ def test_upload_rejects_exotic_formats(admin):
     buf = io.BytesIO()
     Image.new("RGB", (16, 16), "red").save(buf, "TIFF")
     assert upload(admin, buf.getvalue(), ctype="image/tiff").status_code == 400
+
+
+def test_admin_adds_and_deletes_a_topic(admin):
+    res = admin.post("/api/admin/topics", json={"label": "Pirates", "emoji": "🏴‍☠️",
+                                                 "prompt": "a pirate ship on a sunny sea"})
+    assert res.status_code == 200, res.text
+    topic_id = res.json()["topic"]["id"]
+    assert topic_id in [item["id"] for item in admin.get("/api/admin/state").json()["topics"]]
+    assert admin.delete(f"/api/admin/items/topics/{topic_id}").status_code == 200
+    assert topic_id not in [item["id"] for item in admin.get("/api/admin/state").json()["topics"]]
+    assert admin.delete("/api/admin/items/topics/ocean").status_code == 400  # built-in: hide only

@@ -155,3 +155,22 @@ def test_failed_save_rolls_back_memory(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         store.set_order("topics", ["space"])
     assert store.admin_list() == before
+
+
+def test_custom_topics_can_be_added_used_and_deleted(tmp_path):
+    store = StyleStore(tmp_path)
+    topic = store.add_custom_topic("Pirates", "🏴‍☠️", "a pirate ship on a sunny sea")
+    assert topic["kind"] == "custom" and topic["id"].startswith("pirates")
+    prompt = store.build_prompt(topic["id"], None)
+    assert "a pirate ship on a sunny sea" in prompt and prompt.endswith(SAFETY_TAIL)
+    assert any(item["id"] == topic["id"] for item in StyleStore(tmp_path).public_list()["topics"])  # persisted
+    store.update_item("topics", topic["id"], prompt="a pirate ship at night")
+    assert "a pirate ship at night" in store.build_prompt(topic["id"], None)
+    store.delete_item("topics", topic["id"])
+    assert all(item["id"] != topic["id"] for item in StyleStore(tmp_path).admin_list()["topics"])
+
+
+def test_built_in_topics_cannot_be_deleted(tmp_path):
+    store = StyleStore(tmp_path)
+    with pytest.raises(ValueError):
+        store.delete_item("topics", "ocean")

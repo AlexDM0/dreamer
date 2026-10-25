@@ -131,7 +131,7 @@ class StyleStore:
                 for key in ("label", "emoji"):
                     if isinstance(entry.get(key), str):
                         item[key] = entry[key]
-            elif kind == "styles" and entry.get("kind") in ("custom", "image"):
+            elif entry.get("kind") == "custom" or (kind == "styles" and entry.get("kind") == "image"):
                 item = {
                     "id": item_id,
                     "label": str(entry.get("label") or item_id),
@@ -254,23 +254,33 @@ class StyleStore:
             if candidate not in taken:
                 return candidate
 
-    def _add_style(self, label: Any, emoji: Any, prompt: str, kind: str, image: str | None) -> dict[str, Any]:
+    def _add_item(self, kind: str, label: Any, emoji: Any, prompt: str, item_kind: str,
+                  image: str | None) -> dict[str, Any]:
+        self._check_kind(kind)
         label = clean_text(label, LABEL_MAX, "label")
         with self._mutation():
             item = {
-                "id": self._new_id("styles", label),
+                "id": self._new_id(kind, label),
                 "label": label,
-                "emoji": clean_emoji(emoji, "styles"),
+                "emoji": clean_emoji(emoji, kind),
                 "prompt": prompt,
-                "kind": kind,
+                "kind": item_kind,
                 "hidden": False,
                 "image": image,
             }
-            self._items["styles"].append(item)
+            self._items[kind].append(item)
         return copy.deepcopy(item)
+
+    def _add_style(self, label: Any, emoji: Any, prompt: str, kind: str, image: str | None) -> dict[str, Any]:
+        return self._add_item("styles", label, emoji, prompt, kind, image)
 
     def add_custom_style(self, label: Any, emoji: Any, prompt: Any) -> dict[str, Any]:
         return self._add_style(label, emoji, clean_text(prompt, PROMPT_MAX, "prompt"), "custom", None)
+
+    def add_custom_topic(self, label: Any, emoji: Any, prompt: Any) -> dict[str, Any]:
+        """A parent-written topic, e.g. "a pirate ship on a sunny sea"."""
+        return self._add_item("topics", label, emoji, clean_text(prompt, PROMPT_MAX, "prompt"),
+                              "custom", None)
 
     def add_image_style(self, label: Any, emoji: Any, image: str) -> dict[str, Any]:
         """Image styles are not applied until phase 2; their label doubles as the prompt."""
@@ -290,7 +300,7 @@ class StyleStore:
                 changes["emoji"] = clean_emoji(emoji, kind)
             if prompt is not None:
                 if item["kind"] != "custom":
-                    raise ValueError("only custom styles have an editable prompt")
+                    raise ValueError(f"only custom {kind} have an editable prompt")
                 changes["prompt"] = clean_text(prompt, PROMPT_MAX, "prompt")
             if hidden is not None:
                 if not isinstance(hidden, bool):
@@ -303,17 +313,21 @@ class StyleStore:
             result = copy.deepcopy(item)
         return result
 
-    def delete_style(self, item_id: str) -> dict[str, Any]:
-        """Remove a custom/image style and return it (caller deletes any image file)."""
+    def delete_item(self, kind: str, item_id: str) -> dict[str, Any]:
+        """Remove a custom (or image) topic/style and return it (caller deletes any image
+        file). Built-in ones can be hidden but not deleted."""
         with self._mutation():
-            item = self._find("styles", item_id)
+            item = self._find(kind, item_id)
             if item["kind"] == "preset":
-                raise ValueError("preset styles can be hidden but not deleted")
+                raise ValueError(f"built-in {kind} can be hidden but not deleted")
             if not item["hidden"] and not any(
-                    not it["hidden"] for it in self._items["styles"] if it is not item):
-                raise ValueError("at least one style must stay visible")
-            self._items["styles"].remove(item)
+                    not it["hidden"] for it in self._items[kind] if it is not item):
+                raise ValueError(f"at least one of the {kind} must stay visible")
+            self._items[kind].remove(item)
         return copy.deepcopy(item)
+
+    def delete_style(self, item_id: str) -> dict[str, Any]:
+        return self.delete_item("styles", item_id)
 
     def set_order(self, kind: str, ids: list[str]) -> None:
         """Move the given ids to the front in that order; unlisted items keep their order."""
