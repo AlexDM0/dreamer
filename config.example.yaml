@@ -20,6 +20,7 @@ mock_delay_ms: 30        # mock backend only: simulated GPU time per frame
 model:
   base: stabilityai/sd-turbo
   t_index_list: [10, 30]  # lower first number = more imagination, higher = closer to the sketch
+  max_steps: 8            # most steps the admin page can pick; changing it rebuilds the engine once
   controlnet: thibaud/controlnet-sd21-scribble-diffusers  # null disables ControlNet
   controlnet_scale: 0.8
   line_polarity: white_on_black  # what the ControlNet expects: white_on_black | black_on_white

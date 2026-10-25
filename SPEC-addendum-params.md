@@ -17,6 +17,8 @@ All runtime-changeable without restart. Backend gets a new method:
 | line_threshold | int 10..120 (pixel distance from white that counts as a line) | server-side imaging.make_line_map |
 | line_polarity | white_on_black / black_on_white | server-side imaging |
 | line_dilate | int 0..3 px | server-side imaging |
+| init_mode | colors / sketch / blank (default colors) | server-side imaging: what img2img starts from. `colors` drops the strokes and keeps soft colour clouds of the coloured strokes (dark outlines add none), so the sketch guides the picture without being traced; the line map carries the outline. Ignored (sketch used) when ControlNet is off. |
+| init_blur | int 4..64 px (default 24) | Gaussian radius of the colour clouds in `colors` mode |
 | jpeg_quality | int 50..95 | server-side encode |
 
 The verified update_stream_params signature (Daydream fork wrapper.py) includes: num_inference_steps, guidance_scale, delta, t_index_list, seed, prompt_list, negative_prompt, controlnet_config, ipadapter_config, use_safety_checker, safety_checker_threshold, ... SD-Turbo runs with cfg_type="none", so guidance_scale/negative prompt are NOT exposed (no effect).

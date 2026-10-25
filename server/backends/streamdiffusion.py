@@ -47,6 +47,7 @@ class StreamDiffusionBackend:
         self._model_id = _model_attr(config, "base", "stabilityai/sd-turbo")
         self._controlnet_id = _model_attr(config, "controlnet", "thibaud/controlnet-sd21-scribble-diffusers")
         self._engine_dir = _model_attr(config, "engine_dir", "engines")
+        self._max_steps = max(1, int(_model_attr(config, "max_steps", 8)))
 
         # Live params (SPEC addendum); start from config.model defaults.
         self._t_index_list = [int(t) for t in _model_attr(config, "t_index_list", [10, 30])]
@@ -101,6 +102,9 @@ class StreamDiffusionBackend:
             height=self._size,
             frame_buffer_size=1,
             use_denoising_batch=True,
+            # UNet batch = steps; the engine's batch range caps the live step count.
+            min_batch_size=1,
+            max_batch_size=self._max_steps,
             cfg_type="none",
             use_tiny_vae=True,
             acceleration="tensorrt",

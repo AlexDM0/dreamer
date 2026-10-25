@@ -157,7 +157,9 @@ def test_latency_backend_is_primed_and_settled():
         rec.on_result(seq, jpeg, owner)
 
     backend = LaggyBackend()
-    worker = GpuWorker(backend, Mailbox(), on_result, rec.on_status, Config(backend="mock", size=64))
+    # Init from the sketch itself, so the stroke colour shows up on the line.
+    worker = GpuWorker(backend, Mailbox(), on_result, rec.on_status, Config(backend="mock", size=64),
+                       params=GenParams(init_mode="sketch"))
     worker.start()
     try:
         red, blue = sketch_png(size=64, color="red"), sketch_png(size=64, color="blue")

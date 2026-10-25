@@ -24,6 +24,9 @@ PIN_RE = re.compile(r"\d{4,12}")  # what the admin PIN pad can type
 class ModelConfig:
     base: str = "stabilityai/sd-turbo"
     t_index_list: list[int] = field(default_factory=lambda: [10, 30])
+    # Most denoising steps the admin page may pick. The TensorRT UNet engine is built for
+    # batch 1..max_steps; changing this builds a new engine on the next start (slow, once).
+    max_steps: int = 8
     controlnet: str | None = "thibaud/controlnet-sd21-scribble-diffusers"  # None disables
     controlnet_scale: float = 0.8
     line_polarity: str = "white_on_black"

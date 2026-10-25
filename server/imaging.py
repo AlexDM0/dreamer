@@ -18,6 +18,11 @@ DEFAULT_LINE_THRESHOLD = 40
 BLANK_THRESHOLD = 24
 
 POLARITIES = ("white_on_black", "black_on_white")
+INIT_MODES = ("colors", "sketch", "blank")
+# Chroma (max - min channel) a stroke needs to count as colour rather than an outline.
+COLOR_CHROMA = 48
+# Neutral ground the "colors" and "blank" init images start from.
+INIT_BACKGROUND = (240, 240, 240)
 
 
 def decode_sketch(png_bytes: bytes, size: int) -> Image.Image:
@@ -78,6 +83,45 @@ def make_line_map(
     if polarity == "black_on_white":
         mask = Image.eval(mask, lambda v: 255 - v)
     return mask.convert("RGB")
+
+
+def make_init_image(
+    sketch: Image.Image,
+    mode: str = "colors",
+    blur: int = 24,
+    threshold: int = DEFAULT_LINE_THRESHOLD,
+) -> Image.Image:
+    """The image img2img starts from, so the sketch guides the picture without being traced.
+
+    ``sketch`` passes the drawing through unchanged (strokes show up in the picture).
+    ``colors`` drops the strokes and keeps only where the child used which colour: each
+    coloured stroke becomes a soft cloud of its colour (Gaussian ``blur`` radius) on a
+    neutral ground. Dark, unsaturated strokes are outlines and add no colour; the line map
+    carries the outline instead. ``blank`` starts from the neutral ground alone.
+    """
+    if mode not in INIT_MODES:
+        raise ValueError(f"unknown init mode: {mode!r}")
+    rgb = sketch.convert("RGB")
+    if mode == "sketch":
+        return rgb
+    ground = Image.new("RGB", rgb.size, INIT_BACKGROUND)
+    if mode == "blank":
+        return ground
+    arr = np.asarray(rgb, dtype=np.uint8)
+    chroma = arr.max(axis=2).astype(np.int16) - arr.min(axis=2)
+    weight = _ink_mask(rgb, threshold) & (chroma >= COLOR_CHROMA)
+    if not weight.any():
+        return ground
+    radius = max(1, int(blur))
+    w8 = Image.fromarray(weight.astype(np.uint8) * 255, mode="L")
+    premul = Image.fromarray(arr * weight[..., None].astype(np.uint8), mode="RGB")
+    wsum = np.asarray(w8.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32) / 255.0
+    csum = np.asarray(premul.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32)
+    colour = csum / np.maximum(wsum, 1e-3)[..., None]
+    # Thin strokes spread thin: boost coverage so a coloured area reads as that colour.
+    alpha = np.clip(wsum * 4.0, 0.0, 1.0)[..., None]
+    out = colour * alpha + np.asarray(ground, dtype=np.float32) * (1.0 - alpha)
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), mode="RGB")
 
 
 def is_blank(sketch: Image.Image, threshold: int = BLANK_THRESHOLD) -> bool:
