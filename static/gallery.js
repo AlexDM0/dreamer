@@ -3,6 +3,11 @@
 // Kids can look and "Keep drawing"; there is no delete here (that is a grown-up thing).
 //
 // Events (CustomEvent detail): "continue" {artwork}, "close".
+//
+// A saved sketch.png is the transparent stroke layer; it is shown over the artwork's
+// `background` colour (older artworks: an opaque sketch on white).
+
+import { normaliseColor } from "./canvas.js";
 
 const PAGE = 24;
 const RELOAD_MAX = 100; // the server's page size limit
@@ -92,7 +97,9 @@ export class Gallery extends EventTarget {
     this.scroller.hidden = !!art;
     if (!art) return;
     this.$("#detail-picture").src = art.picture;
-    this.$("#detail-sketch").src = art.sketch;
+    const sketch = this.$("#detail-sketch");
+    sketch.style.backgroundColor = normaliseColor(art.background, "#ffffff");
+    sketch.src = art.sketch;
   }
 
   async _loadPage(first = false) {

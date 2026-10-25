@@ -561,6 +561,11 @@ function showArt(art) {
   const trashed = !!art.deleted_at;
   $("art-title-h").textContent = art.title || "Picture";
   $("art-picture").src = art.picture;
+  // sketch.png is the transparent stroke layer: show it over the drawing's paper colour
+  // (artworks from before layers have an opaque sketch on white).
+  const sketchBg = typeof art.background === "string" && /^#[0-9a-f]{6}$/i.test(art.background)
+    ? art.background : "#ffffff";
+  $("art-sketch").style.backgroundColor = sketchBg;
   $("art-sketch").src = art.sketch;
   $("art-meta").textContent = `Saved ${niceDate(art.created_at)}`
     + (art.updated_at !== art.created_at ? ` · changed ${niceDate(art.updated_at)}` : "")

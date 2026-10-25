@@ -4,6 +4,11 @@
 // Auto: the sketch shows instantly when a stroke starts; after the stroke ends it stays
 // until the PICTURE made from the final frame (net "final" flag, i.e. seq >= finalSeq)
 // arrives, then the picture cross-fades in (CSS opacity transition on .show-picture).
+//
+// The panes always have the drawing's own aspect (setDrawing): they are fitted (contain)
+// into the free area and never stretched. Split shows them side by side or stacked,
+// whichever gives the bigger panes (class split-stacked). The drawing's background colour
+// is the panes' background (--drawing-bg), behind the transparent stroke layer.
 
 export const MODES = ["auto", "sketch", "picture", "split"];
 const STORE_KEY = "dreamer.viewMode";
@@ -35,8 +40,9 @@ export class View extends EventTarget {
     this.stage = stage;
     this.picture = picture;
     this.pctx = picture.getContext("2d");
-    this.pctx.fillStyle = "#ffffff";
-    this.pctx.fillRect(0, 0, picture.width, picture.height);
+    this.aspect = picture.width / picture.height;
+    this.background = "#000000";
+    this._blankPicture();
     this.mode = "auto";
     this.userChose = false;   // a stored/explicit choice beats the server default
     this.hasPicture = false;
@@ -44,7 +50,6 @@ export class View extends EventTarget {
     this.pictures = 0;        // frames rendered, exposed as data-pictures for tests
     this._token = 0;          // newest decode wins
 
-    this._portrait = matchMedia("(orientation: portrait)");
     const stored = readStoredMode();
     if (stored) {
       this.userChose = true;
@@ -57,6 +62,28 @@ export class View extends EventTarget {
     if ("ResizeObserver" in window) new ResizeObserver(relayout).observe(wrap);
     window.addEventListener("resize", relayout);
     this.layout();
+  }
+
+  /**
+   * The drawing's size and paper changed. A new size starts an empty picture at that size
+   * (pictures come back at the drawing's size); a new colour only recolours the frame.
+   * @param {{width:number, height:number, background:string}} drawing
+   */
+  setDrawing({ width, height, background }) {
+    this.background = background;
+    this.stage.style.setProperty("--drawing-bg", background);
+    if (width !== this.picture.width || height !== this.picture.height) {
+      this.picture.width = width;
+      this.picture.height = height;
+      this.aspect = width / height;
+      this._token += 1; // a picture still decoding belongs to the old drawing
+      this.hasPicture = false;
+      this.stage.classList.remove("show-picture");
+      this._blankPicture();
+      this.layout();
+    } else if (!this.hasPicture) {
+      this._blankPicture();
+    }
   }
 
   /** Server default (ready / styles messages); ignored once the kid picked a mode. */
@@ -114,8 +141,13 @@ export class View extends EventTarget {
       }
     }
     if (token !== this._token) { cleanup(); return; } // a newer frame overtook this one
+    // Contain: a picture of another shape is letterboxed on the paper, never stretched.
     const { width, height } = this.picture;
-    this.pctx.drawImage(img, 0, 0, width, height);
+    const scale = Math.min(width / img.width, height / img.height);
+    const drawWidth = img.width * scale;
+    const drawHeight = img.height * scale;
+    if (Math.abs(drawWidth - width) > 0.5 || Math.abs(drawHeight - height) > 0.5) this._blankPicture();
+    this.pctx.drawImage(img, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
     cleanup();
     this.hasPicture = true;
     this.pictures += 1;
@@ -124,20 +156,39 @@ export class View extends EventTarget {
     this.dispatchEvent(new Event("picture"));
   }
 
-  /** Fit the stage into the wrap: one square, or two squares side by side / stacked. */
+  /** Fit the stage into the wrap at the drawing's aspect: one pane, or two panes side by
+   * side / stacked (whichever is bigger). */
   layout() {
-    const w = this.wrap.clientWidth;
-    const h = this.wrap.clientHeight;
-    if (!w || !h) return;
-    let side;
+    const wrapWidth = this.wrap.clientWidth;
+    const wrapHeight = this.wrap.clientHeight;
+    if (!wrapWidth || !wrapHeight) return;
+    const aspect = this.aspect;
+    // Largest pane of this aspect inside a box, leaving room for the frame and shadow.
+    const fit = (boxWidth, boxHeight) => {
+      const paneWidth = Math.max(0, Math.min(boxWidth - RING, (boxHeight - RING) * aspect));
+      return [paneWidth, paneWidth / aspect];
+    };
+    let pane;
+    let stacked = false;
     if (this.mode === "split") {
-      side = this._portrait.matches ? Math.min(w, (h - GAP) / 2) : Math.min((w - GAP) / 2, h);
+      const sideBySide = fit((wrapWidth - GAP) / 2, wrapHeight);
+      const onTop = fit(wrapWidth, (wrapHeight - GAP) / 2);
+      stacked = onTop[0] > sideBySide[0];
+      pane = stacked ? onTop : sideBySide;
     } else {
-      side = Math.min(w, h);
+      pane = fit(wrapWidth, wrapHeight);
     }
-    side -= RING; // leave room for the white frame drawn around each pane
-    this.stage.style.setProperty("--side", `${Math.max(64, Math.floor(side))}px`);
+    const paneWidth = Math.max(64, Math.floor(pane[0]));
+    const paneHeight = Math.max(Math.round(64 / aspect), Math.floor(paneWidth / aspect));
+    this.stage.style.setProperty("--pw", `${paneWidth}px`);
+    this.stage.style.setProperty("--ph", `${paneHeight}px`);
+    this.stage.classList.toggle("split-stacked", stacked);
     this.dispatchEvent(new Event("layout"));
+  }
+
+  _blankPicture() {
+    this.pctx.fillStyle = this.background;
+    this.pctx.fillRect(0, 0, this.picture.width, this.picture.height);
   }
 
   _apply(mode) {

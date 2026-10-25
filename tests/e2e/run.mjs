@@ -56,18 +56,37 @@ async function waitForHealth(base, proc, timeoutMs = 20000) {
   throw new Error("server did not become ready");
 }
 
-/** Count clearly non-white pixels on a canvas (sampled). */
+/** Count ink on a canvas (sampled). The sketch canvas is the transparent stroke layer
+ * (ink = opaque pixels); the picture counts pixels clearly unlike the drawing's paper. */
 function inkOn(page, selector) {
   return page.evaluate((sel) => {
     const c = document.querySelector(sel);
     const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    const bg = parseInt(window.dreamer.canvas.background.slice(1), 16);
+    const paper = [bg >> 16, (bg >> 8) & 255, bg & 255];
+    const layer = sel === "#sketch";
     let n = 0;
     for (let i = 0; i < d.length; i += 16) {
-      if (255 - Math.min(d[i], d[i + 1], d[i + 2]) > 40) n++;
+      if (layer) { if (d[i + 3] > 40) n++; continue; }
+      const far = Math.max(Math.abs(d[i] - paper[0]), Math.abs(d[i + 1] - paper[1]), Math.abs(d[i + 2] - paper[2]));
+      if (far > 40) n++;
     }
     return n;
   }, selector);
 }
+
+/** The paper picker is open: pick a paper colour. */
+async function pickPaper(page, color) {
+  await page.waitForSelector("#bg-picker:not([hidden])", { timeout: 5000 });
+  await page.click(`#bg-picker [data-bg="${color}"]`);
+  await page.waitForSelector("#bg-picker", { state: "hidden" });
+}
+
+const drawing = (page) => page.evaluate(() => ({
+  ...window.dreamer.canvas.info(),
+  width: window.dreamer.canvas.drawingWidth,
+  height: window.dreamer.canvas.drawingHeight,
+}));
 
 /** Draw a stroke through the given points (fractions of the canvas box) with the mouse. */
 async function stroke(page, points) {
@@ -125,6 +144,12 @@ async function main() {
     await kid.waitForSelector('#conn[data-state="ready"]', { timeout: 10000 });
     await kid.waitForSelector("#topics .pick[data-id]");
     check(true, "kid page connects and lists topics");
+    const first = await drawing(kid);
+    check(first.background === "#000000" && first.orientation === "landscape"
+          && first.width === 640 && first.height === 448,
+          "a first visit starts a black landscape drawing at the server's size");
+    check(await kid.evaluate(() => window.dreamer.toolbar.color === "#ffffff"),
+          "the pen starts white on the black paper");
     await shot(kid, "01-kid-empty");
 
     // Draw: a house-ish shape and a sun.
@@ -152,6 +177,32 @@ async function main() {
     await kid.waitForSelector('#conn[data-state="ready"]');
     check(await kid.$eval("#stage", (el) => el.classList.contains("mode-auto")),
           "view mode survives a reload");
+
+    // ----- paper colour: change it for the current drawing, strokes stay
+    await kid.click("#paper");
+    await pickPaper(kid, "#ffffff");
+    check((await drawing(kid)).background === "#ffffff", "the Paper button changes the background");
+    check(await kid.evaluate(() => window.dreamer.toolbar.color !== "#ffffff"),
+          "a white pen switches to a dark one on white paper");
+    check(await kid.$eval(".pane-sketch", (el) => getComputedStyle(el).backgroundColor === "rgb(255, 255, 255)"),
+          "the drawing shows over the new paper colour");
+
+    // ----- minimise: only the colours and the brush size stay
+    const stageBefore = await kid.$eval("#stage", (el) => el.getBoundingClientRect().width);
+    await kid.click("#minimise");
+    check(await kid.isHidden("#topics") && await kid.isHidden("#clear") && await kid.isHidden("#save")
+          && await kid.isVisible("#swatches") && await kid.isVisible("#brush-size"),
+          "minimised: only the colours and the brush size are left");
+    check(await kid.$eval("#stage", (el) => el.getBoundingClientRect().width) > stageBefore,
+          "minimised: the drawing gets bigger");
+    const box = await kid.$eval("#sketch", (el) => {
+      const r = el.getBoundingClientRect();
+      return Math.abs(r.width / r.height - 640 / 448) < 0.02;
+    });
+    check(box, "the drawing keeps its aspect");
+    await shot(kid, "03b-kid-minimised");
+    await kid.click("#expand");
+    check(await kid.isVisible("#topics"), "expand brings the tools back");
 
     // Draw again after the reload so there is something to clear.
     await stroke(kid, [[0.3, 0.3], [0.7, 0.7]]);
@@ -256,7 +307,10 @@ async function main() {
 
     await kid.click("#new-drawing");
     check(await kid.isHidden("#confirm"), "New drawing after saving needs no confirmation");
+    await shot(kid, "09b-kid-paper-picker");
+    await pickPaper(kid, "#1e2a5a");
     check((await inkOn(kid, "#sketch")) === 0, "New drawing empties the canvas");
+    check((await drawing(kid)).background === "#1e2a5a", "New drawing starts on the picked paper");
 
     await kid.click("#open-gallery");
     await kid.waitForSelector(`#gallery-grid .thumb[data-id="${art.id}"]`, { timeout: 10000 });
@@ -278,7 +332,7 @@ async function main() {
     await kid.waitForFunction(() => {
       const c = document.querySelector("#sketch");
       const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
-      for (let i = 0; i < d.length; i += 16) if (255 - Math.min(d[i], d[i + 1], d[i + 2]) > 40) return true;
+      for (let i = 3; i < d.length; i += 16) if (d[i] > 40) return true; // stroke layer ink
       return false;
     }, null, { timeout: 10000 });
     check((await inkOn(kid, "#sketch")) > 50, "Keep drawing restores the saved sketch on the canvas");
@@ -307,6 +361,7 @@ async function main() {
           "the restored draft still continues the saved artwork");
     await shot(kid, "12-kid-draft-restored");
     await kid.click("#hint-btn");
+    await pickPaper(kid, "#000000");
     check((await inkOn(kid, "#sketch")) === 0, "Start fresh empties the canvas");
     await kid.reload();
     await kid.waitForSelector('#conn[data-state="ready"]');

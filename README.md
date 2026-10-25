@@ -97,11 +97,14 @@ days in that browser; changing the PIN logs every device out. On the admin page 
 
 - **Now:** watch the live picture, the engine state and speed, and change the current
   topic, style and the iPad's starting view. Changes show on the iPad immediately.
-- **Picture controls:** creativity, steps, how closely the picture follows the lines,
-  the "surprise number" (seed), the safety filter, line detection and picture quality.
-  Changes apply live without a restart and are saved in `data/params.json`. If the
-  engine cannot apply a change (for example a step count the TensorRT engine was not
-  built for), the previous setting comes back and the page shows the error.
+- **Picture controls:** creativity, steps (1 to 8), how closely the picture follows the
+  lines, the "surprise number" (seed), the safety filter, line detection, the starting
+  image and picture quality. Changes apply live without a restart and are saved in
+  `data/params.json`. If the engine cannot apply a change, the previous setting comes
+  back and the page shows the error. Each control has an **ⓘ** button. It opens
+  `/static/help.html` in a new tab, showing that control with real example pictures
+  rendered on your GPU. Re-render them after changing models or defaults with
+  `.venv\Scripts\python.exe tools\make_help_images.py`.
 - **Styles:** hide or show, reorder, rename or re-emoji any style. You can also add your
   own style with a short description, up to 120 characters, such as "rainbow colors,
   shiny stickers". The safety tail is always added after it.
@@ -110,6 +113,20 @@ days in that browser; changing the PIN logs every device out. On the admin page 
 - **Topics:** hide or show and reorder.
 
 Settings are saved in `data/styles.json`.
+
+## Drawing on the iPad
+
+- **Paper:** every drawing has a background colour, black by default, kept as its own
+  layer. **New** asks for the paper colour first. **Paper** changes it at any time and
+  keeps the strokes. The eraser only removes strokes. The paper colour also sets the mood
+  of the picture: black paper gives night scenes.
+- **Shape:** drawings have the iPad's shape (640×448), not a square, and take the
+  orientation the iPad has when the drawing is started (portrait drawings are 448×640).
+  Turning the iPad mid-drawing keeps the drawing upright and fits it to the screen.
+  Switching between a landscape and a portrait drawing makes the PC rebuild its picture
+  pipeline once, which takes about 8 seconds.
+- **Bigger drawing:** the minimise button shrinks the toolbar to just the colours and the
+  brush size.
 
 ## Gallery
 

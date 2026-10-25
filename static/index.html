@@ -55,19 +55,28 @@
           </button>
         </div>
 
+        <!-- Only shown while the tools are tucked away: brings them all back. -->
+        <button type="button" class="tool-toggle" id="expand" aria-label="Show all tools" aria-controls="picks" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 3.5h6v6M9.5 20.5h-6v-6M20.5 3.5l-6.5 6.5M3.5 20.5l6.5-6.5"/></svg>
+        </button>
+
       </div>
 
-      <div class="row picks">
+      <div class="row picks" id="picks">
         <div class="pick-row" id="topics" aria-label="Pick a world"></div>
         <div class="pick-row" id="styles" aria-label="Pick a style"></div>
+        <!-- Tuck the tools away: only the colours and the brush size stay. -->
+        <button type="button" class="tool-toggle" id="minimise" aria-label="Make the drawing bigger" aria-controls="picks" aria-expanded="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M3.5 20.5L10 14"/></svg>
+        </button>
       </div>
     </header>
 
     <div class="work">
       <main class="stage-wrap" id="stage-wrap">
         <div class="stage mode-auto" id="stage">
-          <div class="pane pane-picture"><canvas id="picture" width="512" height="512" aria-label="Your dream picture"></canvas></div>
-          <div class="pane pane-sketch"><canvas id="sketch" width="512" height="512" aria-label="Drawing area"></canvas></div>
+          <div class="pane pane-picture"><canvas id="picture" width="640" height="448" aria-label="Your dream picture"></canvas></div>
+          <div class="pane pane-sketch"><canvas id="sketch" width="640" height="448" aria-label="Drawing area"></canvas></div>
         </div>
         <div class="hint" id="hint" role="status" aria-live="polite" hidden>
           <span class="hint-text" id="hint-text"></span>
@@ -87,6 +96,10 @@
         <button type="button" class="side-btn new" id="new-drawing" aria-label="Start a new drawing">
           <span class="disc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5l4 4v13H6zM14.5 3.5v4h4M12.25 10.5v7M8.75 14h7"/></svg></span>
           <span class="side-label">New</span>
+        </button>
+        <button type="button" class="side-btn paper" id="paper" aria-label="Change the paper colour" aria-haspopup="dialog">
+          <span class="disc"><span class="paper-chip" id="paper-chip" aria-hidden="true"></span></span>
+          <span class="side-label">Paper</span>
         </button>
       </nav>
     </div>
@@ -142,6 +155,17 @@
           <button type="button" class="btn ghost" id="confirm-no">Keep this one</button>
           <button type="button" class="btn big" id="confirm-yes">Start new</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Paper colour: picked for a new drawing, or changed any time (strokes stay). -->
+    <div class="overlay" id="bg-picker" hidden>
+      <div class="card paper-card" role="dialog" aria-modal="true" aria-labelledby="bg-title">
+        <button type="button" class="card-close" id="bg-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <p id="bg-title">Pick your paper</p>
+        <div class="paper-grid" id="bg-grid" role="radiogroup" aria-labelledby="bg-title"></div>
       </div>
     </div>
 

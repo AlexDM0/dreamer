@@ -1,7 +1,8 @@
 // Dreamer kid page: wires the toolbar, drawing canvas, view and network together.
-import { DrawingCanvas } from "./canvas.js";
+import { DEFAULT_BACKGROUND, DrawingCanvas, deviceOrientation } from "./canvas.js";
 import { Gallery } from "./gallery.js";
 import { Net } from "./net.js";
+import { PaperPicker } from "./paper.js";
 import { Toolbar } from "./toolbar.js";
 import { View } from "./view.js";
 
@@ -30,13 +31,27 @@ const toolbar = new Toolbar();
 const view = new View($("#stage-wrap"), $("#stage"), $("#picture"));
 const net = new Net(canvas);
 const gallery = new Gallery();
+const picker = new PaperPicker();
+
+// The drawing's size and paper: the view frames it, the toolbar keeps the pen visible.
+const showDrawing = (drawing) => {
+  view.setDrawing(drawing);
+  toolbar.setBackground(drawing.background);
+  toolbar.setScale(canvas.displayScale());
+};
+canvas.addEventListener("drawing", (e) => showDrawing(e.detail));
+showDrawing({ width: canvas.drawingWidth, height: canvas.drawingHeight, background: canvas.background });
 
 canvas.setColor(toolbar.color);
+canvas.setEraser(toolbar.eraser);
 canvas.setWidth(toolbar.width);
 toolbar.setMode(view.mode);
 
 // Toolbar -> canvas / net / view
-toolbar.addEventListener("color", (e) => canvas.setColor(e.detail.color));
+toolbar.addEventListener("color", (e) => {
+  canvas.setColor(e.detail.color);
+  canvas.setEraser(e.detail.eraser);
+});
 toolbar.addEventListener("width", (e) => canvas.setWidth(e.detail.width));
 // Clear also drops the autosaved draft, so an unsaved drawing is asked about first (the
 // big red button is easy to hit by accident).
@@ -107,9 +122,15 @@ net.addEventListener("status", (e) => {
 net.addEventListener("ready", (e) => {
   const m = e.detail;
   if (m.t === "ready") {
+    // The server's drawing sizes, before the "canvas" message and the first sketch.
+    if (m.canvas) canvas.setSizes(m.canvas);
     // Only on the first connection after loading the page: bring back the drawing the
-    // kid left (a reconnect keeps what is on the canvas).
-    if (!firstReadyDone && m.draft && !drewSomething) restoreDraft(m.draft);
+    // kid left (a reconnect keeps what is on the canvas). Without a draft the kid starts
+    // on black paper right away; the Paper button wiggles so it is easy to find.
+    if (!firstReadyDone && !drewSomething) {
+      if (m.draft) restoreDraft(m.draft);
+      else nudgePaper();
+    }
     firstReadyDone = true;
     if (gallery.isOpen && gallery.failed) gallery.update(); // back online: try again
   }
@@ -178,11 +199,12 @@ function loadImage(url) {
  * once the image has loaded: true means the canvas must not be replaced after all.
  * `loaded()` runs once the sketch is on the canvas, before it is sent (it tells the
  * server which drawing the canvas holds now). */
-async function loadSketch(url, unless = () => false, loaded = () => {}) {
+async function loadSketch(url, unless = () => false, loaded = () => {}, meta = {}) {
   const img = await loadImage(url);
   if (unless()) return false;
-  canvas.loadImage(img);
+  canvas.loadDrawing(img, meta); // its own orientation and paper
   net.dropOlderPictures();
+  net.sendCanvas();
   loaded();
   view.strokeStart(); // show the sketch now; Auto fades to the picture when it arrives
   view.strokeEnd();
@@ -194,16 +216,23 @@ async function restoreDraft(draft) {
   try {
     // The kid may already be drawing while the draft loads: never paint over that.
     if (!await loadSketch(draft.sketch, () => drewSomething,
-                          () => net.restored(draft.id, draft.source))) return;
+                          () => net.restored(draft.id, draft.source),
+                          { background: draft.background, orientation: draft.orientation })) return;
   } catch {
     return; // the draft went away meanwhile: just start with an empty canvas
   }
   unsaved = true; // a draft is not in the gallery yet
-  showHint("Welcome back! Here is your drawing.", { label: "Start fresh", onClick: startFresh }, 7000);
+  showHint("Welcome back! Here is your drawing.", { label: "Start fresh", onClick: pickNewPaper }, 7000);
 }
 
-function startFresh() {
-  canvas.clear();
+/** A new drawing starts with picking its paper; it picks up the screen's orientation. */
+function pickNewPaper() {
+  hideHint();
+  picker.open("new", DEFAULT_BACKGROUND);
+}
+
+function startFresh(background = DEFAULT_BACKGROUND) {
+  canvas.startDrawing({ orientation: deviceOrientation(), background });
   view.strokeStart();
   view.strokeEnd();
   net.newDrawing();
@@ -228,8 +257,52 @@ function confirmThen(fn, title, yes) {
 }
 
 $("#new-drawing").addEventListener("click", () => {
-  confirmThen(() => { hideHint(); startFresh(); }, "Start a new drawing?", "Start new");
+  confirmThen(pickNewPaper, "Start a new drawing?", "Start new");
 });
+
+// ---- Paper (the background layer) ----
+
+let nudgeTimer = 0;
+function nudgePaper() {
+  const button = $("#paper");
+  button.classList.add("nudge");
+  clearTimeout(nudgeTimer);
+  nudgeTimer = setTimeout(() => button.classList.remove("nudge"), 6000);
+}
+
+function changePaper(color) {
+  if (color === canvas.background) return;
+  canvas.setBackground(color); // the strokes stay
+  net.sendCanvas();
+  net.sendNow();
+  drewSomething = true; // a late draft must not replace the paper the kid chose
+  if (!canvas.isBlank()) unsaved = true;
+}
+
+$("#paper").addEventListener("click", () => {
+  $("#paper").classList.remove("nudge");
+  picker.open("change", canvas.background);
+});
+picker.addEventListener("pick", (e) => {
+  $("#paper").classList.remove("nudge");
+  if (e.detail.purpose === "new") startFresh(e.detail.color);
+  else changePaper(e.detail.color);
+});
+
+// ---- Minimise: only the colours and the brush size stay, the drawing gets the room ----
+
+const MINI_KEY = "dreamer.minimised";
+function setMinimised(on, store = true) {
+  $(".app").classList.toggle("minimised", on);
+  for (const id of ["#minimise", "#expand"]) $(id).setAttribute("aria-expanded", String(!on));
+  if (store) {
+    try { localStorage.setItem(MINI_KEY, on ? "1" : "0"); } catch { /* private mode etc. */ }
+  }
+  view.layout();
+}
+$("#minimise").addEventListener("click", () => setMinimised(true));
+$("#expand").addEventListener("click", () => setMinimised(false));
+try { if (localStorage.getItem(MINI_KEY) === "1") setMinimised(true, false); } catch { /* none stored */ }
 
 function waitForFinalPicture(timeoutMs = 3000) {
   return new Promise((resolve) => {
@@ -350,7 +423,8 @@ net.addEventListener("continue", async (e) => {
   if (m.topic) toolbar.select("topics", m.topic);
   if (m.style) toolbar.select("styles", m.style);
   try {
-    await loadSketch(m.sketch, undefined, () => net.continuing(m.id));
+    await loadSketch(m.sketch, undefined, () => net.continuing(m.id),
+                     { background: m.background, orientation: m.orientation });
   } catch {
     // Nothing changed: the canvas and the server still have the previous drawing.
     showHint("Could not open that picture. Try again!");
@@ -364,4 +438,4 @@ net.addEventListener("continue", async (e) => {
 net.start();
 
 // Handy for debugging and end-to-end tests.
-window.dreamer = { canvas, toolbar, view, net, gallery };
+window.dreamer = { canvas, toolbar, view, net, gallery, picker };

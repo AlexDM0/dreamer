@@ -6,13 +6,17 @@
 //   "status"   {state: "busy"|"ready"|"error", msg}
 //   "picture"  {seq, jpeg: ArrayBuffer, final: boolean}
 //   "saved"    {artwork}            a Save went through (SPEC-addendum-gallery)
-//   "continue" {id, sketch, topic, style}  load this saved sketch to keep drawing it
+//   "continue" {id, sketch, topic, style, background, orientation}  keep drawing this one
 //   "gallery"  {}                   saved pictures changed (e.g. the parent deleted one)
 //
 // Flow control: at most one SKETCH in flight. A frame is in flight until its PICTURE
 // (any seq >= it) arrives or 2 s pass. sendNow() asks for a "final" frame of the current
 // drawing; if a frame is in flight it is queued (exactly one pending final) and sent as
 // soon as the slot frees. `finalSeq` is the seq of the newest final frame.
+//
+// Drawing layers: sketches are the transparent stroke layer only. The paper colour and
+// orientation go separately as {"t":"canvas"} (sendCanvas): right after "ready", on a new
+// drawing, and whenever the page changes them.
 
 const SKETCH = 0x01;
 const PICTURE = 0x02;
@@ -27,7 +31,8 @@ const FINAL_RETRIES = 3;     // resend an unanswered final frame at most this ma
 
 export class Net extends EventTarget {
   /**
-   * @param {{isDirty(): boolean, clearDirty(): void, toBlob(): Promise<Blob>}} canvas
+   * @param {{isDirty(): boolean, clearDirty(): void, toBlob(): Promise<Blob>,
+   *          info(): {background: string, orientation: string}}} canvas
    * @param {string} [url] defaults to ws(s)://<host>/ws
    */
   constructor(canvas, url) {
@@ -83,6 +88,12 @@ export class Net extends EventTarget {
     this.sendNow();
   }
 
+  /** Tell the server the drawing's background colour and orientation. */
+  sendCanvas() {
+    const { background, orientation } = this.canvas.info();
+    return this._sendJson({ t: "canvas", background, orientation });
+  }
+
   /** Save what is on screen as an artwork; the server answers "saved" or an error status. */
   save() { return this._sendJson({ t: "save" }); }
 
@@ -91,6 +102,7 @@ export class Net extends EventTarget {
     this.floorSeq = this.seq + 1;
     this.continuingId = null;
     this._sendJson({ t: "new" });
+    this.sendCanvas();
     this.sendNow();
   }
 
@@ -214,10 +226,11 @@ export class Net extends EventTarget {
     switch (msg.t) {
       case "ready":
       case "styles":
-        this._emit("ready", msg);
+        this._emit("ready", msg); // the page applies msg.canvas sizes before we go on
         if (msg.t === "ready") {
           this._ready = true;
-          this.sendNow(); // refresh the picture after (re)connecting
+          this.sendCanvas(); // before the first sketch on this socket
+          this.sendNow();    // refresh the picture after (re)connecting
         }
         break;
       case "status":

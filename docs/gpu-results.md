@@ -81,6 +81,32 @@ Without the safety checker (`--no-safety`), each frame is about 4 ms faster: 32.
   [img/gpu-live-settle.png](img/gpu-live-settle.png). These were made before the change
   above, so the lines are still visible in them.
 
+## Update: iPad-shaped pictures, paper colour, up to 8 steps
+
+Measured later the same day, after these changes: pictures are 640×448 (portrait 448×640)
+instead of 512×512, the engines are built for 1 to 8 steps (`model.max_steps: 8`), the start
+image is `init_mode: colors` on the paper colour, and the defaults are ControlNet 0.55 and
+t_index `[6, 26]`. Backend time per picture with ControlNet, from `tools/make_help_images.py`:
+
+| steps | ms | pictures/s |
+|---|---|---|
+| 1 | 49 | 20 |
+| 2 (default) | 67 | 15 |
+| 4 | 108 | 9 |
+| 8 | 186 | 5 |
+
+- **GPU memory** is now about 9.6 GB of the RTX 3080's 10 GB in use (including the desktop's
+  ~0.85 GB). It was ~7.9 GB with 1 to 4 steps at 512×512, and the extra comes from the
+  1-to-8 batch range and the larger pictures. It stayed flat over repeated orientation switches,
+  so there is no leak, but there is little headroom left. If you see CUDA out-of-memory errors,
+  set `model.max_steps: 4` (one engine rebuild).
+- **Orientation switch** (a landscape drawing after a portrait one, or the other way round):
+  the wrapper is rebuilt at the new size in about 8 s. The engines have dynamic shapes, so they
+  are reused, not rebuilt. Tested landscape → portrait → landscape → portrait → landscape.
+- **Paper colour carries into the picture:** black paper gives a night scene, blue paper the
+  deep sea, yellow paper a sunny one. See the help page (`/static/help.html`) for every control,
+  rendered on this PC.
+
 ## Problems found and fixed
 
 1. **`diffusers_ipadapter` missing.** The fork's TensorRT export imports it even without

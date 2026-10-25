@@ -1,11 +1,14 @@
 // Toolbar UI: colours, brush size, clear, view modes, topic/style rows, connection dot.
 // Pure UI: it renders state it is given and emits events; app.js wires it up.
 //
-// Events (CustomEvent detail): "color" {color}, "width" {width}, "clear",
+// Events (CustomEvent detail): "color" {color, eraser}, "width" {width}, "clear",
 // "mode" {mode}, "topic" {id}, "style" {id}.
+
+import { isDark, tooClose } from "./paper.js";
 
 const SWATCHES = [
   { color: "#22223b", name: "Black" },
+  { color: "#ffffff", name: "White" },
   { color: "#ff4d5e", name: "Red" },
   { color: "#ff9f1c", name: "Orange" },
   { color: "#ffd23f", name: "Yellow" },
@@ -13,7 +16,7 @@ const SWATCHES = [
   { color: "#2fa8ff", name: "Blue" },
   { color: "#8b5cf6", name: "Purple" },
   { color: "#ff7eb6", name: "Pink" },
-  { color: "#ffffff", name: "Eraser", eraser: true },
+  { color: "", name: "Eraser", eraser: true },
 ];
 
 const CONN_LABELS = {
@@ -40,6 +43,8 @@ export class Toolbar extends EventTarget {
     super();
     this.$ = (sel) => root.querySelector(sel);
     this.color = SWATCHES[0].color;
+    this.eraser = false;
+    this.background = "#000000"; // the drawing's paper, for the pen contrast and preview
     this.width = Number(this.$("#brush-size").value);
     this.scale = 1; // CSS px per canvas px, for the brush preview
     this.topic = null;
@@ -70,6 +75,23 @@ export class Toolbar extends EventTarget {
     const label = CONN_LABELS[state] || state;
     dot.title = detail ? `${label} (${detail})` : label;
     dot.setAttribute("aria-label", label);
+  }
+
+  /**
+   * The drawing's paper colour changed (or a new drawing started). If the pen would
+   * (nearly) vanish on it, switch to white on dark paper or black on light paper.
+   */
+  setBackground(color) {
+    this.background = color;
+    const chip = this.$("#paper-chip");
+    if (chip) chip.style.setProperty("--c", color);
+    if (!this.eraser && tooClose(this.color, color)) {
+      const contrast = isDark(color) ? "#ffffff" : SWATCHES[0].color;
+      const swatch = this.$(`#swatches .swatch[data-color="${contrast}"]`);
+      this._pickColor(contrast, swatch, false);
+    } else {
+      this._updatePreview();
+    }
   }
 
   /** Display scale of the drawing canvas, so the brush preview matches what you draw. */
@@ -145,14 +167,17 @@ export class Toolbar extends EventTarget {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "swatch" + (s.eraser ? " eraser" : "");
-      b.style.setProperty("--c", s.color);
-      b.dataset.color = s.color;
+      if (!s.eraser) {
+        b.style.setProperty("--c", s.color);
+        b.dataset.color = s.color;
+        b.classList.toggle("light", isLight(s.color)); // white needs an edge on white
+      }
       b.setAttribute("role", "radio");
       b.setAttribute("aria-label", s.name);
       if (s.eraser) {
         b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 19h11M5.5 15.5l8-8a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 19H8.5l-3-3a.7.7 0 0 1 0-.5zM9.5 11.5l5 5"/></svg>';
       }
-      b.addEventListener("click", () => this._pickColor(s.color, b));
+      b.addEventListener("click", () => this._pickColor(s.color, b, s.eraser));
       box.append(b);
     }
 
@@ -174,15 +199,16 @@ export class Toolbar extends EventTarget {
     this._pickColor(this.color, box.querySelector(".swatch"));
   }
 
-  _pickColor(color, el) {
-    this.color = color;
+  _pickColor(color, el, eraser = false) {
+    this.eraser = !!eraser;
+    if (!eraser) this.color = color;
     for (const s of this.$("#swatches").querySelectorAll(".swatch")) {
       const on = s === el;
       s.classList.toggle("active", on);
       if (s.getAttribute("role") === "radio") s.setAttribute("aria-checked", String(on));
     }
     this._updatePreview();
-    this._emit("color", { color });
+    this._emit("color", { color: this.color, eraser: this.eraser });
   }
 
   _bindBrush() {
@@ -200,8 +226,10 @@ export class Toolbar extends EventTarget {
     const dot = this.$("#brush-preview span");
     const d = Math.max(4, Math.min(44, this.width * this.scale));
     dot.style.width = dot.style.height = `${d}px`;
-    dot.style.background = this.color;
-    dot.classList.toggle("light", isLight(this.color));
+    // The eraser previews as a dot of paper (it uncovers the background).
+    const shown = this.eraser ? this.background : this.color;
+    dot.style.background = shown;
+    dot.classList.toggle("light", this.eraser || isLight(shown));
     const range = this.$("#brush-size");
     const pct = ((this.width - range.min) / (range.max - range.min)) * 100;
     range.style.setProperty("--fill", `${pct}%`);

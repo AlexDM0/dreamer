@@ -162,6 +162,19 @@ The kid `#conn` (a badge on the logo mark, with a `--surface` ring) and the admi
 (pulsing), off/offline → `--danger`, replaced → `--border-strong`. The admin pill is a
 `--glass` label over the live picture.
 
+### Paper picker and minimised toolbar
+The paper picker (`static/paper.js`) is a raised sheet with 8 big round swatches; the
+current paper has the accent ring. The paper colours, like the pen colours, are content and
+live in JS, not in `theme.css`. Minimised, the kid toolbar keeps only the colour swatches,
+the brush slider and the expand button; the drawing then takes all free space at its own
+aspect ratio.
+
+### Help page
+`static/help.html` explains each admin picture control with real rendered examples
+(`static/help/`, made by `tools/make_help_images.py`). The default value's figure has the
+accent border and a "default" badge. The admin page's ⓘ links (`.params .info`) open it
+at the control's anchor in a new tab.
+
 ### Empty states
 `.empty-icon` is an 88px `--accent-soft` circle with a line icon, followed by an
 `--text-xl` semibold line and an optional muted sub-line.

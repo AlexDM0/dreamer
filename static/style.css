@@ -34,7 +34,7 @@ svg { display: block; }
 
 /* One icon style everywhere: 24px viewBox, round line art. */
 .btn svg, .tile svg, .mode svg, .side-btn svg, .row-icon svg, .swatch.eraser svg,
-.empty-icon svg, .card-icon svg, .detail-pics figcaption svg {
+.empty-icon svg, .card-icon svg, .detail-pics figcaption svg, .tool-toggle svg, .card-close svg {
   fill: none;
   stroke: currentColor;
   stroke-width: var(--icon-stroke-bold);
@@ -102,6 +102,7 @@ svg { display: block; }
   box-shadow: var(--inner-edge);
   transition: transform var(--dur-fast) var(--ease-spring), box-shadow var(--dur-fast) var(--ease-out);
 }
+.swatch.light { box-shadow: inset 0 0 0 1.5px var(--border-strong); }
 .swatch:active { transform: scale(0.9); }
 .swatch.active {
   transform: scale(1.04);
@@ -335,9 +336,28 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 /* Topic / style rows: chips in a sunken well. */
 .row.picks {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
   gap: var(--space-2);
 }
+
+/* Minimise / expand: a round neutral button. */
+.tool-toggle {
+  flex: none;
+  width: var(--touch-kid-lg);
+  height: var(--touch-kid-lg);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease-spring), background-color var(--dur-fast);
+}
+.tool-toggle:active { transform: scale(0.92); background: var(--surface-pressed); }
+.tool-toggle svg { width: 26px; height: 26px; }
+#expand { display: none; }
 
 .pick-row {
   display: flex;
@@ -435,11 +455,14 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   justify-content: center;
 }
 
+/* --pw / --ph: one pane at the drawing's own aspect, fitted by view.js. --drawing-bg is
+   the drawing's paper colour (child content, set by view.js), behind the stroke layer. */
 .stage {
-  --side: 400px;
+  --pw: 400px;
+  --ph: 280px;
   position: relative;
-  width: var(--side);
-  height: var(--side);
+  width: var(--pw);
+  height: var(--ph);
   flex: none;
 }
 
@@ -448,7 +471,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   inset: 0;
   border-radius: var(--radius-xl);
   overflow: hidden;
-  background: var(--canvas);
+  background: var(--drawing-bg, var(--canvas));
   box-shadow: 0 0 0 1px var(--border), var(--shadow-3);
 }
 .pane canvas {
@@ -470,14 +493,20 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 /* Picture only: the invisible sketch canvas still takes the strokes. */
 .mode-picture .pane-sketch { opacity: 0; box-shadow: none; }
 
-/* Split: side by side (landscape) or stacked (portrait). */
+/* Split: side by side, or stacked (.split-stacked) when that gives bigger panes. */
 .mode-split {
-  width: calc(var(--side) * 2 + var(--gap));
+  width: calc(var(--pw) * 2 + var(--gap));
   display: grid;
-  grid-template-columns: var(--side) var(--side);
+  grid-template-columns: var(--pw) var(--pw);
   gap: var(--gap);
 }
-.mode-split .pane { position: relative; inset: auto; width: var(--side); height: var(--side); }
+.mode-split.split-stacked {
+  width: var(--pw);
+  height: calc(var(--ph) * 2 + var(--gap));
+  grid-template-columns: var(--pw);
+  grid-template-rows: var(--ph) var(--ph);
+}
+.mode-split .pane { position: relative; inset: auto; width: var(--pw); height: var(--ph); }
 .mode-split .pane-sketch { order: 0; }
 .mode-split .pane-picture { order: 1; }
 /* Corner badge: a pencil on the drawing, a sparkle on the picture (masked line icons). */
@@ -523,13 +552,8 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .brush { flex: 1; max-width: 340px; }
   .brush input[type="range"] { flex: 1; width: auto; min-width: 90px; }
   .modes { margin-left: auto; }
-  .row.picks { grid-template-columns: 1fr; }
-  .mode-split {
-    width: var(--side);
-    height: calc(var(--side) * 2 + var(--gap));
-    grid-template-columns: var(--side);
-    grid-template-rows: var(--side) var(--side);
-  }
+  .row.picks { grid-template-columns: 1fr auto; }
+  .row.picks #minimise { grid-column: 2; grid-row: 1 / span 2; }
 }
 
 /* Landscape iPads up to ~1180 px wide (iPad mini, 10.2", Air at 1024-1180): the tools row
@@ -548,6 +572,15 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .mode { width: 49px; height: 48px; font-size: 11px; border-radius: 15px; }
   .stage-wrap { margin: 10px var(--space-3) var(--space-3); }
   .side { padding-right: var(--space-2); }
+}
+
+/* 9.7" iPads (1024 px landscape): a little tighter still so the tools stay on one row. */
+@media (orientation: landscape) and (max-width: 1060px) and (min-width: 701px) {
+  .toolbar { padding: 6px; }
+  .row.tools { gap: 4px; }
+  .swatches { gap: 2px; }
+  .brush input[type="range"] { width: 56px; }
+  .mode { width: var(--touch-kid); }
 }
 
 /* Narrow screens (phones, split-view iPad): tighter toolbar. */
@@ -665,7 +698,8 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .tile { width: 52px; height: 48px; }
   .modes { margin-left: 0; }
   .mode { width: 46px; height: 46px; border-radius: 14px; }
-  .row.picks { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .row.picks { grid-template-columns: 1fr 1fr auto; gap: 6px; }
+  .row.picks #minimise { grid-row: auto; grid-column: auto; width: var(--touch-kid); height: var(--touch-kid); }
   .pick { height: 42px; font-size: var(--text-md); padding: 0 var(--space-3) 0 6px; }
   .pick .emoji { font-size: 22px; }
   .row-icon { width: 42px; height: 42px; }
@@ -678,8 +712,9 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .side-btn svg { width: 24px; height: 24px; }
   .side-btn.save svg { width: 28px; height: 28px; }
 }
-/* Very narrow phones: the pills become plain round buttons (they keep their aria-label). */
-@media (orientation: portrait) and (max-width: 380px) {
+/* Phones: four pills don't fit, so they become plain round buttons (they keep their
+   aria-label). */
+@media (orientation: portrait) and (max-width: 480px) {
   .side { gap: 28px; }
   .side-btn { padding: 0; background: transparent; box-shadow: none; }
   .side-btn .disc { background: var(--surface); box-shadow: var(--shadow-2), 0 0 0 1px var(--border); }
@@ -716,9 +751,64 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .side { gap: var(--space-3); padding-right: var(--space-2); }
   .side-btn { width: 56px; }
   .side-label { display: none; }
+  .tool-toggle { width: 40px; height: 40px; }
+  .tool-toggle svg { width: 22px; height: 22px; }
   .side-btn .disc, .side-btn.save .disc { width: 50px; height: 50px; }
   .side-btn svg { width: 24px; height: 24px; }
   .side-btn.save svg { width: 28px; height: 28px; }
+}
+
+/* Paper: the disc shows the drawing's paper colour as a little sheet (child content in
+   --c, set by toolbar.js). It wiggles after the first load so it is easy to find. */
+.paper-chip {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-xs);
+  background: var(--c, var(--canvas));
+  box-shadow: var(--inner-edge), 0 0 0 1px var(--border-strong);
+  transform: rotate(-8deg);
+}
+.side-btn.paper.nudge .disc {
+  animation: nudge 1.2s var(--ease-in-out) 4;
+  box-shadow: var(--shadow-2), 0 0 0 3px var(--accent);
+}
+@keyframes nudge {
+  20% { transform: rotate(-9deg) scale(1.08); }
+  40% { transform: rotate(7deg) scale(1.08); }
+  60% { transform: rotate(0) scale(1); }
+}
+@media (orientation: portrait) and (max-width: 700px) {
+  .paper-chip { width: 26px; height: 26px; }
+}
+
+/* ---------- Minimised: only the colours and the brush size, in one floating pill ---------- */
+
+.app.minimised .toolbar {
+  align-self: center;
+  max-width: calc(100% - 2 * var(--space-2));
+  margin: var(--space-2) auto 0;
+  padding: 4px var(--space-2);
+  border-radius: var(--radius-pill);
+}
+.app.minimised .row.tools { flex-wrap: nowrap; justify-content: center; gap: var(--space-2); }
+.app.minimised .brand,
+.app.minimised .tile.clear,
+.app.minimised .modes,
+.app.minimised .row.picks,
+.app.minimised .side { display: none; }
+.app.minimised #expand { display: grid; }
+.app.minimised .swatches { flex: 0 1 auto; justify-content: flex-start; }
+.app.minimised .brush { flex: 0 1 auto; }
+.app.minimised .stage-wrap { margin: var(--space-2); }
+@media (orientation: portrait) {
+  .app.minimised .brush input[type="range"] { flex: 0 1 auto; width: 104px; }
+}
+@media (orientation: portrait) and (max-width: 700px) {
+  .app.minimised .row.tools { flex-wrap: wrap; }
+  .app.minimised .swatches { flex: 1 1 calc(100% - 60px); }
+  .app.minimised .brush { flex: 1 1 auto; }
+  .app.minimised .toolbar { border-radius: var(--radius-lg); }
+  .app.minimised #expand { width: var(--touch-kid); height: var(--touch-kid); }
 }
 
 /* The saved picture flying into the Gallery button, and the star burst. */
@@ -834,17 +924,17 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 
 .thumb {
   position: relative;
-  aspect-ratio: 1;
+  aspect-ratio: 10 / 7; /* most drawings are landscape; others are shown whole (contain) */
   padding: 0;
   border: 0;
   border-radius: var(--radius-xl);
   overflow: hidden;
-  background: var(--canvas);
+  background: var(--surface-sunken);
   box-shadow: 0 0 0 1px var(--border), var(--shadow-2);
   transition: transform var(--dur-fast) var(--ease-spring), box-shadow var(--dur-fast);
 }
 .thumb:active { transform: scale(0.96); box-shadow: 0 0 0 1px var(--border), var(--shadow-1); }
-.thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .thumb-title {
   position: absolute;
   left: var(--space-2);
@@ -909,15 +999,22 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   padding: 4px var(--space-5) var(--space-5);
 }
 .detail[hidden] { display: none; }
+/* --pic-w / --pic-h: the largest box each image may use; the image keeps its own aspect
+   inside it, so the sketch's paper colour (inline background) covers just the drawing. */
 .detail-pics {
-  --pic: min(calc((100vw - 80px) / 2), calc(100vh - 200px));
+  --pic-w: calc((100vw - 80px) / 2);
+  --pic-h: calc(100vh - 200px);
   display: flex;
+  align-items: center;
   gap: var(--space-6);
 }
 .detail-pics figure { margin: 0; display: grid; gap: var(--space-3); justify-items: center; }
 .detail-pics img {
-  width: var(--pic);
-  height: var(--pic);
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: var(--pic-w);
+  max-height: var(--pic-h);
   border-radius: var(--radius-xl);
   background: var(--canvas);
   object-fit: contain;
@@ -934,7 +1031,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 .detail-pics figcaption svg { width: 20px; height: 20px; color: var(--accent-text); }
 .detail-actions { display: flex; gap: var(--space-4); flex-wrap: wrap; justify-content: center; }
 @media (orientation: portrait) {
-  .detail-pics { --pic: min(calc(100vw - 48px), calc((100vh - 290px) / 2)); flex-direction: column; gap: var(--space-4); }
+  .detail-pics { --pic-w: calc(100vw - 48px); --pic-h: calc((100vh - 290px) / 2); flex-direction: column; gap: var(--space-4); }
 }
 
 /* ---------- Dialogs (confirm, another screen took over) ---------- */
@@ -973,6 +1070,56 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   letter-spacing: var(--tracking-tight);
 }
 .overlay p.sub { font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--text-muted); }
+/* Close (X) in a dialog's corner. */
+.overlay .card { position: relative; }
+.card-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: var(--touch-kid);
+  height: var(--touch-kid);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+.card-close:active { background: var(--surface-pressed); transform: scale(var(--press-scale)); }
+.card-close svg { width: 22px; height: 22px; }
+
+/* Paper picker: big round paper colours, one tap picks. */
+.overlay .paper-card { max-width: 520px; padding-top: var(--space-6); }
+.paper-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 76px);
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+.paper-swatch {
+  width: 76px;
+  height: 76px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: var(--inner-edge), var(--shadow-2);
+  transition: transform var(--dur-fast) var(--ease-spring), box-shadow var(--dur-fast);
+}
+.paper-swatch.light { box-shadow: inset 0 0 0 1px var(--border-strong), var(--shadow-2); }
+.paper-swatch:active { transform: scale(0.9); }
+.paper-swatch.active {
+  transform: scale(1.04);
+  box-shadow: var(--inner-edge), 0 0 0 4px var(--surface-raised), 0 0 0 7px var(--text);
+}
+.paper-swatch:focus-visible { box-shadow: var(--inner-edge), var(--focus-ring); }
+@media (max-width: 420px) {
+  .paper-grid { grid-template-columns: repeat(4, 56px); gap: var(--space-3); }
+  .paper-swatch { width: 56px; height: 56px; }
+  .overlay .paper-card { padding-left: var(--space-5); padding-right: var(--space-5); }
+}
+
 .card-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); margin-top: var(--space-3); }
 
 @media (prefers-reduced-motion: reduce) {
