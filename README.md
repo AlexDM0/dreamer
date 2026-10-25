@@ -179,16 +179,15 @@ open. Screenshots are saved to `tests/e2e/screenshots/`.
 - **Style pictures are phase 2.** Uploaded style pictures are screened and stored, but
   they don't change the output yet. Applying them needs SD 1.5 + IP-Adapter, while phase 1
   uses SD-Turbo. Until then, a picture style uses its name as the prompt text.
-- **The GPU backend is untested.** The StreamDiffusion backend was written against the
-  fork's documented API but has not run on a real GPU; that code is marked `# VERIFY:`.
-  All automated tests use the mock backend.
+- **The GPU backend has run on one PC so far** (Windows 11, RTX 3080): about 12 pictures/s
+  with ControlNet and 2 steps, 15 with 1 step. See [docs/gpu-results.md](docs/gpu-results.md)
+  for numbers, settings and the fixes it needed. All automated tests use the mock backend.
 - One child session at a time. A second iPad that opens the page takes over, and the
   first one shows a "Draw here" button.
 - The kid page was tested in desktop Chromium with touch emulation, not yet on a real
   iPad. That includes *Keep drawing* and draft restore, which paint the saved PNG back
   onto the canvas.
-- **The setup scripts have not run on real Windows.** `setup.ps1` and `run.ps1` were
-  parse-checked for PowerShell 5.1 and run under PowerShell 7 on Linux; the GPU install
-  steps (CUDA PyTorch, StreamDiffusion, TensorRT) have not run anywhere yet.
+- `setup.ps1` and `run.ps1` have run on Windows 11 (PowerShell 5.1); `setup.sh` has not
+  run the GPU install on Linux/WSL yet.
 - Gallery files are replaced atomically, with a short retry on Windows when a file is
   being read at that moment. This retry has not been tested on Windows.

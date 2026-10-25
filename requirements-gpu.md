@@ -126,5 +126,6 @@ The model files download from Hugging Face on first run (a few GB, cached in
   Delete any old `engines\stabilityai\` folder left over from before this split.
 - Engine build errors after changing `size`, `t_index_list` length, or the ControlNet model:
   delete the `engines\` folder and start again to rebuild.
-- Changing the number of steps on the admin page can exceed the engine's batch range; the
-  change is reverted and an error is shown. Rebuild engines (as above) for a new step count.
+- The engines are built for 1 to 4 steps (UNet batch 1-4), so the admin page's step changes
+  apply live. If a change ever fails (for example after changing `size`), it is reverted and
+  an error is shown; rebuild the engines as above.

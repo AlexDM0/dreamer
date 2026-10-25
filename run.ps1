@@ -50,5 +50,9 @@ Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
 $env:SKETCH_CONFIG = $Config
+# The server logs to stderr. With output redirected (a log file, a scheduled task), Windows
+# PowerShell 5.1 turns each stderr line into an error record, and "Stop" would kill the
+# server on its first log line; the exit code decides success instead.
+$ErrorActionPreference = "Continue"
 & $python -m server
 exit $LASTEXITCODE
