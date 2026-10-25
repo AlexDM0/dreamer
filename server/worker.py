@@ -28,8 +28,14 @@ TAKE_TIMEOUT = 0.5
 # A backend with pipeline latency (StreamDiffusion with 2+ steps returns the picture for
 # an earlier frame) is re-run on the last sketch once no new sketch came for this long.
 SETTLE_DELAY = 0.15
-# Step counts of the refinement passes after drawing pauses (up to params.refine_steps).
-REFINE_LEVELS = (4, 8, 12, 16, 20)
+# Refinement after drawing pauses: each round repaints the PREVIOUS round's picture with less
+# noise (a later first t_index), so the picture keeps its composition and gets cleaner instead
+# of being repainted from scratch. First t_index of the first and the last round; rounds in
+# between are evenly spaced. params.refine_steps is the step budget over at most 5 rounds.
+REFINE_FIRST_START = 18
+REFINE_LAST_START = 44
+REFINE_MAX_ROUNDS = 5
+REFINE_STEPS_PER_ROUND = 4
 REFINE_POLL = 0.005  # between refinement passes: just a check for a new stroke
 FPS_EMA_ALPHA = 0.2
 FPS_IDLE_GAP = 2.0  # seconds
@@ -118,6 +124,9 @@ class GpuWorker(threading.Thread):
         # the upscaler (loaded on first use, if its weights exist).
         self._refine_plan: list[tuple[int, ...]] = []
         self._refine_waiting = True
+        # The picture the next refinement round starts from: the settled drawing picture,
+        # then each round's result (before upscaling).
+        self._refine_base: Image.Image | None = None
         self._upscaler: Any = None
         # Picture size the backend is set up for (backends start in landscape).
         self._dims = canvas_dims(config)["landscape"]
@@ -326,16 +335,17 @@ class GpuWorker(threading.Thread):
         self._dims = dims
 
     def _plan_refinement(self, params: GenParams) -> list[tuple[int, ...]]:
-        """Step lists for the passes run once drawing pauses: growing step counts up to
-        params.refine_steps (each a complete picture, steps one after another)."""
-        if getattr(self.backend, "refine", None) is None:
+        """Step lists for the rounds run once drawing pauses (see REFINE_FIRST_START)."""
+        if getattr(self.backend, "refine", None) is None or params.refine_steps <= 0:
             return []
-        draw_steps = len(params.t_index_list)
-        target = params.refine_steps
-        if target <= draw_steps:
-            return []
-        counts = sorted({n for n in REFINE_LEVELS if draw_steps < n < target} | {target})
-        return [refine_t_index(params.t_index_list[0], n) for n in counts]
+        rounds = min(REFINE_MAX_ROUNDS, max(1, -(-params.refine_steps // REFINE_STEPS_PER_ROUND)))
+        steps = max(1, round(params.refine_steps / rounds))
+        if rounds == 1:
+            starts = [REFINE_FIRST_START]
+        else:
+            span = REFINE_LAST_START - REFINE_FIRST_START
+            starts = [round(REFINE_FIRST_START + i * span / (rounds - 1)) for i in range(rounds)]
+        return [refine_t_index(start, steps) for start in starts]
 
     def _upscale(self, picture: Image.Image) -> Image.Image:
         """The refined picture through the AI upscaler (x2); unchanged if unavailable."""
@@ -392,7 +402,9 @@ class GpuWorker(threading.Thread):
                     init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
                                                    params.line_threshold, job.background)
                 if refine is not None:
-                    picture = self.backend.refine(init, line_map, list(refine))
+                    base = self._refine_base if self._refine_base is not None else init
+                    picture = self.backend.refine(base, line_map, list(refine))
+                    self._refine_base = picture
                     if params.upscale == "x2":
                         picture = self._upscale(picture)
                     self._needs_prime = True  # the stream now runs the refine steps
@@ -402,6 +414,7 @@ class GpuWorker(threading.Thread):
                     for _ in range(runs):
                         picture = self.backend.generate(init, line_map)
                     self._needs_prime = False
+                    self._refine_base = picture  # refinement starts from what is shown
                     if not settling:
                         self._settle_job, self._settle_left = job, latency
                         self._refine_plan = self._plan_refinement(params)

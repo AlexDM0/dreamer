@@ -209,11 +209,14 @@ def test_worker_switches_backend_size_per_orientation():
 class RefineBackend(MockBackend):
     def __init__(self):
         super().__init__(mock_delay_ms=0)
-        self.refined = []
+        self.refined, self.inits, self.outputs = [], [], []
 
     def refine(self, init_image, line_map, t_index):
         self.refined.append(tuple(t_index))
-        return self.generate(init_image, line_map)
+        self.inits.append(init_image)
+        out = self.generate(init_image, line_map)
+        self.outputs.append(out)
+        return out
 
 
 def test_refine_t_index_spreads_from_the_creativity():
@@ -227,16 +230,20 @@ def test_refine_t_index_spreads_from_the_creativity():
     assert refine_t_index(45, 20) == (45, 46, 47, 48, 49)  # only 5 distinct values left
 
 
-def test_pause_runs_growing_refinement_passes_with_the_same_seq():
+def test_pause_refines_the_previous_picture_with_less_noise_each_round():
     backend = RefineBackend()
     cfg = Config(backend="mock", size=64)
     worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=12))
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
-        rec.wait(3)  # the drawing frame, then passes at 4, 8 and 12 steps
+        rec.wait(4)  # the drawing frame, then 3 rounds of 4 steps
         time.sleep(0.4)
         assert [seq for seq, _ in rec.results] == [1, 1, 1, 1]
-        assert [len(t) for t in backend.refined] == [4, 8, 12]
+        assert [len(t) for t in backend.refined] == [4, 4, 4]
+        starts = [t[0] for t in backend.refined]
+        assert starts == sorted(starts) and starts[0] < starts[-1]  # less noise each round
+        # Each round starts from the previous round's picture, not from scratch.
+        assert backend.inits[1] is backend.outputs[0] and backend.inits[2] is backend.outputs[1]
     finally:
         worker.stop()
 
