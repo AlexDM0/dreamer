@@ -264,9 +264,12 @@ class StreamDiffusionBackend:
             # global CUDA generator, so every frame got new noise and the picture flickered
             # (~16/255 per frame on an unchanged drawing). Re-seeding per frame makes that
             # noise the same each frame; the surprise number still picks which noise.
-            import torch
-
-            torch.cuda.manual_seed(self._seed if self._seed is not None else DEFAULT_SEED)
+            try:
+                import torch
+            except ImportError:  # only in tests with a fake wrapper
+                torch = None
+            if torch is not None and torch.cuda.is_available():
+                torch.cuda.manual_seed(self._seed if self._seed is not None else DEFAULT_SEED)
         if self._pending_prompt is not None:
             prompt = self._pending_prompt
             out = self._wrapper(image=image, prompt=prompt)
