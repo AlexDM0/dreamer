@@ -102,12 +102,16 @@ class Peer:
 @dataclass(frozen=True)
 class FrameOrigin:
     """The ``FrameJob.owner`` tag for kid sketches: which socket sent it, plus what the
-    picture will be made from, so the result can become the session's ``last_frame``."""
+    picture will be made from, so the result can become the session's ``last_frame``.
+    ``epoch`` is the session's drawing epoch when the sketch arrived: a picture finished
+    after the kid cleared / started anew / opened another drawing belongs to the old
+    drawing and must not become ``last_frame``."""
     peer: Peer
     sketch_png: bytes
     prompt: str
     topic_id: str | None
     style_id: str | None
+    epoch: int = 0
 
 
 @dataclass
@@ -137,6 +141,16 @@ class SessionManager:
         # exactly this, no regeneration), and the saved artwork being continued, if any.
         self.last_frame: LastFrame | None = None
         self.continuing_id: str | None = None
+        # Bumped whenever the canvas starts holding a different drawing (clear, new,
+        # continue, draft restore, a new page); see FrameOrigin.epoch.
+        self.epoch = 0
+
+    def new_drawing(self, continuing_id: str | None = None) -> None:
+        """The canvas now holds another drawing: forget what is on screen, ignore pictures
+        still being made from the old one, and remember which artwork (if any) it is."""
+        self.epoch += 1
+        self.last_frame = None
+        self.continuing_id = continuing_id
 
     # ----- kid -----------------------------------------------------------------------
 
