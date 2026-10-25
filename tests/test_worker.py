@@ -1,7 +1,10 @@
 """GpuWorker: params slot, error/ready state handling, owner pass-through."""
+import io
 import threading
 from dataclasses import replace
 import time
+
+from PIL import Image
 
 from conftest import sketch_png
 from server.backends.mock import MockBackend
@@ -113,3 +116,63 @@ def test_blank_frame_does_not_clear_error_state():
         assert all(s != "ready" for s, _ in rec.statuses)
     finally:
         worker.stop()
+
+
+class LaggyBackend(MockBackend):
+    """Like StreamDiffusion with 2 steps: each picture is the one for the previous call's
+    sketch, and the very first call returns black (empty pipeline)."""
+
+    latency_frames = 1
+
+    def __init__(self):
+        super().__init__(mock_delay_ms=0)
+        self.previous = None
+        self.calls = 0
+
+    def generate(self, init_image, line_map):
+        self.calls += 1
+        out = self.previous or Image.new("RGB", init_image.size, "black")
+        self.previous = init_image.copy()
+        return out
+
+
+def _pixel(jpeg):
+    return Image.open(io.BytesIO(jpeg)).convert("RGB").getpixel((32, 22))  # on the line
+
+
+def _is_red(rgb):
+    return rgb[0] > 150 and rgb[2] < 100
+
+
+def _is_blue(rgb):
+    return rgb[2] > 150 and rgb[0] < 100
+
+
+def test_latency_backend_is_primed_and_settled():
+    rec = Recorder()
+    jpegs = []
+
+    def on_result(seq, jpeg, owner):
+        jpegs.append((seq, jpeg))
+        rec.on_result(seq, jpeg, owner)
+
+    backend = LaggyBackend()
+    worker = GpuWorker(backend, Mailbox(), on_result, rec.on_status, Config(backend="mock", size=64))
+    worker.start()
+    try:
+        red, blue = sketch_png(size=64, color="red"), sketch_png(size=64, color="blue")
+        worker.mailbox.put(FrameJob(1, red, "p"))
+        rec.wait(1)
+        # Primed: the first picture already shows the red drawing, not the empty pipeline.
+        assert jpegs[0][0] == 1 and _is_red(_pixel(jpegs[0][1]))
+        rec.wait(2)  # the settle frame for seq 1 (same seq again)
+        worker.mailbox.put(FrameJob(2, blue, "p"))
+        rec.wait(3)
+        assert jpegs[2][0] == 2 and _is_red(_pixel(jpegs[2][1]))  # one frame behind: still red
+        rec.wait(4)  # drawing paused: settled
+        assert jpegs[3][0] == 2 and _is_blue(_pixel(jpegs[3][1]))  # now blue
+        time.sleep(0.4)
+        assert len(jpegs) == 4  # settles only as often as the latency
+    finally:
+        worker.stop()
+    assert backend.calls == 5  # 2 (primed) + 1 settle + 1 + 1 settle

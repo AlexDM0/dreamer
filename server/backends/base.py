@@ -44,3 +44,7 @@ class Backend(Protocol):
     @property
     def name(self) -> str:
         """Short backend identifier, e.g. "mock" or "streamdiffusion"."""
+
+    # Optional: ``latency_frames`` (int, default 0) is how many generate() calls later a
+    # sketch's picture comes out (StreamDiffusion's denoising batch: steps - 1). The worker
+    # then primes a fresh pipeline and re-runs the last sketch once drawing pauses.

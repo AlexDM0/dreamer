@@ -248,8 +248,9 @@ export class Net extends EventTarget {
     // it would block our own lower-numbered pictures.
     if (seq > this.seq) return;
     if (this._inflight && seq >= this._inflight.seq) this._clearInflight();
-    // Drop stale or out-of-order pictures.
-    if (seq < this.floorSeq || seq <= this.lastPictureSeq) return;
+    // Drop stale or out-of-order pictures. The same seq again is a "settled" picture
+    // (the GPU pipeline caught up with that sketch) and replaces the one shown.
+    if (seq < this.floorSeq || seq < this.lastPictureSeq) return;
     this.lastPictureSeq = seq;
     const final = !this.pendingFinal && seq >= this.finalSeq;
     this._emit("picture", { seq, jpeg: buf.slice(HEADER), final });

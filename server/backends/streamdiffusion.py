@@ -65,6 +65,13 @@ class StreamDiffusionBackend:
     def name(self) -> str:
         return "streamdiffusion"
 
+    @property
+    def latency_frames(self) -> int:
+        """With the denoising batch, each call advances every step by one, so a frame's
+        picture comes out len(t_index_list) - 1 calls later (frame_buffer_size=1). The
+        worker primes and settles the pipeline with that many extra calls."""
+        return len(self._t_index_list) - 1
+
     # -- lifecycle -----------------------------------------------------------------
 
     def _controlnet_config(self) -> list[dict[str, Any]]:

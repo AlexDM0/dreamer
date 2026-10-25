@@ -24,6 +24,9 @@ log = logging.getLogger("dreamer.worker")
 
 MAX_CONSECUTIVE_FAILURES = 3
 TAKE_TIMEOUT = 0.5
+# A backend with pipeline latency (StreamDiffusion with 2+ steps returns the picture for
+# an earlier frame) is re-run on the last sketch once no new sketch came for this long.
+SETTLE_DELAY = 0.15
 FPS_EMA_ALPHA = 0.2
 FPS_IDLE_GAP = 2.0  # seconds
 
@@ -88,6 +91,11 @@ class GpuWorker(threading.Thread):
         self._last_done: float | None = None
         self._frames = 0
         self._errors = 0
+        # Pipeline latency handling (see _latency): the last backend job, how many settle
+        # frames it still needs, and whether the pipeline holds a stale or empty state.
+        self._settle_job: FrameJob | None = None
+        self._settle_left = 0
+        self._needs_prime = True
 
     # ----- public API (any thread) ---------------------------------------------------
 
@@ -148,8 +156,13 @@ class GpuWorker(threading.Thread):
         while not self._stop_event.is_set():
             self._drain_uploads()
             self._apply_pending_params()
-            job = self.mailbox.take(timeout=TAKE_TIMEOUT)
-            if job is None or self._stop_event.is_set():
+            job = self.mailbox.take(timeout=SETTLE_DELAY if self._settle_left else TAKE_TIMEOUT)
+            if self._stop_event.is_set():
+                continue
+            if job is None:
+                if self._settle_left and self._settle_job is not None:
+                    self._settle_left -= 1
+                    self._process_frame(self._settle_job, settling=True)
                 continue
             if isinstance(job, FrameJob):
                 self._apply_pending_params()  # may have arrived while we waited
@@ -179,6 +192,7 @@ class GpuWorker(threading.Thread):
             self._record_failure(f"warmup failed: {exc}")
             return False
         self._last_prompt = None  # a fresh backend needs its prompt set again
+        self._needs_prime, self._settle_left = True, 0
         self._failures = 0
         self._set_state("ready")
         # A fresh backend starts from config defaults: give it the current params.
@@ -253,7 +267,17 @@ class GpuWorker(threading.Thread):
             if job.future.set_running_or_notify_cancel():
                 job.future.set_exception(RuntimeError("server shutting down"))
 
-    def _process_frame(self, job: FrameJob) -> None:
+    def _latency(self) -> int:
+        """Frames between a sketch going in and its picture coming out of the backend."""
+        try:
+            return max(0, int(getattr(self.backend, "latency_frames", 0)))
+        except Exception:
+            return 0
+
+    def _process_frame(self, job: FrameJob, settling: bool = False) -> None:
+        """Make and send the picture for ``job``. With pipeline latency, a fresh pipeline
+        is primed with extra runs, and the frame is queued to settle once drawing pauses;
+        a settle frame re-sends the same seq with the now up-to-date picture."""
         cfg = self.config
         params = self._params
         started = time.perf_counter()
@@ -267,6 +291,8 @@ class GpuWorker(threading.Thread):
         try:
             if imaging.is_blank(sketch):
                 picture = Image.new("RGB", (cfg.size, cfg.size), "white")
+                # The pipeline still holds the old drawing: prime it before the next one.
+                self._needs_prime, self._settle_left = True, 0
             else:
                 used_backend = True
                 if self.backend is None:
@@ -278,10 +304,17 @@ class GpuWorker(threading.Thread):
                 if cfg.model.controlnet and params.controlnet_enabled:
                     line_map = imaging.make_line_map(sketch, params.line_polarity,
                                                      params.line_threshold, params.line_dilate)
-                picture = self.backend.generate(sketch, line_map)
+                latency = self._latency()
+                runs = 1 + (latency if self._needs_prime else 0)
+                for _ in range(runs):
+                    picture = self.backend.generate(sketch, line_map)
+                self._needs_prime = False
+                if not settling:
+                    self._settle_job, self._settle_left = job, latency
             jpeg = imaging.encode_jpeg(picture, params.jpeg_quality)
         except Exception as exc:
             log.exception("frame seq=%d failed", job.seq)
+            self._needs_prime, self._settle_left = True, 0
             self._last_prompt = None  # re-send the prompt after an error, to be safe
             self._record_failure(str(exc) or type(exc).__name__)
             self._maybe_rebuild()
@@ -292,7 +325,8 @@ class GpuWorker(threading.Thread):
         if used_backend and (self._failures or self._state != "ready"):
             self._failures = 0
             self._set_state("ready")
-        self._update_stats(started)
+        if not settling:
+            self._update_stats(started)
         try:
             self.on_result(job.seq, jpeg, job.owner)
         except Exception:
