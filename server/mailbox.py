@@ -27,6 +27,12 @@ class Mailbox:
             item, self._item, self._full = self._item, None, False
             return item
 
+    @property
+    def pending(self) -> bool:
+        """Whether an item is waiting (without taking it)."""
+        with self._cond:
+            return self._full
+
     def clear(self) -> None:
         with self._cond:
             self._item, self._full = None, False

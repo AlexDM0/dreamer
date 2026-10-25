@@ -207,43 +207,43 @@ def test_worker_switches_backend_size_per_orientation():
 
 
 class RefineBackend(MockBackend):
+    """Refinement continues one path: yields a picture per step from ``first_shown`` on."""
+
     def __init__(self):
         super().__init__(mock_delay_ms=0)
-        self.refined, self.inits, self.outputs = [], [], []
+        self.paths, self.refined = [], []
 
-    def refine(self, init_image, line_map, t_index):
-        self.refined.append(tuple(t_index))
-        self.inits.append(init_image)
-        out = self.generate(init_image, line_map)
-        self.outputs.append(out)
-        return out
-
-
-def test_refine_t_index_spreads_from_the_creativity():
-    from server.worker import refine_t_index
-
-    assert refine_t_index(6, 1) == (6,)
-    assert refine_t_index(6, 4) == (6, 20, 35, 49)
-    steps = refine_t_index(6, 20)
-    assert len(steps) == 20 and steps[0] == 6 and steps[-1] == 49
-    assert all(b > a for a, b in zip(steps, steps[1:]))
-    assert refine_t_index(45, 20) == (45, 46, 47, 48, 49)  # only 5 distinct values left
+    def refine_steps(self, init_image, line_map, t_index, first_shown):
+        self.paths.append((tuple(t_index), first_shown))
+        for step in range(first_shown, len(t_index) + 1):
+            self.refined.append(step)
+            yield self.generate(init_image, line_map)
 
 
-def test_pause_refines_the_previous_picture_with_less_noise_each_round():
+def test_refine_path_continues_the_drawing_path():
+    from server.worker import refine_path
+
+    # Draw 1 step + 3 more is exactly the evenly spread 4-step path (the admin page's too).
+    assert refine_path((6,), 4) == (6, 20, 35, 49)
+    assert refine_path((0,), 4) == (0, 16, 33, 49)
+    path = refine_path((6, 26), 20)
+    assert path[:2] == (6, 26) and path[-1] == 49 and len(path) == 20
+    assert all(b > a for a, b in zip(path, path[1:]))
+    assert refine_path((6, 26), 2) is None  # nothing to add
+    assert refine_path((45,), 20) == (45, 46, 47, 48, 49)  # only so many t_index values left
+
+
+def test_pause_continues_the_path_one_picture_per_step():
     backend = RefineBackend()
     cfg = Config(backend="mock", size=64)
-    worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=12))
+    params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=4)
+    worker, rec = _start(backend, cfg, params=params)
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
-        rec.wait(5)  # the drawing frame, then 4 rounds of 3 steps
+        rec.wait(4)  # the drawing picture (step 1), then steps 2, 3 and 4 of the same path
         time.sleep(0.4)
-        assert [seq for seq, _ in rec.results] == [1, 1, 1, 1, 1]
-        assert [len(t) for t in backend.refined] == [3, 3, 3, 3]
-        starts = [t[0] for t in backend.refined]
-        assert starts == sorted(starts) and starts[0] < starts[-1]  # less noise each round
-        # Each round starts from the previous round's picture, not from scratch.
-        assert backend.inits[1] is backend.outputs[0] and backend.inits[2] is backend.outputs[1]
+        assert [seq for seq, _ in rec.results] == [1, 1, 1, 1]
+        assert backend.paths == [((6, 20, 35, 49), 2)] and backend.refined == [2, 3, 4]
     finally:
         worker.stop()
 
@@ -256,6 +256,32 @@ def test_refinement_off_sends_only_the_drawing_frame():
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
         rec.wait(1)
         time.sleep(0.4)
-        assert backend.refined == [] and len(rec.results) == 1
+        assert backend.paths == [] and len(rec.results) == 1
+    finally:
+        worker.stop()
+
+
+class SlowRefineBackend(RefineBackend):
+    def refine_steps(self, init_image, line_map, t_index, first_shown):
+        for picture in super().refine_steps(init_image, line_map, t_index, first_shown):
+            time.sleep(0.05)
+            yield picture
+
+
+def test_new_stroke_stops_the_refinement_path():
+    backend = SlowRefineBackend()
+    cfg = Config(backend="mock", size=64)
+    params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=20)
+    worker, rec = _start(backend, cfg, params=params)
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        rec.wait(3)  # drawing picture + a couple of refinement steps
+        worker.mailbox.put(FrameJob(2, sketch_png(size=64, color="red"), "p"))
+        end = time.monotonic() + 5
+        while 2 not in [seq for seq, _ in rec.results] and time.monotonic() < end:
+            time.sleep(0.01)
+        assert 2 in [seq for seq, _ in rec.results]
+        stopped_at = len([seq for seq, _ in rec.results if seq == 1])
+        assert stopped_at < 20  # the first path was cut short, not run to the end
     finally:
         worker.stop()

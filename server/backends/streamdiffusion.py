@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from typing import Any, Iterator
 
 from PIL import Image
 
@@ -313,28 +313,71 @@ class StreamDiffusionBackend:
         self._ensure_stream(self._t_index_list, self._batched(self._t_index_list))
         return self._run(init_image, line_map)
 
-    def refine(self, init_image: Image.Image, line_map: Image.Image | None,
-               t_index: list[int]) -> Image.Image:
-        """A complete picture from ``t_index`` run one step after another: no frame lag, and
-        any step count without extra memory. Used once the drawing pauses; the next
-        generate() goes back to the draw steps (the worker primes the stream again)."""
+    def refine_steps(self, init_image: Image.Image, line_map: Image.Image | None,
+                     t_index: list[int], first_shown: int) -> Iterator[Image.Image]:
+        """One denoising path over ``t_index``, run one step after another, yielding the
+        picture after each step from step ``first_shown`` (1-based) on.
+
+        This is the fork's own step-by-step loop (StreamDiffusion.predict_x0_batch, non-batched
+        LCM branch), opened up so every step's prediction can be shown: the picture keeps the
+        same composition and each step changes less than the last, because the noise put back
+        between steps shrinks along the path. With the same seed, the first steps are the
+        quick drawing picture: draw 1 step + 3 more here == a 4-step picture.
+        """
+        import torch
+
         if self._wrapper is None:
             self.warmup()
+        wrapper = self._wrapper
+        stream = wrapper.stream
         self._ensure_stream([int(t) for t in t_index], False)
-        return self._run(init_image, line_map)
+        image = self._prepare_inputs(init_image, line_map)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(self._seed if self._seed is not None else DEFAULT_SEED)
+        if self._pending_prompt is not None:
+            wrapper.update_prompt(self._pending_prompt)
+            self._prompt, self._pending_prompt = self._pending_prompt, None
+        with torch.no_grad():
+            x = wrapper.preprocess_image(image)
+            sample = stream.encode_image(x)
+            steps = len(stream.sub_timesteps_tensor)
+            for idx, timestep in enumerate(stream.sub_timesteps_tensor):
+                t = timestep.to(stream.device).view(1,).repeat(stream.frame_bff_size,)
+                x_0_pred, _ = stream.unet_step(sample, t, idx)
+                if idx + 1 >= first_shown:
+                    yield self._checked_picture(stream.decode_image(x_0_pred))
+                if idx < steps - 1:
+                    sample = stream.alpha_prod_t_sqrt[idx + 1] * x_0_pred
+                    if stream.do_add_noise:
+                        sample = sample + stream.beta_prod_t_sqrt[idx + 1] * torch.randn_like(
+                            x_0_pred, device=stream.device, dtype=stream.dtype)
 
-    def _run(self, init_image: Image.Image, line_map: Image.Image | None) -> Image.Image:
+    def _checked_picture(self, image_tensor: Any) -> Image.Image:
+        """Decoded tensor -> PIL, through the wrapper's safety checker like img2img()."""
+        wrapper = self._wrapper
+        picture = wrapper.postprocess_image(image_tensor, output_type="pil")
+        if wrapper.use_safety_checker:
+            denormalized = (image_tensor / 2 + 0.5).clamp(0, 1)
+            if wrapper.safety_checker(denormalized, wrapper.safety_checker_threshold):
+                return wrapper.nsfw_fallback_img
+            wrapper.nsfw_fallback_img = picture
+        return picture
+
+    def _prepare_inputs(self, init_image: Image.Image, line_map: Image.Image | None) -> Image.Image:
+        """Init image at the picture size, and the line map pushed into the ControlNet."""
         size = (self._width, self._height)
         image = init_image.convert("RGB")
         if image.size != size:
             image = image.resize(size, Image.Resampling.LANCZOS)
-
         if line_map is not None and self._controlnet_id is not None and self._controlnet_enabled:
             lm = line_map.convert("RGB")
             if lm.size != size:
                 lm = lm.resize(size, Image.Resampling.NEAREST)
             self._wrapper.update_control_image(0, lm)
+        return image
 
+    def _run(self, init_image: Image.Image, line_map: Image.Image | None) -> Image.Image:
+        image = self._prepare_inputs(init_image, line_map)
         if not self._stream_batched:
             # One-after-another steps re-noise between steps with torch.randn_like on the
             # global CUDA generator, so every frame got new noise and the picture flickered

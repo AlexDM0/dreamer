@@ -170,32 +170,27 @@ def main() -> int:
     sweep("init_blur", [4, defaults.init_blur, 64],
           lambda value: replace(defaults, init_blur=int(value)), extra=init_extra)
 
-    # Refinement after the drawing pauses: the drawing picture, then complete passes with
-    # more steps run one after another (what the worker sends while the child looks).
-    from server.worker import refine_t_index
+    # Refinement after the drawing pauses: the drawing's own denoising path continued step by
+    # step (what the worker sends while the child looks), shown at a few steps along the way.
+    from server.worker import refine_path
 
-    backend.set_params(defaults)
+    backend.set_params(dataclasses.replace(defaults, t_index_list=(defaults.t_index_list[0],)))
     backend._wrapper.update_stream_params(seed=int(defaults.seed))
     line_map = imaging.make_line_map(layer, defaults.line_polarity, defaults.line_threshold,
                                      defaults.line_dilate)
     init = imaging.make_init_image(layer, defaults.init_mode, defaults.init_blur,
                                    defaults.line_threshold, BACKGROUND)
-    for _ in range(backend.latency_frames + 1):
-        drawing_picture = backend.generate(init, line_map)
-    items = [{"value": "while drawing", "default": False,
-              "picture": save_thumb(drawing_picture, "refine-0.jpg")}]
-    refined_pictures = {}
-    for steps in (4, 8, 12, 20):
-        t_index = list(refine_t_index(defaults.t_index_list[0], steps))
-        refined = backend.refine(init, line_map, t_index)
-        started = time.perf_counter()
-        for _ in range(5):
-            refined = backend.refine(init, line_map, t_index)
-        ms = round((time.perf_counter() - started) * 1000 / 5)
-        refined_pictures[steps] = refined
-        items.append({"value": f"{steps} steps", "default": steps == defaults.refine_steps, "ms": ms,
-                      "picture": save_thumb(refined, f"refine-{steps}.jpg")})
-        print("refine", steps, ms, flush=True)
+    path = refine_path((defaults.t_index_list[0],), 20)
+    shown = {1: "while drawing", 4: "4 steps", 8: "8 steps", 12: "12 steps", 20: "20 steps"}
+    items, refined_pictures = [], {}
+    started = time.perf_counter()
+    for step, picture in enumerate(backend.refine_steps(init, line_map, list(path), 1), start=1):
+        if step in shown:
+            refined_pictures[step] = picture
+            items.append({"value": shown[step], "default": step == defaults.refine_steps,
+                          "ms": round((time.perf_counter() - started) * 1000),
+                          "picture": save_thumb(picture, f"refine-{step}.jpg")})
+            print("refine", step, items[-1]["ms"], flush=True)
     data["controls"]["refine"] = items
 
     # AI upscale: a crop of the refined picture without and with the upscaler, enlarged.
