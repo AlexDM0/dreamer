@@ -113,6 +113,12 @@ class StreamDiffusionBackend:
         stream = wrapper.stream
         previous = stream.use_denoising_batch
         new_t_index = updates.get("t_index_list")
+        if new_t_index is not None and "seed" not in updates:
+            # A step-count change regenerates the stream's noise from its generator, which
+            # has moved on since: the same drawing would get different noise every time and
+            # a refinement round could repaint a different picture. Re-seed in the same call
+            # (the updater applies the seed after the step change).
+            updates = {**updates, "seed": self._seed if self._seed is not None else DEFAULT_SEED}
         if new_t_index is not None:
             mode = self._batched(new_t_index) if batched is None else batched
             if mode != previous and len(new_t_index) == len(self._stream_t_index):

@@ -32,7 +32,7 @@ SETTLE_DELAY = 0.15
 # noise (a later first t_index), so the picture keeps its composition and gets cleaner instead
 # of being repainted from scratch. First t_index of the first and the last round; rounds in
 # between are evenly spaced. params.refine_steps is the step budget over at most 5 rounds.
-REFINE_FIRST_START = 18
+REFINE_FIRST_START = 24
 REFINE_LAST_START = 44
 REFINE_MAX_ROUNDS = 5
 REFINE_STEPS_PER_ROUND = 4
