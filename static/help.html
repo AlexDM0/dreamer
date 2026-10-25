@@ -100,11 +100,13 @@
 
     <section class="control" id="steps">
       <h2>Steps</h2>
-      <p class="lead">How many times the picture is refined per frame. More steps give more polish and detail,
-        but every picture takes longer, so the screen updates less often while your child draws.</p>
+      <p class="lead">How many times the picture is refined per frame. More steps give a little more polish,
+        but every picture takes longer, so the screen updates less often while your child draws. The picture
+        model is made for few steps: beyond 4 the picture mostly changes rather than improves.</p>
       <div class="strip" data-control="steps"></div>
       <p class="note">Time per picture on this PC (the graphics card only; over Wi-Fi add about 40 ms).
-        1 or 2 steps feel live. 8 steps is noticeably slower.</p>
+        Up to 4 steps run <b>together</b> in one pass, which is fast. 5 to 8 run <b>one by one</b>, which is
+        slower but needs no extra graphics memory. 1 or 2 steps feel live.</p>
     </section>
 
     <section class="control" id="lines">
@@ -214,7 +216,7 @@
       const value = document.createElement("b");
       value.textContent = control === "steps" ? `${item.value} step${item.value === "1" ? "" : "s"}` : item.value;
       cap.append(value);
-      const extra = item.ms ? `${item.ms} ms · ${Math.round(1000 / item.ms)} pictures/s`
+      const extra = item.ms ? `${item.ms} ms · ${Math.round(1000 / item.ms)}/s${item.mode ? " · " + item.mode : ""}`
                   : item.kb ? `${item.kb} KB` : "";
       if (extra) {
         const meta = document.createElement("span");

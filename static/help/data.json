@@ -49,27 +49,45 @@
   "steps": [
    {
     "picture": "help/steps-1.jpg",
-    "ms": 49,
+    "ms": 51,
     "value": "1",
-    "default": false
+    "default": false,
+    "mode": "together"
    },
    {
     "picture": "help/steps-2.jpg",
-    "ms": 67,
+    "ms": 73,
     "value": "2",
-    "default": true
+    "default": true,
+    "mode": "together"
    },
    {
     "picture": "help/steps-4.jpg",
-    "ms": 108,
+    "ms": 117,
     "value": "4",
-    "default": false
+    "default": false,
+    "mode": "together"
+   },
+   {
+    "picture": "help/steps-5.jpg",
+    "ms": 174,
+    "value": "5",
+    "default": false,
+    "mode": "one by one"
+   },
+   {
+    "picture": "help/steps-6.jpg",
+    "ms": 205,
+    "value": "6",
+    "default": false,
+    "mode": "one by one"
    },
    {
     "picture": "help/steps-8.jpg",
-    "ms": 186,
+    "ms": 267,
     "value": "8",
-    "default": false
+    "default": false,
+    "mode": "one by one"
    }
   ],
   "lines": [
@@ -236,5 +254,9 @@
    }
   ]
  },
- "drawing": "help/drawing.jpg"
+ "drawing": "help/drawing.jpg",
+ "gpu_memory_mb": [
+  8408,
+  10240
+ ]
 }

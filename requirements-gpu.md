@@ -126,7 +126,9 @@ The model files download from Hugging Face on first run (a few GB, cached in
   Delete any old `engines\stabilityai\` folder left over from before this split.
 - Engine build errors after changing `size`, `t_index_list` length, or the ControlNet model:
   delete the `engines\` folder and start again to rebuild.
-- The engines are built for 1 to `model.max_steps` steps (default 8), so the admin page's
-  step changes apply live. On a 10 GB card (RTX 3080) this uses ~9.6 GB; if you get CUDA
-  out-of-memory errors, set `model.max_steps: 4` (rebuilds the engines once). If a change ever fails (for example after changing `size`), it is reverted and
+- Steps: up to `model.max_batch_steps` (default 4) run together as one UNet batch; more,
+  up to `model.max_steps` (default 8), run one after another, so they need no extra GPU
+  memory. The UNet engine is built for batch 1 to `max_batch_steps` (about 8.4 GB in use on
+  the RTX 3080), and all step changes apply live. Raising `max_batch_steps` makes 5+ steps
+  faster but costs memory (batch 1-8 used ~9.6 GB) and rebuilds the engine once. If a change ever fails (for example after changing `size`), it is reverted and
   an error is shown; rebuild the engines as above.

@@ -21,6 +21,9 @@ from .base import GenParamsLike
 
 log = logging.getLogger("dreamer.backend.streamdiffusion")
 
+# The wrapper's own default seed (StreamDiffusionWrapper(seed=2)).
+DEFAULT_SEED = 2
+
 # Used for prepare() before the first real prompt arrives from the worker.
 DEFAULT_PROMPT = "a colorful illustration, for children, friendly, bright colors, wholesome"
 
@@ -50,6 +53,8 @@ class StreamDiffusionBackend:
         self._controlnet_id = _model_attr(config, "controlnet", "thibaud/controlnet-sd21-scribble-diffusers")
         self._engine_dir = _model_attr(config, "engine_dir", "engines")
         self._max_steps = max(1, int(_model_attr(config, "max_steps", 8)))
+        # Steps up to this run as one UNet batch; more run one after another (see _batched).
+        self._batch_steps = min(self._max_steps, max(1, int(_model_attr(config, "max_batch_steps", 4))))
 
         # Live params (SPEC addendum); start from config.model defaults.
         self._t_index_list = [int(t) for t in _model_attr(config, "t_index_list", [6, 26])]
@@ -73,8 +78,30 @@ class StreamDiffusionBackend:
     def latency_frames(self) -> int:
         """With the denoising batch, each call advances every step by one, so a frame's
         picture comes out len(t_index_list) - 1 calls later (frame_buffer_size=1). The
-        worker primes and settles the pipeline with that many extra calls."""
-        return len(self._t_index_list) - 1
+        worker primes and settles the pipeline with that many extra calls. Steps run one
+        after another have no such delay."""
+        return len(self._t_index_list) - 1 if self._batched(self._t_index_list) else 0
+
+    def _batched(self, t_index: list[int]) -> bool:
+        """Whether ``t_index`` runs as one UNet batch (the fork's denoising batch) or, with
+        more steps than the engine's batch range, one step after another at batch 1."""
+        return len(t_index) <= self._batch_steps
+
+    def _update_t_index(self, wrapper: Any, updates: dict[str, Any]) -> None:
+        """``wrapper.update_stream_params(**updates)``, switching the stream between batched
+        and one-after-another steps when the new t_index_list needs it. The wrapper only
+        accepts img2img with the denoising batch at construction, but the pipeline and its
+        parameter updater support both: a step-count change recomputes batch size, noise and
+        buffers for the current mode, and crossing max_batch_steps always changes the count."""
+        stream = wrapper.stream
+        previous = stream.use_denoising_batch
+        if "t_index_list" in updates:
+            stream.use_denoising_batch = self._batched(updates["t_index_list"])
+        try:
+            wrapper.update_stream_params(**updates)
+        except Exception:
+            stream.use_denoising_batch = previous
+            raise
 
     # -- lifecycle -----------------------------------------------------------------
 
@@ -96,9 +123,11 @@ class StreamDiffusionBackend:
         engine_dir = os.path.join(self._engine_dir, "controlnet" if use_controlnet else "plain")
         log.info("Dreamer: loading %s (TensorRT engines in %s; first run builds them, "
                  "which can take many minutes)", self._model_id, engine_dir)
+        # The wrapper must start batched; more steps than the batch range are applied below.
+        start_t_index = self._t_index_list[:self._batch_steps]
         wrapper = self._wrapper_cls(
             model_id_or_path=self._model_id,
-            t_index_list=self._t_index_list,
+            t_index_list=start_t_index,
             mode="img2img",
             width=self._width,
             height=self._height,
@@ -106,7 +135,7 @@ class StreamDiffusionBackend:
             use_denoising_batch=True,
             # UNet batch = steps; the engine's batch range caps the live step count.
             min_batch_size=1,
-            max_batch_size=self._max_steps,
+            max_batch_size=self._batch_steps,
             cfg_type="none",
             use_tiny_vae=True,
             acceleration="tensorrt",
@@ -127,6 +156,8 @@ class StreamDiffusionBackend:
         # A rebuilt wrapper (set_size) starts from the constructor's seed and an enabled
         # ControlNet; carry over what the live params had changed.
         restore: dict[str, Any] = {}
+        if start_t_index != self._t_index_list:
+            restore["t_index_list"] = self._t_index_list
         if self._seed is not None:
             restore["seed"] = self._seed
         if self._controlnet_id is not None and not self._controlnet_enabled:
@@ -134,7 +165,7 @@ class StreamDiffusionBackend:
             cfg[0]["enabled"] = False
             restore["controlnet_config"] = cfg
         if restore:
-            wrapper.update_stream_params(**restore)
+            self._update_t_index(wrapper, restore)
         if self._pending_params is not None:
             params, self._pending_params = self._pending_params, None
             self.set_params(params)
@@ -177,8 +208,8 @@ class StreamDiffusionBackend:
 
         updates: dict[str, Any] = {}
         if t_index != self._t_index_list:
-            # Changing the list LENGTH changes the UNet batch, which may exceed the
-            # TensorRT engine's batch range and fail; the worker then reverts params.
+            # Up to max_batch_steps steps share one UNet batch; more run one by one, so
+            # any step count up to max_steps fits the engine's batch range.
             updates["t_index_list"] = t_index
         if int(params.seed) != self._seed:
             updates["seed"] = int(params.seed)
@@ -201,7 +232,7 @@ class StreamDiffusionBackend:
         if not updates:
             return
 
-        self._wrapper.update_stream_params(**updates)
+        self._update_t_index(self._wrapper, updates)
         # Only commit local state once the wrapper accepted the change.
         self._t_index_list = t_index
         self._seed = int(params.seed)
@@ -225,6 +256,14 @@ class StreamDiffusionBackend:
                 lm = lm.resize(size, Image.Resampling.NEAREST)
             self._wrapper.update_control_image(0, lm)
 
+        if not self._batched(self._t_index_list):
+            # One-after-another steps re-noise between steps with torch.randn_like on the
+            # global CUDA generator, so every frame got new noise and the picture flickered
+            # (~16/255 per frame on an unchanged drawing). Re-seeding per frame makes that
+            # noise the same each frame; the surprise number still picks which noise.
+            import torch
+
+            torch.cuda.manual_seed(self._seed if self._seed is not None else DEFAULT_SEED)
         if self._pending_prompt is not None:
             prompt = self._pending_prompt
             out = self._wrapper(image=image, prompt=prompt)

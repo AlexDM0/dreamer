@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import io
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -131,12 +132,14 @@ def main() -> int:
     sweep("creativity", [30, 18, defaults.t_index_list[0], 2],
           with_first_index, label=lambda first: f"{round((1 - first / 49) * 100)}%")
     first = defaults.t_index_list[0]
-    sweep("steps", [1, 2, 4, 8],
+    sweep("steps", [1, 2, 4, 5, 6, 8],
           lambda steps: replace(defaults, t_index_list=tuple(
               [first] if steps == 1 else
               [round(first + i * (min(49, first + 20 * (steps - 1)) - first) / (steps - 1))
                for i in range(steps)])),
-          timed=True)
+          timed=True,
+          extra=lambda steps, params: {"mode": "together" if backend._batched(list(params.t_index_list))
+                                       else "one by one"})
     sweep("lines", ["off", 0.3, defaults.controlnet_scale, 0.9, 1.5],
           lambda value: replace(defaults, controlnet_enabled=False) if value == "off"
           else replace(defaults, controlnet_scale=float(value)))
@@ -187,6 +190,9 @@ def main() -> int:
                       "kb": round(len(encoded) / 1024), "picture": save_thumb(crop, f"jpeg-{quality}.jpg")})
     data["controls"]["jpeg_quality"] = items
 
+    memory = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total",
+                             "--format=csv,noheader,nounits"], stdout=subprocess.PIPE, text=True).stdout.split(",")
+    data["gpu_memory_mb"] = [int(value) for value in memory] if len(memory) == 2 else None
     (OUT_DIR / "data.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
     print("wrote", OUT_DIR / "data.json", flush=True)
     return 0

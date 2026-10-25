@@ -95,17 +95,39 @@ t_index `[6, 26]`. Backend time per picture with ControlNet, from `tools/make_he
 | 4 | 108 | 9 |
 | 8 | 186 | 5 |
 
-- **GPU memory** is now about 9.6 GB of the RTX 3080's 10 GB in use (including the desktop's
-  ~0.85 GB). It was ~7.9 GB with 1 to 4 steps at 512×512, and the extra comes from the
-  1-to-8 batch range and the larger pictures. It stayed flat over repeated orientation switches,
-  so there is no leak, but there is little headroom left. If you see CUDA out-of-memory errors,
-  set `model.max_steps: 4` (one engine rebuild).
+- **GPU memory** with the batch 1-8 engine was about 9.6 GB of the RTX 3080's 10 GB (including
+  the desktop's ~0.85 GB), against ~7.9 GB with 1 to 4 steps at 512×512. It stayed flat over
+  repeated orientation switches, so there is no leak. The engine is now built for batch 1-4
+  only (see below): 8.4 GB.
 - **Orientation switch** (a landscape drawing after a portrait one, or the other way round):
   the wrapper is rebuilt at the new size in about 8 s. The engines have dynamic shapes, so they
   are reused, not rebuilt. Tested landscape → portrait → landscape → portrait → landscape.
 - **Paper colour carries into the picture:** black paper gives a night scene, blue paper the
   deep sea, yellow paper a sunny one. See the help page (`/static/help.html`) for every control,
   rendered on this PC.
+
+### Steps: up to 4 together, more one after another
+
+The fork runs a frame's steps together as one UNet batch, so the TensorRT engine had to be
+built for batch 1-8 for 8 steps, which used ~9.6 GB. Now the engine is built for batch 1-4
+(`model.max_batch_steps: 4`), and 5-8 steps switch the stream to the pipeline's
+one-after-another loop at batch 1. The wrapper refuses that mode for img2img at construction,
+but the pipeline and its parameter updater support it, and switching happens live on a
+step-count change. Measured with ControlNet at 640×448:
+
+| steps | how | ms | pictures/s |
+|---|---|---|---|
+| 1 | together | 51 | 20 |
+| 2 (default) | together | 73 | 14 |
+| 4 | together | 117 | 9 |
+| 5 | one by one | 174 | 6 |
+| 6 | one by one | 205 | 5 |
+| 8 | one by one | 267 | 4 (batch 1-8 engine: 186 ms) |
+
+GPU memory: 8.4 GB in use, down from 9.6 GB. One-by-one steps also have no frame lag. Pitfall
+fixed: that loop re-noises between steps with `torch.randn_like` on the global CUDA
+generator, so an unchanged drawing flickered by ~16/255 per frame. The backend re-seeds the
+generator with the surprise number before each such frame, which brings it to 0.00/255.
 
 ## Problems found and fixed
 

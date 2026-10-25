@@ -130,6 +130,7 @@ class FakeWrapper:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.calls = []
+        self.stream = types.SimpleNamespace(use_denoising_batch=True)
         FakeWrapper.instances.append(self)
 
     def prepare(self, **kwargs):
@@ -141,6 +142,8 @@ class FakeWrapper:
     def update_stream_params(self, **kwargs):
         if kwargs.get("t_index_list") == [1, 2, 3, 4]:
             raise RuntimeError("engine batch range exceeded")
+        if "t_index_list" in kwargs:  # record the stream mode the step change ran in
+            kwargs = {**kwargs, "_batched": self.stream.use_denoising_batch}
         self.calls.append(("params", kwargs))
 
     def __call__(self, image, prompt=None):
@@ -273,3 +276,23 @@ def test_streamdiffusion_set_size_rebuilds_and_keeps_live_params(fake_sd):
     assert b.generate(_sketch(), None).size == (128, 64)
     b.set_size(128, 64)
     assert len(fake_sd.instances) == 2  # same size: no rebuild
+
+
+def test_streamdiffusion_runs_steps_beyond_the_batch_one_by_one(fake_sd):
+    b = make_backend(Cfg(backend="streamdiffusion"))  # max_batch_steps defaults to 4
+    b.warmup()
+    w = fake_sd.instances[0]
+    assert w.kwargs["max_batch_size"] == 4 and b.latency_frames == 1
+    b.set_params(Params(t_index_list=[6, 12, 18, 24, 30, 36]))
+    assert w.calls[-1][1]["_batched"] is False and b.latency_frames == 0
+    b.set_params(Params(t_index_list=[6, 26, 46]))
+    assert w.calls[-1][1]["_batched"] is True and b.latency_frames == 2
+
+
+def test_streamdiffusion_starts_batched_even_with_many_steps(fake_sd):
+    b = make_backend(Cfg(backend="streamdiffusion", model=Model(t_index_list=[5, 10, 15, 20, 25, 30])))
+    b.warmup()
+    w = fake_sd.instances[0]
+    assert w.kwargs["t_index_list"] == [5, 10, 15, 20]  # the wrapper only accepts a batch
+    restored = [c[1] for c in w.calls if c[0] == "params"][0]
+    assert restored["t_index_list"] == [5, 10, 15, 20, 25, 30] and restored["_batched"] is False

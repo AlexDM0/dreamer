@@ -28,9 +28,12 @@ SHORT_SIDE_RATIO = 0.7
 class ModelConfig:
     base: str = "stabilityai/sd-turbo"
     t_index_list: list[int] = field(default_factory=lambda: [6, 26])
-    # Most denoising steps the admin page may pick. The TensorRT UNet engine is built for
-    # batch 1..max_steps; changing this builds a new engine on the next start (slow, once).
+    # Most denoising steps the admin page may pick.
     max_steps: int = 8
+    # Up to this many steps run together as one UNet batch (fast, one frame of lag per extra
+    # step); more steps run one after another at batch 1. The TensorRT UNet is built for
+    # batch 1..max_batch_steps, so this sets its memory; changing it rebuilds it once.
+    max_batch_steps: int = 4
     controlnet: str | None = "thibaud/controlnet-sd21-scribble-diffusers"  # None disables
     controlnet_scale: float = 0.55
     line_polarity: str = "white_on_black"

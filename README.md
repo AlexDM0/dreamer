@@ -97,7 +97,8 @@ days in that browser; changing the PIN logs every device out. On the admin page 
 
 - **Now:** watch the live picture, the engine state and speed, and change the current
   topic, style and the iPad's starting view. Changes show on the iPad immediately.
-- **Picture controls:** creativity, steps (1 to 8), how closely the picture follows the
+- **Picture controls:** creativity, steps (1 to 8; up to 4 run together, more one after
+  another), how closely the picture follows the
   lines, the "surprise number" (seed), the safety filter, line detection, the starting
   image and picture quality. Changes apply live without a restart and are saved in
   `data/params.json`. If the engine cannot apply a change, the previous setting comes

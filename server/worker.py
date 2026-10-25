@@ -233,6 +233,8 @@ class GpuWorker(threading.Thread):
                     log.exception("on_params_error callback failed")
             return False
         self._params = params
+        # A step-count change rebuilds the stream's buffers (and may change its latency).
+        self._needs_prime, self._settle_left = True, 0
         return True
 
     def _record_failure(self, msg: str) -> None:
