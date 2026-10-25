@@ -120,6 +120,10 @@ The model files download from Hugging Face on first run (a few GB, cached in
 - `RuntimeError: StreamDiffusion is not installed`: step 4 did not complete in the active venv.
 - `torch.cuda.is_available()` is `False`: a CPU torch got installed; rerun step 3 with `--force-reinstall`.
 - setup.ps1 says the existing `.venv` uses the wrong Python: run `.\setup.ps1 -Force` to recreate it.
+- Engines are kept in `engines\plain\` (ControlNet off) and `engines\controlnet\` (ControlNet
+  on). The fork names the UNet engine the same either way, so in one folder a UNet built
+  without ControlNet would be reused with it and the drawing's lines would be ignored.
+  Delete any old `engines\stabilityai\` folder left over from before this split.
 - Engine build errors after changing `size`, `t_index_list` length, or the ControlNet model:
   delete the `engines\` folder and start again to rebuild.
 - Changing the number of steps on the admin page can exceed the engine's batch range; the

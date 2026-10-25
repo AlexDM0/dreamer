@@ -11,6 +11,7 @@ stream_parameter_updater.py.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from PIL import Image
@@ -86,8 +87,12 @@ class StreamDiffusionBackend:
         if self._wrapper is not None:
             return
         use_controlnet = self._controlnet_id is not None
+        # The fork's UNet engine path does not encode ControlNet support, so a UNet built
+        # without ControlNet would be reused with it and silently ignore the control image.
+        # Keep the two variants in separate folders.
+        engine_dir = os.path.join(self._engine_dir, "controlnet" if use_controlnet else "plain")
         log.info("Dreamer: loading %s (TensorRT engines in %s; first run builds them, "
-                 "which can take many minutes)", self._model_id, self._engine_dir)
+                 "which can take many minutes)", self._model_id, engine_dir)
         wrapper = self._wrapper_cls(
             model_id_or_path=self._model_id,
             t_index_list=self._t_index_list,
@@ -99,7 +104,7 @@ class StreamDiffusionBackend:
             cfg_type="none",
             use_tiny_vae=True,
             acceleration="tensorrt",
-            engine_dir=self._engine_dir,
+            engine_dir=engine_dir,
             use_controlnet=use_controlnet,
             controlnet_config=self._controlnet_config() if use_controlnet else None,
             use_safety_checker=self._safety_on,
