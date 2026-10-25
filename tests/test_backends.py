@@ -209,20 +209,22 @@ def test_streamdiffusion_upload_screening(fake_sd):
     b.warmup()
     assert b.check_image_safe(Image.new("RGB", (8, 8)))
 
-    # The wrapper's own checker is used when present.
+    # The wrapper's own checker is used when present. The real one is called as
+    # checker(tensor, threshold); skip the torch conversion here.
     w = fake_sd.instances[0]
-    w.safety_checker = lambda img: img.getpixel((0, 0)) == (255, 0, 255)
+    b._checker_input = lambda img: img
+    w.safety_checker = lambda img, threshold: img.getpixel((0, 0)) == (255, 0, 255)
     assert b.check_image_safe(Image.new("RGB", (8, 8), "white"))
     assert not b.check_image_safe(Image.new("RGB", (8, 8), (255, 0, 255)))
 
     # Scores use the configured threshold; diffusers-style (images, flags) works too.
-    w.safety_checker = lambda img: 0.9
+    w.safety_checker = lambda img, threshold: 0.9
     assert not b.check_image_safe(Image.new("RGB", (8, 8)))
-    w.safety_checker = lambda img: ([img], [False])
+    w.safety_checker = lambda img, threshold: ([img], [False])
     assert b.check_image_safe(Image.new("RGB", (8, 8)))
 
     # A failing or unintelligible checker rejects (fail closed).
-    w.safety_checker = lambda img: object()
+    w.safety_checker = lambda img, threshold: object()
     with pytest.raises(TypeError):
         b.check_image_safe(Image.new("RGB", (8, 8)))
 
@@ -240,3 +242,17 @@ def test_streamdiffusion_failed_frame_does_not_leave_stale_prompt(fake_sd):
     b.set_prompt("A")  # the worker re-sends the prompt it wants after a failure
     b.generate(_sketch(), None)
     assert w.calls[-1] == ("call", None)  # still A: no stale "B"
+
+
+def test_streamdiffusion_safety_toggle_needs_loaded_checker(fake_sd):
+    # Built without a checker, the wrapper has no safety_checker attribute: turning the
+    # filter on live would crash every frame, so it is refused (the worker reverts).
+    cfg = Cfg(backend="streamdiffusion", model=Model(safety_checker=False))
+    b = make_backend(cfg)
+    b.warmup()
+    w = fake_sd.instances[0]
+    with pytest.raises(RuntimeError):
+        b.set_params(Params(safety_checker=True))
+    w.safety_checker = lambda img, threshold: False
+    b.set_params(Params(safety_checker=True))
+    assert w.calls[-1][1]["use_safety_checker"] is True

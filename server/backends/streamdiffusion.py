@@ -4,8 +4,9 @@ Fork: https://github.com/daydreamlive/StreamDiffusion. Install steps: requiremen
 
 This module must stay importable without torch: torch / streamdiffusion are imported in
 the constructor, and every CUDA-touching call (wrapper build, prepare, frames) happens
-on the GPU worker thread via warmup() / generate(). It cannot be exercised in CI, so
-uncertain third-party API use is marked with "# VERIFY:".
+on the GPU worker thread via warmup() / generate(). It cannot be exercised in CI; the
+third-party calls below were checked against the installed fork's wrapper.py and
+stream_parameter_updater.py.
 """
 from __future__ import annotations
 
@@ -36,8 +37,6 @@ class StreamDiffusionBackend:
     def __init__(self, config: Any) -> None:
         # The only place torch/streamdiffusion get imported (SPEC hard rule).
         try:
-            # VERIFY: import path. Upstream demos used "from utils.wrapper import
-            # StreamDiffusionWrapper"; the fork ships src/streamdiffusion/wrapper.py.
             from streamdiffusion.wrapper import StreamDiffusionWrapper
         except ImportError as exc:
             raise RuntimeError(_INSTALL_HINT) from exc
@@ -130,8 +129,8 @@ class StreamDiffusionBackend:
 
         updates: dict[str, Any] = {}
         if t_index != self._t_index_list:
-            # VERIFY: changing the list LENGTH may exceed the TensorRT engine's batch
-            # range and fail; the worker reverts params and reports the error.
+            # Changing the list LENGTH changes the UNet batch, which may exceed the
+            # TensorRT engine's batch range and fail; the worker then reverts params.
             updates["t_index_list"] = t_index
         if int(params.seed) != self._seed:
             updates["seed"] = int(params.seed)
@@ -140,9 +139,14 @@ class StreamDiffusionBackend:
         ):
             cfg = self._controlnet_config()
             cfg[0]["conditioning_scale"] = cn_scale
-            cfg[0]["enabled"] = cn_enabled  # VERIFY: "enabled" key honoured by update_stream_params
+            # The updater diffs by model_id and sets enabled_list[i] from "enabled".
+            cfg[0]["enabled"] = cn_enabled
             updates["controlnet_config"] = cfg
         if bool(params.safety_checker) != self._safety_on:
+            # The wrapper only loads a checker when built with it on (or its engine
+            # exists); turning it on without one would crash every frame.
+            if params.safety_checker and getattr(self._wrapper, "safety_checker", None) is None:
+                raise RuntimeError("safety filter needs a restart with model.safety_checker: true")
             updates["use_safety_checker"] = bool(params.safety_checker)
         if float(params.safety_threshold) != self._safety_threshold:
             updates["safety_checker_threshold"] = float(params.safety_threshold)
@@ -180,8 +184,8 @@ class StreamDiffusionBackend:
         else:
             out = self._wrapper(image=image)
 
-        # VERIFY: with output_type="pil" and frame_buffer_size=1 the wrapper returns a
-        # PIL image; tolerate a one-element list just in case.
+        # output_type="pil" with frame_buffer_size=1 returns one PIL image (also the
+        # black/previous fallback on an NSFW frame); tolerate a list anyway.
         if isinstance(out, (list, tuple)):
             out = out[0] if out else None
         if not isinstance(out, Image.Image):
@@ -194,13 +198,10 @@ class StreamDiffusionBackend:
         """The wrapper's loaded safety checker, if it exposes one."""
         if self._wrapper is None or not self._safety_on:
             return None
-        # VERIFY: attribute names. The checker is created when use_safety_checker=True;
-        # look on the wrapper and on its inner StreamDiffusion object.
-        for owner in (self._wrapper, getattr(self._wrapper, "stream", None)):
-            checker = getattr(owner, "safety_checker", None) if owner is not None else None
-            if checker is not None and callable(checker):
-                return checker
-        return None
+        # wrapper.safety_checker is an NSFWDetectorEngine (TensorRT only), created when
+        # use_safety_checker=True or its engine already exists.
+        checker = getattr(self._wrapper, "safety_checker", None)
+        return checker if callable(checker) else None
 
     def check_image_safe(self, image: Image.Image) -> bool:
         """Screen an admin upload with the wrapper's own safety checker (SPEC).
@@ -217,16 +218,27 @@ class StreamDiffusionBackend:
                             "style pictures are stored unscreened")
             return True
         size = (self._size, self._size)
-        result = checker(image.convert("RGB").resize(size, Image.Resampling.LANCZOS))
+        checker_input = self._checker_input(image.convert("RGB").resize(size, Image.Resampling.LANCZOS))
+        # NSFWDetectorEngine(image_tensor, threshold) returns True when NSFW.
+        result = checker(checker_input, self._safety_threshold)
         return not _is_flagged(result, self._safety_threshold)
+
+    def _checker_input(self, image: Image.Image) -> Any:
+        """RGB image -> the (1, 3, H, W) fp16 CUDA tensor in 0..1 the checker takes
+        (it resizes to 448 itself). Separate so tests without torch can stub it."""
+        import numpy as np
+        import torch
+
+        tensor = torch.from_numpy(np.array(image)).permute(2, 0, 1).unsqueeze(0)
+        return tensor.to(device="cuda", dtype=torch.float16) / 255.0
 
 
 def _is_flagged(result: Any, threshold: float) -> bool:
     """Interpret a safety checker's answer. Raises TypeError for unknown shapes.
 
-    VERIFY: the fork's checker return type. Handled: a bool flag; a probability in
-    0..1 compared with the configured threshold; diffusers-style ``(images, flags)``;
-    or a sequence of per-image flags/scores.
+    The fork's NSFWDetectorEngine returns a bool. Also handled, for other checkers: a
+    probability in 0..1 compared with the configured threshold; diffusers-style
+    ``(images, flags)``; or a sequence of per-image flags/scores.
     """
     if isinstance(result, bool):
         return result
