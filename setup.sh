@@ -159,6 +159,10 @@ if [ "$MOCK" = 0 ]; then
     run "Installing StreamDiffusion (Daydream fork, tensorrt + controlnet)" \
         "$VENV_PY" -m pip install "streamdiffusion[tensorrt,controlnet] @ git+$STREAMDIFFUSION_REPO@$SD_REF"
 
+    # The fork's TensorRT UNet export imports diffusers_ipadapter even without IP-Adapter,
+    # but only lists it in the [ipadapter] extra (which also pulls insightface/mediapipe).
+    run "Installing diffusers-ipadapter (needed by the TensorRT engine build)"         "$VENV_PY" -m pip install "diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPAdapter.git@405f87da42932e30bd55ee8dca3ce502d7834a99"
+
     run "Installing TensorRT (streamdiffusion.tools.install-tensorrt)" \
         "$VENV_PY" -m streamdiffusion.tools.install-tensorrt
 

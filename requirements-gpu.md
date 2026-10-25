@@ -45,8 +45,14 @@ The GPU check comes at the end of step 4, because installing StreamDiffusion can
 
 ```powershell
 pip install "streamdiffusion[tensorrt,controlnet] @ git+https://github.com/daydreamlive/StreamDiffusion.git@4c90d9e437aa28cca7cae1acfab1e52157261939"
+pip install "diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPAdapter.git@405f87da42932e30bd55ee8dca3ce502d7834a99"
 python -m streamdiffusion.tools.install-tensorrt
 ```
+
+The `diffusers-ipadapter` line is needed even though Dreamer does not use IP-Adapter: the
+fork's TensorRT UNet export imports it unconditionally, but only lists it in its
+`[ipadapter]` extra (which would also pull in insightface and mediapipe). Without it the
+first start fails with `No module named 'diffusers_ipadapter'` and "Acceleration has failed".
 
 This is the PEP 508 form of the install; the older `...#egg=streamdiffusion[tensorrt,controlnet]`
 form from the upstream README is deprecated in current pip and can silently drop the extras

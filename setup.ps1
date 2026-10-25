@@ -22,6 +22,9 @@ $TorchVersion = "2.8.0"
 $TorchvisionVersion = "0.23.0"
 $TorchaudioVersion = "2.8.0"
 $StreamDiffusionRepo = "https://github.com/daydreamlive/StreamDiffusion.git"
+# The fork's TensorRT UNet export imports diffusers_ipadapter even without IP-Adapter, but it
+# only lists it in the [ipadapter] extra (which also pulls insightface/mediapipe). Same pin.
+$IpAdapterSpec = "diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPAdapter.git@405f87da42932e30bd55ee8dca3ce502d7834a99"
 
 $VenvDir = Join-Path $PSScriptRoot ".venv"
 $VenvScripts = Join-Path $VenvDir "Scripts"
@@ -194,6 +197,9 @@ if (-not $Mock) {
     $sdSpec = "streamdiffusion[tensorrt,controlnet] @ git+$StreamDiffusionRepo@$StreamDiffusionRef"
     Invoke-Native "Installing StreamDiffusion (Daydream fork, tensorrt + controlnet)" $VenvPython @(
         "-m", "pip", "install", $sdSpec)
+
+    Invoke-Native "Installing diffusers-ipadapter (needed by the TensorRT engine build)" $VenvPython @(
+        "-m", "pip", "install", $IpAdapterSpec)
 
     Invoke-Native "Installing TensorRT (streamdiffusion.tools.install-tensorrt)" $VenvPython @(
         "-m", "streamdiffusion.tools.install-tensorrt")

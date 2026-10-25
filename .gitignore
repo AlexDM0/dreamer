@@ -6,3 +6,4 @@ engines/
 config.yaml
 tests/e2e/screenshots/
 node_modules/
+bench-out/
