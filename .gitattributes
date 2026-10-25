@@ -1,0 +1,3 @@
+# Shell scripts must keep LF endings, or WSL/Linux cannot run them after a clone made
+# with Git for Windows (core.autocrlf=true): "/usr/bin/env: bash\r: No such file".
+*.sh text eol=lf

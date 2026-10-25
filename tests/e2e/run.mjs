@@ -161,6 +161,11 @@ async function main() {
 
     // ----- clear
     await kid.click("#clear");
+    check(await kid.isVisible("#confirm"), "clear asks first when the drawing is not saved");
+    await kid.click("#confirm-no");
+    check((await inkOn(kid, "#sketch")) > 50, "keeping the drawing leaves it on the canvas");
+    await kid.click("#clear");
+    await kid.click("#confirm-yes");
     check((await inkOn(kid, "#sketch")) === 0, "clear empties the sketch canvas");
     await kid.waitForFunction(() => !window.dreamer.net.awaitingFinal, null, { timeout: 10000 });
     await kid.waitForTimeout(300);
@@ -298,6 +303,8 @@ async function main() {
     await kid.waitForSelector('#conn[data-state="ready"]');
     await kid.waitForSelector("#hint:not([hidden])", { timeout: 10000 });
     check((await inkOn(kid, "#sketch")) > 50, "reloading restores the drawing from the draft");
+    check(await kid.evaluate((id) => window.dreamer.net.continuingId === id, art.id),
+          "the restored draft still continues the saved artwork");
     await shot(kid, "12-kid-draft-restored");
     await kid.click("#hint-btn");
     check((await inkOn(kid, "#sketch")) === 0, "Start fresh empties the canvas");
@@ -306,9 +313,33 @@ async function main() {
     await kid.waitForTimeout(600);
     check((await inkOn(kid, "#sketch")) === 0, "after Start fresh, a reload has no draft to restore");
 
-    // ----- admin: gallery section, delete -> gone from the kid gallery
+    // ----- gallery that cannot load says so, and "Try again" recovers
+    await kid.route("**/api/artworks?*", (route) => route.abort());
     await kid.click("#open-gallery");
+    await kid.waitForSelector("#gallery-error:not([hidden])", { timeout: 10000 });
+    check(await kid.isHidden("#gallery-more") && await kid.isHidden("#gallery-empty"),
+          "an unreachable gallery shows a message instead of a blank grid");
+    await kid.unroute("**/api/artworks?*");
+    await kid.click("#gallery-retry");
     await kid.waitForSelector(`#gallery-grid .thumb[data-id="${art.id}"]`, { timeout: 10000 });
+    check(await kid.isHidden("#gallery-error"), "Try again loads the gallery");
+
+    // ----- "Keep drawing" whose sketch cannot load: a visible message, nothing changes
+    await kid.click(`#gallery-grid .thumb[data-id="${art.id}"]`);
+    await kid.waitForSelector("#detail:not([hidden])");
+    await kid.route("**/sketch.png*", (route) => route.abort());
+    await kid.click("#detail-continue");
+    await kid.waitForSelector("#hint:not([hidden])", { timeout: 10000 });
+    check(await kid.evaluate(() => {
+      const r = document.querySelector("#hint").getBoundingClientRect();
+      return !!document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest("#hint");
+    }), "a failed Keep drawing shows its message on top of the gallery");
+    check(await kid.evaluate(() => window.dreamer.net.continuingId === null && window.dreamer.gallery.isOpen),
+          "a failed Keep drawing leaves the drawing and the gallery as they were");
+    await kid.unroute("**/sketch.png*");
+    await kid.click("#detail-back");
+
+    // ----- admin: gallery section, delete -> gone from the kid gallery
     await admin.waitForSelector(".art-thumb", { timeout: 10000 });
     await admin.locator("#h-gallery").scrollIntoViewIfNeeded();
     await shot(admin, "13-admin-gallery");

@@ -35,3 +35,9 @@ Admin page
 - Gallery section: grid, open, rename, delete (soft) with Trash view to restore or empty trash; download links for picture.jpg and sketch.png.
 
 Tests: GalleryStore CRUD/atomicity/soft-delete/purge, id validation and no path traversal, ws save/continue/new flows, draft autosave and restore on reconnect, admin-only deletion (401 without cookie), HTTP content types; e2e: draw -> save -> gallery shows it -> continue restores sketch -> admin deletes -> gone from kid gallery.
+
+Implementation notes (deviations found in review, 2026-10-25)
+- "Being continued" belongs to the page's canvas, not to the server session. `hello` carries `"continuing": <id>|null` (the artwork the page's canvas holds, so a reconnect keeps it; a freshly loaded page sends null). `continue` only answers with the sketch to load; the page then sends `{"t":"continuing","id"}` once the sketch is on its canvas (a sketch that fails to load changes nothing). After restoring the draft the page sends `{"t":"restored","id":<draft id>}` and continues the draft's `source` (now included in `ready.draft`). This way a page that never restored anything cannot save over an existing artwork.
+- The session has a drawing epoch, bumped on hello/clear/new/continuing/restored. A picture made from a sketch of an older epoch is still sent (the page drops it) but never becomes `last_frame`, so it cannot be saved or autosaved as the draft.
+- Files on disk carry the version: `picture.<v>.jpg`, `sketch.<v>.png`, `thumb.<v>.jpg` (`<v>` = the `?v=` of the URLs). An update writes the new version, commits the row, then deletes the old files, so a failure never mixes versions. Folders with plain names from earlier builds are still read. `GalleryStore.sweep()` (at startup and after emptying the trash) removes orphaned folders, old versions and temp files.
+- Clear asks first when the drawing is unsaved (like New), because it also drops the draft.

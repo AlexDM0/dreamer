@@ -49,10 +49,11 @@ pip install "diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPA
 python -m streamdiffusion.tools.install-tensorrt
 ```
 
-The `diffusers-ipadapter` line is needed even though Dreamer does not use IP-Adapter: the
-fork's TensorRT UNet export imports it unconditionally, but only lists it in its
-`[ipadapter]` extra (which would also pull in insightface and mediapipe). Without it the
-first start fails with `No module named 'diffusers_ipadapter'` and "Acceleration has failed".
+The second line is needed even without IP-Adapter: the fork's TensorRT code imports
+`diffusers_ipadapter` on every engine build, but only its `ipadapter` extra installs it.
+Do not use that extra on Windows: it also pulls `insightface`, which has no Windows wheel
+and needs the MSVC Build Tools to compile. Without the package the first start fails with
+"Acceleration has failed." (`No module named 'diffusers_ipadapter'` further up the log).
 
 This is the PEP 508 form of the install; the older `...#egg=streamdiffusion[tensorrt,controlnet]`
 form from the upstream README is deprecated in current pip and can silently drop the extras
@@ -61,6 +62,15 @@ RTX 3080 (2026-10-25); to try a newer one, use `@main` (`.\setup.ps1 -StreamDiff
 
 On CUDA 12 the second command installs `tensorrt==10.12.0.36` and
 `nvidia-cudnn-cu12==9.7.1.26`; on Windows it also installs `pywin32` and `triton-windows`.
+
+**Linux / WSL only:** that cuDNN is older than the 9.10.2.21 the Linux torch 2.8.0 wheel is
+built against, and torch then fails at its first convolution ("cuDNN version
+incompatibility"). Put torch's version back afterwards (setup.sh does this; Windows torch
+wheels bundle their own cuDNN and are not affected):
+
+```bash
+pip install nvidia-cudnn-cu12==9.10.2.21
+```
 
 Admin-uploaded style pictures are screened with the wrapper's own safety checker (loaded
 when `model.safety_checker: true`). If no checker is loaded, uploads are allowed and a
@@ -72,7 +82,12 @@ Then check that PyTorch still sees the GPU:
 python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 
-It must print `True` and your GPU name.
+It must print `True` and your GPU name. Then check cuDNN and StreamDiffusion's TensorRT
+imports (setup.ps1 / setup.sh run the same check):
+
+```powershell
+python -c "import torch, torch.nn.functional as F; F.conv2d(torch.ones(1,3,8,8,device='cuda'), torch.ones(4,3,3,3,device='cuda')); import tensorrt, streamdiffusion.acceleration.tensorrt.models.controlnet_models, streamdiffusion.acceleration.tensorrt.export_wrappers.unet_unified_export; print('ok')"
+```
 
 ## 5. Configure and first run
 

@@ -13,6 +13,10 @@ TORCH_VERSION="2.8.0"
 TORCHVISION_VERSION="0.23.0"
 TORCHAUDIO_VERSION="2.8.0"
 STREAMDIFFUSION_REPO="https://github.com/daydreamlive/StreamDiffusion.git"
+# The fork imports diffusers_ipadapter on every TensorRT path, but only its `ipadapter`
+# extra installs it (and that extra also pulls insightface, which needs a C++ compiler).
+# Install just this small package, at the commit the fork's setup.py pins.
+DIFFUSERS_IPADAPTER="diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPAdapter.git@405f87da42932e30bd55ee8dca3ce502d7834a99"
 
 MOCK=0
 FORCE=0
@@ -159,12 +163,22 @@ if [ "$MOCK" = 0 ]; then
     run "Installing StreamDiffusion (Daydream fork, tensorrt + controlnet)" \
         "$VENV_PY" -m pip install "streamdiffusion[tensorrt,controlnet] @ git+$STREAMDIFFUSION_REPO@$SD_REF"
 
-    # The fork's TensorRT UNet export imports diffusers_ipadapter even without IP-Adapter,
-    # but only lists it in the [ipadapter] extra (which also pulls insightface/mediapipe).
-    run "Installing diffusers-ipadapter (needed by the TensorRT engine build)"         "$VENV_PY" -m pip install "diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPAdapter.git@405f87da42932e30bd55ee8dca3ce502d7834a99"
+    run "Installing diffusers-ipadapter (imported by StreamDiffusion's TensorRT code)" \
+        "$VENV_PY" -m pip install "$DIFFUSERS_IPADAPTER"
 
     run "Installing TensorRT (streamdiffusion.tools.install-tensorrt)" \
         "$VENV_PY" -m streamdiffusion.tools.install-tensorrt
+
+    # install-tensorrt pins an older cuDNN than the one Linux torch wheels are built
+    # against (torch 2.8.0: 9.10.2.21 vs 9.7.1.26), and torch refuses an older cuDNN at
+    # its first convolution. Put back the version torch asks for (TensorRT 10 is fine
+    # with it). Windows torch wheels bundle their own cuDNN, so setup.ps1 skips this.
+    CUDNN_REQ="$("$VENV_PY" -c "import importlib.metadata as m; \
+print(next((r.split(';')[0].strip() for r in (m.requires('torch') or []) if r.startswith('nvidia-cudnn')), ''))")"
+    if [ -n "$CUDNN_REQ" ]; then
+        run "Restoring the cuDNN version PyTorch needs ($CUDNN_REQ)" \
+            "$VENV_PY" -m pip install "$CUDNN_REQ"
+    fi
 
     step "Checking that PyTorch can see the GPU"
     "$VENV_PY" -c "import sys, torch; ok = torch.cuda.is_available(); \
@@ -172,6 +186,18 @@ print(torch.__version__, 'CUDA', torch.version.cuda, 'available:', ok); \
 print('GPU:', torch.cuda.get_device_name(0)) if ok else None; sys.exit(0 if ok else 1)" \
         || die "PyTorch cannot use the GPU (torch.cuda.is_available() is False). Update the NVIDIA driver, then reinstall the CUDA build with:
        .venv/bin/python -m pip install --force-reinstall torch==$TORCH_VERSION+$CUDA torchvision==$TORCHVISION_VERSION+$CUDA torchaudio==$TORCHAUDIO_VERSION+$CUDA --index-url $INDEX_URL"
+
+    step "Checking cuDNN and StreamDiffusion's TensorRT imports"
+    "$VENV_PY" -c "import torch, torch.nn.functional as F; \
+print('cuDNN', torch.backends.cudnn.version()); \
+x = torch.ones(1, 3, 8, 8, device='cuda'); F.conv2d(x, torch.ones(4, 3, 3, 3, device='cuda')); \
+torch.cuda.synchronize(); print('GPU convolution ok')" \
+        || die "PyTorch cannot run a convolution on the GPU (often a cuDNN version mismatch). Reinstall the cuDNN that torch needs:
+       .venv/bin/python -m pip install \"$CUDNN_REQ\""
+    "$VENV_PY" -c "import tensorrt, streamdiffusion.acceleration.tensorrt.models.controlnet_models, streamdiffusion.acceleration.tensorrt.export_wrappers.unet_unified_export; \
+print('TensorRT', tensorrt.__version__, '- StreamDiffusion TensorRT imports ok')" \
+        || die "StreamDiffusion's TensorRT code cannot be imported (see the error above). A missing
+       diffusers_ipadapter is fixed with: .venv/bin/python -m pip install \"$DIFFUSERS_IPADAPTER\""
 fi
 
 # ---------------------------------------------------------------- config
