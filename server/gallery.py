@@ -533,7 +533,9 @@ class DraftAutosaver:
         self._get_frame = get_frame
         self._get_source = get_source
         self._saved: LastFrame | None = None   # frame the draft currently holds
-        self._last_write = 0.0
+        # monotonic() counts from boot, so 0.0 would throttle the first write on a
+        # freshly booted PC; -inf means "never written": the first write is immediate.
+        self._last_write = float("-inf")
         self._task: asyncio.Task | None = None
         drafts = store.drafts()
         self.draft_id: str | None = drafts[0].id if drafts else None

@@ -126,6 +126,8 @@ def test_clear_starts_a_new_artwork(client):
 def test_save_error_restores_status(client):
     with client.websocket_connect("/ws") as ws:
         hello(ws)
+        # The worker may still be warming up; the status after the error is the current one.
+        recv_until(ws, lambda k, v: k == "json" and v.get("t") == "status" and v.get("state") == "ready")
         ws.send_json({"t": "save"})
         recv_until(ws, is_error)
         follow = recv_until(ws, is_json("status"))[1]
