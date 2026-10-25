@@ -305,16 +305,27 @@ function showGpu() {
   const rows = engineRows(gpu.max_batch_steps);
   const options = [...((lastLimits && lastLimits.resolution && lastLimits.resolution.options) || [])];
   if (!options.includes(params.resolution)) options.push(params.resolution);
-  select.replaceChildren(...options.sort((a, b) => a - b).map((side) => {
-    const short = Math.max(64, Math.round((side * 0.7) / 64) * 64);
-    const ms = atSide(rows, side, "ms_1_steps");
-    const total = estimateMb({ ...params, resolution: side }).total;
-    const option = el("option", { value: String(side) },
-      `${side}×${short}` + (ms ? ` · ~${Math.round(1000 / ms)} pictures/s` : ""));
-    option.disabled = total > budget && side !== params.resolution;
-    return option;
-  }));
-  if (document.activeElement !== select) select.value = String(params.resolution);
+  // Rebuild the list only when it really changes: rebuilding while iPad Safari's picker is
+  // open makes the pick land on another option.
+  const sides = options.sort((a, b) => a - b);
+  const signature = sides.join(",");
+  if (select.dataset.signature !== signature) {
+    select.dataset.signature = signature;
+    select.replaceChildren(...sides.map((side) => {
+      const short = Math.max(64, Math.round((side * 0.7) / 64) * 64);
+      const ms = atSide(rows, side, "ms_1_steps");
+      return el("option", { value: String(side) },
+        `${side}×${short}` + (ms ? ` · ~${Math.round(1000 / ms)} pictures/s` : ""));
+    }));
+  }
+  for (const option of select.options) {
+    const side = Number(option.value);
+    option.disabled = estimateMb({ ...params, resolution: side }).total > budget && side !== params.resolution;
+  }
+  // Keep the parent's pick while it is being sent (like the other controls).
+  if (document.activeElement !== select && !("p-resolution" in pendingInputs)) {
+    select.value = String(params.resolution);
+  }
 
   // The upscaler needs its weights, and room in the budget.
   const upscale = $("p-upscale");
@@ -402,8 +413,9 @@ $("p-init").addEventListener("change", (e) => {
 onParamInput("p-init-blur", "o-init-blur", (v) => `${v} px`, (v) => ({ init_blur: Number(v) }));
 onParamInput("p-refine", "o-refine", (v) => (Number(v) ? `${v} steps` : "off"),
   (v) => ({ refine_steps: Number(v) }));
-$("p-upscale").addEventListener("change", (e) => queueParams({ upscale: e.target.value }));
-$("p-resolution").addEventListener("change", (e) => queueParams({ resolution: Number(e.target.value) }));
+$("p-upscale").addEventListener("change", (e) => queueParams({ upscale: e.target.value }, "p-upscale"));
+$("p-resolution").addEventListener("change",
+  (e) => queueParams({ resolution: Number(e.target.value) }, "p-resolution"));
 $("p-cn-on").addEventListener("change", (e) => {
   $("p-cn-scale").disabled = !e.target.checked;
   queueParams({ controlnet_enabled: e.target.checked });
