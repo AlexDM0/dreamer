@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Dreamer · Picture controls</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/theme.css">
+  <style>
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans);
+           line-height: var(--leading-normal); }
+    header.top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
+                 gap: var(--space-3); padding: var(--space-3) var(--space-4);
+                 background: var(--glass); backdrop-filter: blur(12px);
+                 border-bottom: 1px solid var(--border); }
+    header.top h1 { font-size: var(--text-lg); margin: 0; font-weight: var(--weight-semibold); }
+    nav.toc { display: flex; gap: var(--space-2); overflow-x: auto; padding: var(--space-3) var(--space-4);
+              scrollbar-width: none; }
+    nav.toc a { flex: none; padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill);
+                background: var(--surface); border: 1px solid var(--border); color: var(--text);
+                text-decoration: none; font-size: var(--text-sm); }
+    nav.toc a:hover { background: var(--surface-hover); }
+    main { max-width: 1120px; margin: 0 auto; padding: 0 var(--space-4) var(--space-12); }
+    .intro { display: grid; grid-template-columns: minmax(0, 360px) 1fr; gap: var(--space-5);
+             align-items: center; margin: var(--space-4) 0 var(--space-6); }
+    .intro img { width: 100%; border-radius: var(--radius-md); box-shadow: var(--shadow-2); display: block; }
+    .intro p { margin: 0 0 var(--space-2); color: var(--text-muted); }
+    section.control { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+                      box-shadow: var(--shadow-1); padding: var(--space-5); margin: 0 0 var(--space-5);
+                      scroll-margin-top: 72px; }
+    section.control:target { outline: 3px solid var(--accent); outline-offset: 2px; }
+    section.control h2 { margin: 0 0 var(--space-1); font-size: var(--text-xl); letter-spacing: var(--tracking-tight); }
+    .lead { margin: 0 0 var(--space-4); color: var(--text-muted); max-width: 70ch; }
+    .scale { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm);
+             color: var(--text-subtle); margin: 0 0 var(--space-2); }
+    .scale .bar { flex: 1; height: 4px; border-radius: 2px;
+                  background: linear-gradient(90deg, var(--surface-sunken), var(--accent)); }
+    .strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3); }
+    figure { margin: 0; background: var(--surface-sunken); border-radius: var(--radius-md); overflow: hidden;
+             border: 2px solid transparent; }
+    figure.is-default { border-color: var(--accent); }
+    figure .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--border); }
+    figure img { width: 100%; display: block; aspect-ratio: 10 / 7; object-fit: cover; }
+    figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2);
+                 padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
+    figcaption b { font-weight: var(--weight-semibold); white-space: nowrap; }
+    .badge { font-size: var(--text-xs); padding: 1px var(--space-2); border-radius: var(--radius-pill);
+             background: var(--accent-soft); color: var(--accent-text); white-space: nowrap; }
+    .meta { color: var(--text-subtle); white-space: nowrap; }
+    .pair-labels { display: grid; grid-template-columns: 1fr 1fr; font-size: var(--text-xs);
+                   color: var(--text-subtle); padding: var(--space-1) var(--space-3) 0; }
+    .tips { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-3);
+            margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+    .tips li { background: var(--surface-sunken); border-radius: var(--radius-md); padding: var(--space-3);
+               font-size: var(--text-sm); }
+    .tips li b { display: block; margin-bottom: var(--space-1); }
+    .meter { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+    .meter div { border-radius: var(--radius-md); padding: var(--space-3); font-size: var(--text-sm);
+                 background: var(--surface-sunken); }
+    .meter .strict { background: var(--success-soft); }
+    .meter .loose { background: var(--warning-soft); }
+    .note { font-size: var(--text-sm); color: var(--text-subtle); margin: var(--space-3) 0 0; }
+    .missing { color: var(--text-muted); font-style: italic; }
+    @media (max-width: 640px) { .intro { grid-template-columns: 1fr; } section.control { padding: var(--space-4); } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <img src="/static/favicon.svg" alt="" width="32" height="32">
+    <h1>What the picture controls do</h1>
+  </header>
+  <nav class="toc" aria-label="Controls">
+    <a href="#creativity">Creativity</a><a href="#steps">Steps</a><a href="#lines">Follow the lines</a>
+    <a href="#seed">Surprise number</a><a href="#safety">Safety filter</a><a href="#line_threshold">Line sensitivity</a>
+    <a href="#line_dilate">Line thickening</a><a href="#line_polarity">Line map</a><a href="#init_mode">Starting image</a>
+    <a href="#init_blur">Colour softness</a><a href="#jpeg_quality">Picture quality</a>
+  </nav>
+  <main>
+    <div class="intro">
+      <img id="drawing" alt="The example drawing: a house, a sun, a tree and grass on black paper">
+      <div>
+        <p><b>Every example below is real.</b> This drawing was sent through Dreamer on this PC's
+          graphics card, changing one control at a time and keeping everything else at its default.
+          The default is outlined.</p>
+        <p id="setup" class="note"></p>
+      </div>
+    </div>
+
+    <section class="control" id="creativity">
+      <h2>Creativity</h2>
+      <p class="lead">How freely the picture is painted. Low: it stays close to what the starting image
+        already looks like (with the default starting image, that is soft colour clouds, so it looks blurry).
+        High: the computer invents more detail, shapes and background.</p>
+      <div class="scale"><span>stays close</span><span class="bar"></span><span>invents more</span></div>
+      <div class="strip" data-control="creativity"></div>
+      <ul class="tips"><li><b>Turn it down</b>when pictures drift too far from the drawing.</li>
+        <li><b>Turn it up</b>when pictures look washed out or unfinished.</li></ul>
+    </section>
+
+    <section class="control" id="steps">
+      <h2>Steps</h2>
+      <p class="lead">How many times the picture is refined per frame. More steps give more polish and detail,
+        but every picture takes longer, so the screen updates less often while your child draws.</p>
+      <div class="strip" data-control="steps"></div>
+      <p class="note">Time per picture on this PC (the graphics card only; over Wi-Fi add about 40 ms).
+        1 or 2 steps feel live. 8 steps is noticeably slower.</p>
+    </section>
+
+    <section class="control" id="lines">
+      <h2>Follow the lines</h2>
+      <p class="lead">How strongly the shapes your child drew decide where things go in the picture. Off: the
+        drawing's shapes are ignored and only its colours and the topic count. Too high: the lines are traced as
+        thick outlines.</p>
+      <div class="scale"><span>loose</span><span class="bar"></span><span>traces the lines</span></div>
+      <div class="strip" data-control="lines"></div>
+    </section>
+
+    <section class="control" id="seed">
+      <h2>Surprise number</h2>
+      <p class="lead">The same drawing and settings with another number give another picture: different
+        details, light and arrangement. Tap <b>New</b> for a fresh surprise; keep a number you like.</p>
+      <div class="strip" data-control="seed"></div>
+    </section>
+
+    <section class="control" id="safety">
+      <h2>Safety filter</h2>
+      <p class="lead">Every picture is checked by a small image classifier before it is shown. If it looks
+        unsuitable, the iPad keeps showing the previous picture instead. The prompts are already
+        child-friendly, so this is a second line of defence. It costs about 4 ms per picture.</p>
+      <div class="meter">
+        <div class="strict"><b>Low strictness value</b><br>Blocks more, including some harmless pictures.</div>
+        <div><b>0.5 (default)</b><br>Balanced.</div>
+        <div class="loose"><b>High value</b><br>Blocks only clear cases.</div>
+      </div>
+      <p class="note">No examples here, for obvious reasons. If Dreamer was started with the filter off, it can
+        only be switched on again after a restart with <code>model.safety_checker: true</code>.</p>
+    </section>
+
+    <section class="control" id="line_threshold">
+      <h2>Line sensitivity</h2>
+      <p class="lead">How faint a stroke can be and still count as a line. Left in each pair: the line map the
+        computer sees. Right: the picture. Pencil strokes on the iPad are solid, so this barely matters there.</p>
+      <div class="strip" data-control="line_threshold"></div>
+    </section>
+
+    <section class="control" id="line_dilate">
+      <h2>Line thickening</h2>
+      <p class="lead">Makes the lines thicker before the computer sees them. Thicker lines make bolder, simpler
+        shapes; thin lines keep small details.</p>
+      <div class="strip" data-control="line_dilate"></div>
+    </section>
+
+    <section class="control" id="line_polarity">
+      <h2>Line map</h2>
+      <p class="lead">Which way round the line map is. The line-following model was trained on white lines on
+        black, so it follows them best that way. Leave it there.</p>
+      <div class="strip" data-control="line_polarity"></div>
+    </section>
+
+    <section class="control" id="init_mode">
+      <h2>Starting image</h2>
+      <p class="lead">What the picture is painted on top of. Left in each pair: the starting image. Right: the
+        picture. <b>Colours</b> keeps soft clouds of your child's colours on the paper colour, so the lines guide
+        the picture without showing up in it. <b>Sketch</b> starts from the drawing itself, so the strokes tend to
+        show. <b>Blank</b> starts from the paper colour alone.</p>
+      <div class="strip" data-control="init_mode"></div>
+    </section>
+
+    <section class="control" id="init_blur">
+      <h2>Colour softness</h2>
+      <p class="lead">With the Colours starting image: how far your child's colours spread. Small: colours stay
+        where they were drawn. Large: they melt into the whole area.</p>
+      <div class="strip" data-control="init_blur"></div>
+    </section>
+
+    <section class="control" id="jpeg_quality">
+      <h2>Picture quality</h2>
+      <p class="lead">How the picture is compressed before it is sent to the iPad (zoomed in here). Lower is
+        smaller and faster over Wi-Fi but blockier; higher is sharper but larger.</p>
+      <div class="strip" data-control="jpeg_quality"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    const PAIRS = { line_threshold: ["linemap", "line map"], line_dilate: ["linemap", "line map"],
+                    line_polarity: ["linemap", "line map"], init_mode: ["init", "starting image"],
+                    init_blur: ["init", "starting image"] };
+
+    function img(src, alt) {
+      const el = document.createElement("img");
+      el.src = "/static/" + src;
+      el.alt = alt;
+      el.loading = "lazy";
+      return el;
+    }
+
+    function figure(control, item) {
+      const fig = document.createElement("figure");
+      if (item.default) fig.classList.add("is-default");
+      const pair = PAIRS[control];
+      if (pair && item[pair[0]]) {
+        const box = document.createElement("div");
+        box.className = "pair";
+        box.append(img(item[pair[0]], `${pair[1]} at ${item.value}`), img(item.picture, `picture at ${item.value}`));
+        const labels = document.createElement("div");
+        labels.className = "pair-labels";
+        labels.innerHTML = `<span>${pair[1]}</span><span>picture</span>`;
+        fig.append(box, labels);
+      } else {
+        fig.append(img(item.picture, `picture at ${item.value}`));
+      }
+      const cap = document.createElement("figcaption");
+      const value = document.createElement("b");
+      value.textContent = control === "steps" ? `${item.value} step${item.value === "1" ? "" : "s"}` : item.value;
+      cap.append(value);
+      const extra = item.ms ? `${item.ms} ms · ${Math.round(1000 / item.ms)} pictures/s`
+                  : item.kb ? `${item.kb} KB` : "";
+      if (extra) {
+        const meta = document.createElement("span");
+        meta.className = "meta";
+        meta.textContent = extra;
+        cap.append(meta);
+      }
+      if (item.default) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = "default";
+        cap.append(badge);
+      }
+      fig.append(cap);
+      return fig;
+    }
+
+    try {
+      const data = await (await fetch("/static/help/data.json", { cache: "no-cache" })).json();
+      document.getElementById("drawing").src = "/static/" + data.drawing;
+      document.getElementById("setup").textContent =
+        `Topic "${data.topic}", style "${data.style}", ${data.size[0]}×${data.size[1]} pixels, black paper.`;
+      for (const strip of document.querySelectorAll(".strip")) {
+        const items = data.controls[strip.dataset.control] || [];
+        for (const item of items) strip.append(figure(strip.dataset.control, item));
+      }
+    } catch {
+      for (const strip of document.querySelectorAll(".strip")) {
+        strip.innerHTML = '<p class="missing">Example pictures are missing. Run tools/make_help_images.py on the PC.</p>';
+      }
+    }
+    if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+  </script>
+</body>
+</html>

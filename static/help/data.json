@@ -1,0 +1,240 @@
+{
+ "defaults": {
+  "t_index_list": [
+   6,
+   26
+  ],
+  "seed": 2,
+  "controlnet_enabled": true,
+  "controlnet_scale": 0.55,
+  "safety_checker": true,
+  "safety_threshold": 0.5,
+  "line_threshold": 40,
+  "line_polarity": "white_on_black",
+  "line_dilate": 1,
+  "init_mode": "colors",
+  "init_blur": 24,
+  "jpeg_quality": 85
+ },
+ "size": [
+  640,
+  448
+ ],
+ "topic": "nature",
+ "style": "storybook",
+ "background": "#000000",
+ "controls": {
+  "creativity": [
+   {
+    "picture": "help/creativity-30.jpg",
+    "value": "39%",
+    "default": false
+   },
+   {
+    "picture": "help/creativity-18.jpg",
+    "value": "63%",
+    "default": false
+   },
+   {
+    "picture": "help/creativity-6.jpg",
+    "value": "88%",
+    "default": true
+   },
+   {
+    "picture": "help/creativity-2.jpg",
+    "value": "96%",
+    "default": false
+   }
+  ],
+  "steps": [
+   {
+    "picture": "help/steps-1.jpg",
+    "ms": 49,
+    "value": "1",
+    "default": false
+   },
+   {
+    "picture": "help/steps-2.jpg",
+    "ms": 67,
+    "value": "2",
+    "default": true
+   },
+   {
+    "picture": "help/steps-4.jpg",
+    "ms": 108,
+    "value": "4",
+    "default": false
+   },
+   {
+    "picture": "help/steps-8.jpg",
+    "ms": 186,
+    "value": "8",
+    "default": false
+   }
+  ],
+  "lines": [
+   {
+    "picture": "help/lines-off.jpg",
+    "value": "off",
+    "default": false
+   },
+   {
+    "picture": "help/lines-0_3.jpg",
+    "value": "0.3",
+    "default": false
+   },
+   {
+    "picture": "help/lines-0_55.jpg",
+    "value": "0.55",
+    "default": true
+   },
+   {
+    "picture": "help/lines-0_9.jpg",
+    "value": "0.9",
+    "default": false
+   },
+   {
+    "picture": "help/lines-1_5.jpg",
+    "value": "1.5",
+    "default": false
+   }
+  ],
+  "seed": [
+   {
+    "picture": "help/seed-2.jpg",
+    "value": "2",
+    "default": true
+   },
+   {
+    "picture": "help/seed-7.jpg",
+    "value": "7",
+    "default": false
+   },
+   {
+    "picture": "help/seed-42.jpg",
+    "value": "42",
+    "default": false
+   },
+   {
+    "picture": "help/seed-1234.jpg",
+    "value": "1234",
+    "default": false
+   }
+  ],
+  "line_threshold": [
+   {
+    "picture": "help/line_threshold-10.jpg",
+    "value": "10",
+    "default": false,
+    "linemap": "help/line_threshold-10-map.jpg"
+   },
+   {
+    "picture": "help/line_threshold-40.jpg",
+    "value": "40",
+    "default": true,
+    "linemap": "help/line_threshold-40-map.jpg"
+   },
+   {
+    "picture": "help/line_threshold-120.jpg",
+    "value": "120",
+    "default": false,
+    "linemap": "help/line_threshold-120-map.jpg"
+   }
+  ],
+  "line_dilate": [
+   {
+    "picture": "help/line_dilate-0.jpg",
+    "value": "0",
+    "default": false,
+    "linemap": "help/line_dilate-0-map.jpg"
+   },
+   {
+    "picture": "help/line_dilate-1.jpg",
+    "value": "1",
+    "default": true,
+    "linemap": "help/line_dilate-1-map.jpg"
+   },
+   {
+    "picture": "help/line_dilate-3.jpg",
+    "value": "3",
+    "default": false,
+    "linemap": "help/line_dilate-3-map.jpg"
+   }
+  ],
+  "line_polarity": [
+   {
+    "picture": "help/line_polarity-white_on_black.jpg",
+    "value": "white on black",
+    "default": true,
+    "linemap": "help/line_polarity-white-on-black-map.jpg"
+   },
+   {
+    "picture": "help/line_polarity-black_on_white.jpg",
+    "value": "black on white",
+    "default": false,
+    "linemap": "help/line_polarity-black-on-white-map.jpg"
+   }
+  ],
+  "init_mode": [
+   {
+    "picture": "help/init_mode-colors.jpg",
+    "value": "colors",
+    "default": true,
+    "init": "help/init-colors-24.jpg"
+   },
+   {
+    "picture": "help/init_mode-sketch.jpg",
+    "value": "sketch",
+    "default": false,
+    "init": "help/init-sketch-24.jpg"
+   },
+   {
+    "picture": "help/init_mode-blank.jpg",
+    "value": "blank",
+    "default": false,
+    "init": "help/init-blank-24.jpg"
+   }
+  ],
+  "init_blur": [
+   {
+    "picture": "help/init_blur-4.jpg",
+    "value": "4",
+    "default": false,
+    "init": "help/init-colors-4.jpg"
+   },
+   {
+    "picture": "help/init_blur-24.jpg",
+    "value": "24",
+    "default": true,
+    "init": "help/init-colors-24.jpg"
+   },
+   {
+    "picture": "help/init_blur-64.jpg",
+    "value": "64",
+    "default": false,
+    "init": "help/init-colors-64.jpg"
+   }
+  ],
+  "jpeg_quality": [
+   {
+    "value": "50",
+    "default": false,
+    "kb": 16,
+    "picture": "help/jpeg-50.jpg"
+   },
+   {
+    "value": "85",
+    "default": true,
+    "kb": 29,
+    "picture": "help/jpeg-85.jpg"
+   },
+   {
+    "value": "95",
+    "default": false,
+    "kb": 52,
+    "picture": "help/jpeg-95.jpg"
+   }
+  ]
+ },
+ "drawing": "help/drawing.jpg"
+}
