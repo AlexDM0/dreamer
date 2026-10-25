@@ -182,4 +182,33 @@ they draw the strokes instead of the thing. Scribble is trained on rough strokes
 into objects, which is what a drawing game needs. **Scribble stays.** ControlNet-XS and
 T2I-Adapter have no SD 2.1 sketch weights (see the table above), so there is no cheaper drop-in.
 
-Still to try: R6 (SD 1.5 + TCD offline) and the ControlNet strength lowered for refinement only.
+### R6: SD 1.5 + TCD, offline (measured)
+
+`tools/tcd_lab.py`: plain diffusers (no TensorRT), SD 1.5 + `h1t/TCD-SD15-LoRA` + the SD 1.5
+scribble ControlNet (`lllyasviel/control_v11p_sd15_scribble`), same start image, line map and
+seed per drawing, img2img strength 0.88, gamma 0.3, at 2/4/8/12/20 steps. Sheets:
+`img/tcd-<drawing>.png`; numbers: `tcd-results.json` (drift and detail are measured against the
+2-step picture).
+
+| steps | 2 | 4 | 8 | 12 | 20 |
+|---|---|---|---|---|---|
+| look | blurry blobs | soft, still blurry | clean, appealing | same scene as 8, a bit more detail | starts to wander |
+| ms per picture (diffusers, no TensorRT) | ~220 | ~335 | ~570 | ~740 | ~1170 |
+
+Peak GPU memory 3.5 GB. What it means:
+- **Not for drawing.** At 1-4 steps the pictures are blurry (with strength 0.88, "2 steps" runs
+  1 real step), and even 4 steps take ~335 ms untuned. SD-Turbo stays the drawing model.
+- **8 → 12 steps keeps the scene** (step size ~9-15, like the anchored ladder's first rung) and
+  looks cleaner and more "illustrated" than SD-Turbo; 20 steps drifts more. So TCD does what its
+  paper says: many steps add detail instead of falling apart.
+- **As a refiner after SD-Turbo it would repaint**: it is a different model, so its picture
+  differs from the SD-Turbo picture already on screen (drift 26-40 even between its own 2 and
+  8 steps). It could only fit the rule as an anchored ladder on the SD-Turbo picture (both
+  models share the same VAE latent space), which needs a second UNet (+~2 GB) and TensorRT
+  engines. Possible, but a large step for a gain the anchored model mostly already gives.
+
+Recommendation: keep SD-Turbo + scribble + anchored. Revisit SD 1.5 + TCD only if Alex wants a
+different, more "illustrated" look overall, as a whole-pipeline swap (it would also unlock
+IP-Adapter for "style from a picture"), not as a refiner.
+
+Still to try: the ControlNet strength lowered for refinement only.

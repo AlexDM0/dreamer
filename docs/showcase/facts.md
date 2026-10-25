@@ -32,7 +32,7 @@ the pictures can be about.
 | Children never type: every prompt is built on the PC from topics and styles the parent allows, always ending with a fixed child-friendly phrase. | `server/styles.py` (`PROMPT_HEAD`, `SAFETY_TAIL`, `build_prompt`) |
 | Every picture is checked by an image safety classifier (Freepik/nsfw_image_detector, as a TensorRT engine) before it is shown; if it is flagged, the previous picture stays. It costs about 4 ms per picture. | `server/backends/streamdiffusion.py`, `docs/gpu-results.md` |
 | Style pictures uploaded by the parent are screened by the same checker while the safety filter is on; with the filter off, uploads are stored unscreened. | `server/backends/streamdiffusion.py` `check_image_safe`, `requirements-gpu.md` |
-| Everything runs on the home network: one Python process on the PC; no account. Drawings and pictures never leave the PC. Models are downloaded once, on the first start (the setup script only fetches the 2.5 MB upscaler); after that Dreamer runs without contacting the internet (`HF_HUB_OFFLINE` once the models are cached). | `docs/setup.md`, `setup.ps1`, `requirements-gpu.md` |
+| Everything runs on the home network: one Python process on the PC; no account. Drawings and pictures never leave your home network. Models are downloaded once, on the first start (the setup script only fetches the 2.5 MB upscaler); after that Dreamer runs without contacting the internet (`HF_HUB_OFFLINE` once the models are cached). | `docs/setup.md`, `setup.ps1`, `requirements-gpu.md` |
 | The parent page is protected by a PIN, with a growing lock-out after wrong tries. | `docs/setup.md` "Admin page", `server/auth.py` |
 
 Be careful with wording: the safety checker is a classifier and can make mistakes; say

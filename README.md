@@ -106,7 +106,7 @@ a home gaming PC. Left: the drawing on its paper. Right: the polished picture.
   something that looks different from what your child meant. Sitting with your child
   the first few times, and talking about what the picture shows, works well.
 - **At home, no account.** Dreamer runs on your own PC and talks to the iPad over your
-  home Wi-Fi. There is no sign-up. Drawings and pictures never leave the PC. Models are
+  home Wi-Fi. There is no sign-up. Drawings and pictures never leave your home network. Models are
   downloaded once, on the first start; after that Dreamer runs without contacting the
   internet.
 
@@ -131,7 +131,7 @@ renaming and all settings need your parent PIN. Use Dreamer on a home network yo
 never on public Wi-Fi, and don't make it reachable from the internet.
 
 **Does anything go to the internet?**
-Drawings and pictures never leave the PC. Models are downloaded once, on the first
+Drawings and pictures never leave your home network. Models are downloaded once, on the first
 start; after that Dreamer runs without contacting the internet. There is no account.
 
 **Does the PC have to stay on?**

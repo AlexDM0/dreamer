@@ -164,7 +164,7 @@ hires adds real resolution but costs about 295 ms per step.
 
 - Children never type: prompts are built on the PC from parent-approved topics and styles, ending in a fixed child-friendly phrase.
 - An image safety classifier checks every picture before it is shown (about 4 ms); if flagged, the previous picture stays.
-- No account. Drawings and pictures never leave the PC; models are downloaded once, on the first start, then Dreamer runs without contacting the internet.
+- No account. Drawings and pictures never leave your home network; models are downloaded once, on the first start, then Dreamer runs without contacting the internet.
 
 **Image:** `screenshots/phone-admin-login-light.png` next to `screenshots/ipad-landscape-start.png`
 

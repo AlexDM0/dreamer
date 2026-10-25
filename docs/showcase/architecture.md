@@ -21,7 +21,7 @@ flowchart LR
     Server <--> Disk
 ```
 
-Drawings and pictures never leave the PC. Models are downloaded once, on the first start;
+Drawings and pictures never leave your home network. Models are downloaded once, on the first start;
 after that Dreamer runs without contacting the internet.
 
 ## From a drawing to a picture
