@@ -70,7 +70,7 @@ size: 512
 default_view_mode: auto       # auto | sketch | picture | split
 model:
   base: stabilityai/sd-turbo
-  t_index_list: [30, 42]
+  t_index_list: [10, 30]
   controlnet: thibaud/controlnet-sd21-scribble-diffusers   # null disables ControlNet
   controlnet_scale: 0.8
   line_polarity: white_on_black   # or black_on_white; what the ControlNet expects

@@ -22,7 +22,7 @@ class MockBackend:
     def __init__(self, mock_delay_ms: int = 30) -> None:
         self._delay_s = max(0, mock_delay_ms) / 1000.0
         self._prompt = ""
-        # Defaults mirror config.model: t_index_list [30, 42], seed 2, ControlNet 0.8.
+        # Defaults mirror config.model: t_index_list [10, 30], seed 2, ControlNet 0.8.
         self._creativity = 1.0 - 30 / 49.0
         self._seed = 2
         self._line_strength = 0.8

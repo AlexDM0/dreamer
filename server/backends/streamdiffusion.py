@@ -49,7 +49,7 @@ class StreamDiffusionBackend:
         self._engine_dir = _model_attr(config, "engine_dir", "engines")
 
         # Live params (SPEC addendum); start from config.model defaults.
-        self._t_index_list = [int(t) for t in _model_attr(config, "t_index_list", [30, 42])]
+        self._t_index_list = [int(t) for t in _model_attr(config, "t_index_list", [10, 30])]
         self._seed: int | None = None  # None = wrapper's own default seed
         self._controlnet_enabled = self._controlnet_id is not None
         self._controlnet_scale = float(_model_attr(config, "controlnet_scale", 0.8))
