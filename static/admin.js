@@ -176,6 +176,7 @@ function renderSelects() {
   fillSelect($("sel-topic"), state.topics, state.topic);
   fillSelect($("sel-style"), state.styles, state.style);
   if (document.activeElement !== $("sel-view")) $("sel-view").value = state.view_mode || "auto";
+  if (document.activeElement !== $("sel-theme")) $("sel-theme").value = state.kid_theme || "dark";
 }
 
 /** Only visible items can be picked: the server resolves hidden ones to a fallback. */
@@ -188,11 +189,13 @@ function fillSelect(sel, items, current) {
   }));
 }
 
-for (const [id, key] of [["sel-topic", "topic"], ["sel-style", "style"], ["sel-view", "view_mode"]]) {
+for (const [id, key] of [["sel-topic", "topic"], ["sel-style", "style"], ["sel-view", "view_mode"],
+                         ["sel-theme", "kid_theme"]]) {
   $(id).addEventListener("change", async (e) => {
     const res = await attempt(() => api("POST", "/api/admin/select", { [key]: e.target.value }),
                               "Sent to the iPad");
-    if (res) Object.assign(state, { topic: res.topic, style: res.style, view_mode: res.view_mode });
+    if (res) Object.assign(state, { topic: res.topic, style: res.style, view_mode: res.view_mode,
+                                    kid_theme: res.kid_theme });
     e.target.blur();
     renderSelects();
   });
@@ -249,9 +252,16 @@ function engineRows(batch) {
   if (engines[batch]) return engines[batch].sizes;
   const measured = Object.keys(engines).map(Number).sort((a, b) => a - b);
   if (!measured.length) return null;
-  const nearest = measured.reduce((best, b) => (Math.abs(b - batch) < Math.abs(best - batch) ? b : best));
-  // About 300 MB per batch slot between the measured engines (1-4: 8.4 GB, 1-8: 9.6 GB).
-  return engines[nearest].sizes.map((row) => ({ ...row, gpu_mb: row.gpu_mb + (batch - nearest) * 300 }));
+  if (measured.length === 1) return engines[measured[0]].sizes;
+  // Not measured: interpolate (or extend) linearly between the two nearest measured engines.
+  const below = measured.filter((b) => b < batch).pop() ?? measured[0];
+  const above = measured.find((b) => b > batch) ?? measured[measured.length - 1];
+  const [low, high] = below === above ? measured.slice(-2) : [below, above];
+  const weight = (batch - low) / (high - low);
+  return engines[low].sizes.map((row, i) => {
+    const other = engines[high].sizes[i] || row;
+    return { ...row, gpu_mb: row.gpu_mb + (other.gpu_mb - row.gpu_mb) * weight };
+  });
 }
 
 /** Linear interpolation of a measured column over the picture's long side. */
@@ -787,8 +797,9 @@ function onJson(text) {
     if (msg.state) setLive(msg.state, msg.state === "error" ? undefined : "");
     // Stats carry the current selection, so changes made elsewhere show up here too.
     if (state && (msg.topic !== state.topic || msg.style !== state.style
-                  || msg.view_mode !== state.view_mode)) {
-      Object.assign(state, { topic: msg.topic, style: msg.style, view_mode: msg.view_mode });
+                  || msg.view_mode !== state.view_mode || msg.kid_theme !== state.kid_theme)) {
+      Object.assign(state, { topic: msg.topic, style: msg.style, view_mode: msg.view_mode,
+                             kid_theme: msg.kid_theme });
       renderSelects();
     }
   }

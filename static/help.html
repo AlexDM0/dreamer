@@ -71,7 +71,8 @@
     <h1>What the picture controls do</h1>
   </header>
   <nav class="toc" aria-label="Controls">
-    <a href="#creativity">Creativity</a><a href="#steps">Steps</a><a href="#lines">Follow the lines</a>
+    <a href="#creativity">Creativity</a><a href="#steps">Draw reaction</a><a href="#refine">Refine</a>
+    <a href="#upscale">AI upscale</a><a href="#resolution">Resolution</a><a href="#lines">Follow the lines</a>
     <a href="#seed">Surprise number</a><a href="#safety">Safety filter</a><a href="#line_threshold">Line sensitivity</a>
     <a href="#line_dilate">Line thickening</a><a href="#line_polarity">Line map</a><a href="#init_mode">Starting image</a>
     <a href="#init_blur">Colour softness</a><a href="#jpeg_quality">Picture quality</a>
@@ -99,7 +100,7 @@
     </section>
 
     <section class="control" id="steps">
-      <h2>Steps</h2>
+      <h2>Draw reaction (steps while drawing)</h2>
       <p class="lead">How many times the picture is refined per frame. More steps give a little more polish,
         but every picture takes longer, so the screen updates less often while your child draws. The picture
         model is made for few steps: beyond 4 the picture mostly changes rather than improves.</p>
@@ -107,6 +108,35 @@
       <p class="note">Time per picture on this PC (the graphics card only; over Wi-Fi add about 40 ms).
         Up to 4 steps run <b>together</b> in one pass, which is fast. 5 to 8 run <b>one by one</b>, which is
         slower but needs no extra graphics memory. 1 or 2 steps feel live.</p>
+    </section>
+
+    <section class="control" id="refine">
+      <h2>Refine when they stop</h2>
+      <p class="lead">While your child draws, the picture is made fast (the draw reaction). As soon as they stop
+        for a moment, the computer keeps working on the same drawing in a few rounds with more and more steps,
+        and the iPad shows each round, so the picture visibly refines. A new stroke stops it straight away. Off
+        keeps the quick drawing picture.</p>
+      <div class="strip" data-control="refine"></div>
+      <p class="note">Rounds run at 4, 8, 12, 16 and 20 steps, up to the setting. The picture model is made for
+        few steps, so later rounds mostly change details rather than add quality; the AI upscale below is what
+        makes refined pictures sharper.</p>
+    </section>
+
+    <section class="control" id="upscale">
+      <h2>AI upscale</h2>
+      <p class="lead">Makes refined pictures twice as big with a small AI model trained on cartoon frames
+        (Real-ESRGAN), so edges stay crisp instead of blurry. It only runs on refined pictures, never while
+        drawing. Shown here zoomed in.</p>
+      <div class="strip" data-control="upscale"></div>
+      <p class="note missing" data-empty="upscale">Examples appear once the upscaler model is installed.</p>
+    </section>
+
+    <section class="control" id="resolution">
+      <h2>Resolution</h2>
+      <p class="lead">How big the pictures are (always the iPad's shape). Bigger pictures are sharper but take
+        longer, so the screen updates less often while drawing. It hardly changes graphics memory. Changing it
+        pauses the iPad for a few seconds while the PC gets ready.</p>
+      <div class="strip" data-control="resolution"></div>
     </section>
 
     <section class="control" id="lines">
@@ -242,6 +272,9 @@
       for (const strip of document.querySelectorAll(".strip")) {
         const items = data.controls[strip.dataset.control] || [];
         for (const item of items) strip.append(figure(strip.dataset.control, item));
+      }
+      for (const note of document.querySelectorAll("[data-empty]")) {
+        note.hidden = Boolean((data.controls[note.dataset.empty] || []).length);
       }
     } catch {
       for (const strip of document.querySelectorAll(".strip")) {

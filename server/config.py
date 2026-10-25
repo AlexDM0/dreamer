@@ -14,6 +14,7 @@ log = logging.getLogger("dreamer.config")
 
 DEFAULT_PIN = "1234"
 VIEW_MODES = ("auto", "sketch", "picture", "split")
+KID_THEMES = ("dark", "light")
 LINE_POLARITIES = ("white_on_black", "black_on_white")
 BACKENDS = ("streamdiffusion", "mock")
 CONFIG_ENV = "SKETCH_CONFIG"
@@ -59,6 +60,7 @@ class Config:
     jpeg_quality: int = 85
     size: int = 640  # long side; see canvas_dims()
     default_view_mode: str = "auto"
+    kid_theme: str = "dark"  # the drawing page's look: dark | light (switchable on /admin)
     mock_delay_ms: int = 30  # simulated GPU time for the mock backend
     model: ModelConfig = field(default_factory=ModelConfig)
 
@@ -106,6 +108,8 @@ def _validate(cfg: Config) -> None:
         raise ValueError(f"config: backend must be one of {BACKENDS}")
     if cfg.default_view_mode not in VIEW_MODES:
         raise ValueError(f"config: default_view_mode must be one of {VIEW_MODES}")
+    if cfg.kid_theme not in KID_THEMES:
+        raise ValueError(f"config: kid_theme must be one of {KID_THEMES}")
     if cfg.model.line_polarity not in LINE_POLARITIES:
         raise ValueError(f"config: model.line_polarity must be one of {LINE_POLARITIES}")
     if not 1 <= cfg.jpeg_quality <= 100:

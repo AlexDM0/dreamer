@@ -25,6 +25,9 @@ $StreamDiffusionRepo = "https://github.com/daydreamlive/StreamDiffusion.git"
 # The fork imports diffusers_ipadapter on every TensorRT path, but only its `ipadapter`
 # extra installs it, and that extra also pulls insightface, which needs the MSVC Build
 # Tools on Windows. Install just this small package, at the commit the fork pins.
+# AI upscaler for refined pictures (Real-ESRGAN compact, BSD-3-Clause), 2.5 MB.
+$UpscalerUrl = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
+$UpscalerPath = Join-Path $PSScriptRoot "models\realesr-animevideov3.pth"
 $DiffusersIpAdapter = "diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPAdapter.git@405f87da42932e30bd55ee8dca3ce502d7834a99"
 
 $VenvDir = Join-Path $PSScriptRoot ".venv"
@@ -204,6 +207,19 @@ if (-not $Mock) {
 
     Invoke-Native "Installing TensorRT (streamdiffusion.tools.install-tensorrt)" $VenvPython @(
         "-m", "streamdiffusion.tools.install-tensorrt")
+
+    if (Test-Path -LiteralPath $UpscalerPath) {
+        Write-Step "Upscaler model already present (models\realesr-animevideov3.pth)"
+    } else {
+        Write-Step "Downloading the upscaler model (realesr-animevideov3.pth, 2.5 MB)"
+        New-Item -ItemType Directory -Force -Path (Split-Path $UpscalerPath) | Out-Null
+        try {
+            Invoke-WebRequest -UseBasicParsing -Uri $UpscalerUrl -OutFile $UpscalerPath
+        } catch {
+            # Optional: Dreamer runs without it (the admin page shows the upscaler as unavailable).
+            Write-Host "  Could not download it ($($_.Exception.Message)); AI upscale stays unavailable." -ForegroundColor Yellow
+        }
+    }
 
     Write-Step "Checking that PyTorch can see the GPU"
     $check = "import sys, torch; ok = torch.cuda.is_available(); " +

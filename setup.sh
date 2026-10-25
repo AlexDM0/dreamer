@@ -16,6 +16,9 @@ STREAMDIFFUSION_REPO="https://github.com/daydreamlive/StreamDiffusion.git"
 # The fork imports diffusers_ipadapter on every TensorRT path, but only its `ipadapter`
 # extra installs it (and that extra also pulls insightface, which needs a C++ compiler).
 # Install just this small package, at the commit the fork's setup.py pins.
+# AI upscaler for refined pictures (Real-ESRGAN compact, BSD-3-Clause), 2.5 MB.
+UPSCALER_URL="https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
+UPSCALER_PATH="models/realesr-animevideov3.pth"
 DIFFUSERS_IPADAPTER="diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPAdapter.git@405f87da42932e30bd55ee8dca3ce502d7834a99"
 
 MOCK=0
@@ -178,6 +181,16 @@ print(next((r.split(';')[0].strip() for r in (m.requires('torch') or []) if r.st
     if [ -n "$CUDNN_REQ" ]; then
         run "Restoring the cuDNN version PyTorch needs ($CUDNN_REQ)" \
             "$VENV_PY" -m pip install "$CUDNN_REQ"
+    fi
+
+    if [ -f "$UPSCALER_PATH" ]; then
+        step "Upscaler model already present ($UPSCALER_PATH)"
+    else
+        step "Downloading the upscaler model (realesr-animevideov3.pth, 2.5 MB)"
+        mkdir -p models
+        # Optional: Dreamer runs without it (the admin page shows the upscaler as unavailable).
+        curl -fsSL -o "$UPSCALER_PATH" "$UPSCALER_URL" \
+            || { rm -f "$UPSCALER_PATH"; echo "  Could not download it; AI upscale stays unavailable."; }
     fi
 
     step "Checking that PyTorch can see the GPU"

@@ -141,6 +141,8 @@ net.addEventListener("ready", (e) => {
   if (Array.isArray(m.topics)) toolbar.setItems("topics", m.topics, m.topic);
   if (Array.isArray(m.styles)) toolbar.setItems("styles", m.styles, m.style);
   if (m.view_mode) view.setDefaultMode(m.view_mode);
+  // The parent picks the page's look on /admin (dark by default).
+  if (m.kid_theme === "dark" || m.kid_theme === "light") document.documentElement.dataset.theme = m.kid_theme;
   // A ready reply with no status yet: the server is up, assume the backend is too.
   if (m.t === "ready" && !backendState) backendState = "ready";
   showConn();

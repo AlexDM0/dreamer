@@ -16,6 +16,7 @@ jpeg_quality: 85         # picture quality sent to the iPad (1-100)
 size: 640                # long side of a drawing/picture in pixels (multiple of 64); the
                          # short side is 0.7x (640 -> 640x448, the iPad's shape)
 default_view_mode: auto  # auto | sketch | picture | split (kid page default)
+kid_theme: dark          # the drawing page's look: dark | light (also switchable on /admin)
 mock_delay_ms: 30        # mock backend only: simulated GPU time per frame
 
 model:

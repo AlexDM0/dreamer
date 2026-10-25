@@ -122,6 +122,7 @@ class Selection:
     topic: str | None
     style: str | None
     view_mode: str
+    kid_theme: str = "dark"
 
 
 class SessionManager:
@@ -131,9 +132,9 @@ class SessionManager:
     """
 
     def __init__(self, styles: StyleStore, default_view_mode: str,
-                 backend_name: Callable[[], str]) -> None:
+                 backend_name: Callable[[], str], kid_theme: str = "dark") -> None:
         self.styles = styles
-        self.selection = Selection(None, None, default_view_mode)
+        self.selection = Selection(None, None, default_view_mode, kid_theme)
         self._backend_name = backend_name
         self.kid: Peer | None = None
         self.admins: set[Peer] = set()
@@ -177,6 +178,7 @@ class SessionManager:
             "topic": self.styles.resolve("topics", self.selection.topic),
             "style": self.styles.resolve("styles", self.selection.style),
             "view_mode": self.selection.view_mode,
+            "kid_theme": self.selection.kid_theme,
         }
 
     def current_prompt(self) -> str:
@@ -194,13 +196,15 @@ class SessionManager:
         return msg
 
     def select(self, *, topic: str | None = None, style: str | None = None,
-               view_mode: str | None = None) -> None:
+               view_mode: str | None = None, kid_theme: str | None = None) -> None:
         if topic is not None:
             self.selection.topic = topic
         if style is not None:
             self.selection.style = style
         if view_mode is not None:
             self.selection.view_mode = view_mode
+        if kid_theme is not None:
+            self.selection.kid_theme = kid_theme
 
     def broadcast_styles(self) -> None:
         if self.kid is not None:

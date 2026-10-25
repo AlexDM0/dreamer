@@ -25,7 +25,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import protocol
 from .auth import COOKIE_MAX_AGE, COOKIE_NAME, AdminAuth, LockedOut, load_or_create_secret
-from .config import DEFAULT_PIN, ORIENTATIONS, VIEW_MODES, Config, canvas_dims
+from .config import DEFAULT_PIN, KID_THEMES, ORIENTATIONS, VIEW_MODES, Config, canvas_dims
 from .gallery import FILES, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch, valid_id
 from .imaging import COLOR_RE
 from .mailbox import Mailbox
@@ -85,6 +85,7 @@ class SelectBody(BaseModel):
     topic: str | None = None
     style: str | None = None
     view_mode: str | None = None
+    kid_theme: str | None = None
 
 
 class TitleBody(BaseModel):
@@ -210,7 +211,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             return runtime.worker.backend_name
         return backend.name if backend is not None else config.backend
 
-    session = SessionManager(styles, config.default_view_mode, backend_name)
+    session = SessionManager(styles, config.default_view_mode, backend_name, config.kid_theme)
 
     def worker_stats() -> dict[str, Any]:
         if runtime.worker is None:
@@ -716,7 +717,10 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             raise HTTPException(400, detail="unknown style")
         if body.view_mode is not None and body.view_mode not in VIEW_MODES:
             raise HTTPException(400, detail=f"view_mode must be one of {VIEW_MODES}")
-        session.select(topic=body.topic, style=body.style, view_mode=body.view_mode)
+        if body.kid_theme is not None and body.kid_theme not in KID_THEMES:
+            raise HTTPException(400, detail=f"kid_theme must be one of {KID_THEMES}")
+        session.select(topic=body.topic, style=body.style, view_mode=body.view_mode,
+                       kid_theme=body.kid_theme)
         mutated()
         return {"ok": True, **session.current()}
 

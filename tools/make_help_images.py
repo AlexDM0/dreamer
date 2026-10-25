@@ -170,6 +170,80 @@ def main() -> int:
     sweep("init_blur", [4, defaults.init_blur, 64],
           lambda value: replace(defaults, init_blur=int(value)), extra=init_extra)
 
+    # Refinement after the drawing pauses: the drawing picture, then complete passes with
+    # more steps run one after another (what the worker sends while the child looks).
+    from server.worker import refine_t_index
+
+    backend.set_params(defaults)
+    backend._wrapper.update_stream_params(seed=int(defaults.seed))
+    line_map = imaging.make_line_map(layer, defaults.line_polarity, defaults.line_threshold,
+                                     defaults.line_dilate)
+    init = imaging.make_init_image(layer, defaults.init_mode, defaults.init_blur,
+                                   defaults.line_threshold, BACKGROUND)
+    for _ in range(backend.latency_frames + 1):
+        drawing_picture = backend.generate(init, line_map)
+    items = [{"value": "while drawing", "default": False,
+              "picture": save_thumb(drawing_picture, "refine-0.jpg")}]
+    refined_pictures = {}
+    for steps in (4, 8, 12, 20):
+        t_index = list(refine_t_index(defaults.t_index_list[0], steps))
+        refined = backend.refine(init, line_map, t_index)
+        started = time.perf_counter()
+        for _ in range(5):
+            refined = backend.refine(init, line_map, t_index)
+        ms = round((time.perf_counter() - started) * 1000 / 5)
+        refined_pictures[steps] = refined
+        items.append({"value": f"{steps} steps", "default": steps == defaults.refine_steps, "ms": ms,
+                      "picture": save_thumb(refined, f"refine-{steps}.jpg")})
+        print("refine", steps, ms, flush=True)
+    data["controls"]["refine"] = items
+
+    # AI upscale: a crop of the refined picture without and with the upscaler, enlarged.
+    from server.upscale import Upscaler
+
+    upscaler = Upscaler(REPO_ROOT / config.model.upscaler_model)
+    if upscaler.available:
+        refined = refined_pictures[max(refined_pictures)]
+        upscaled = upscaler.upscale(refined, 2)
+        started = time.perf_counter()
+        for _ in range(10):
+            upscaler.upscale(refined, 2)
+        upscale_ms = round((time.perf_counter() - started) * 1000 / 10)
+        box = (width // 3, height // 4, width // 3 + width // 4, height // 4 + height // 4)
+        crop_size = (THUMB_WIDTH, round(THUMB_WIDTH * height / width))
+        plain = refined.resize((width * 2, height * 2), Image.Resampling.BICUBIC).crop(
+            tuple(value * 2 for value in box)).resize(crop_size, Image.Resampling.NEAREST)
+        sharp = upscaled.crop(tuple(value * 2 for value in box)).resize(crop_size, Image.Resampling.NEAREST)
+        data["controls"]["upscale"] = [
+            {"value": "off (enlarged)", "default": True, "picture": save_thumb(plain, "upscale-off.jpg")},
+            {"value": "AI 2×", "default": False, "ms": upscale_ms, "picture": save_thumb(sharp, "upscale-x2.jpg")},
+        ]
+        print("upscale", upscale_ms, flush=True)
+
+    # Resolution: the same drawing at each offered size (a crop shown at the same scale).
+    items = []
+    for long_side in (512, 640, 768, 1024):
+        side_dims = canvas_dims(dataclasses.replace(config, size=long_side))["landscape"]
+        backend.set_size(*side_dims)
+        backend.set_params(defaults)
+        backend._wrapper.update_stream_params(seed=int(defaults.seed))
+        side_layer = demo_layer(*side_dims)
+        side_map = imaging.make_line_map(side_layer, defaults.line_polarity, defaults.line_threshold,
+                                         defaults.line_dilate)
+        side_init = imaging.make_init_image(side_layer, defaults.init_mode, defaults.init_blur,
+                                            defaults.line_threshold, BACKGROUND)
+        for _ in range(backend.latency_frames + 1):
+            picture = backend.generate(side_init, side_map)
+        started = time.perf_counter()
+        for _ in range(10):
+            backend.generate(side_init, side_map)
+        ms = round((time.perf_counter() - started) * 1000 / 10)
+        items.append({"value": f"{side_dims[0]}×{side_dims[1]}", "default": long_side == defaults.resolution,
+                      "ms": ms, "picture": save_thumb(picture, f"resolution-{long_side}.jpg")})
+        print("resolution", long_side, ms, flush=True)
+    data["controls"]["resolution"] = items
+    backend.set_size(width, height)
+
     # Picture quality: the same picture as JPEG at low / default / high quality, cropped
     # and enlarged so the difference is visible.
     backend.set_params(defaults)
