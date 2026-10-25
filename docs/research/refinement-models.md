@@ -124,3 +124,43 @@ and lower strength first, since they are free. Look at T2I-Adapter only if R6 wi
 - ControlNet-XS: [huggingface.co/CVL-Heidelberg/ControlNet-XS](https://huggingface.co/CVL-Heidelberg/ControlNet-XS)
 - T2I-Adapter: [github.com/TencentARC/T2I-Adapter](https://github.com/TencentARC/T2I-Adapter)
 - SD-Turbo model card ("1 to 4 steps"): [huggingface.co/stabilityai/sd-turbo](https://huggingface.co/stabilityai/sd-turbo)
+
+## Results (2026-10-25 night, RTX 3080)
+
+Implemented in `server/refine.py` (selectable live as "Refinement model" on the admin page) and
+measured with `tools/refine_lab.py` on the six real test drawings from the showcase run (house,
+cat, rocket, dinosaur, castle, portrait meadow), draw reaction 1 step, refine budget 8. Full
+per-drawing numbers: `refinement-results.json`; sheets: `img/refine-<drawing>.png` (rows =
+models, columns = P0 then each step) and `img/refine-<drawing>-zoom.png` (centre crop of P0 and
+the last picture).
+
+| model | max drift (≤6) | final detail (×P0) | passes | step sizes | ms/step | what it is |
+|---|---|---|---|---|---|---|
+| path (R1) | 35.8 | 1.14 | 0/6 | 27.9 → 2.0 | 51 | continue the SD-Turbo path |
+| path_locked (R2, pixels) | 7.3 | 1.09 | 0/6 | 15.0 → 1.4 | 69 | R1 with P0's low frequencies |
+| sdedit (R3 variant) | 6.9 | 1.39 | 0/6 | 10.2 → 3.9 | 45 | each rung from P0, steady noise |
+| **anchored** (R2 latent + ladder) | **5.6** | **1.75** | 2/6 | 9.0 → **0.9** | **44** | single-step rungs at t 38→48, chained, latent low-pass pinned to P0 (σ 2.0), TCD-style noise γ 0.05 |
+| anchored_edges (+R4) | 5.8 | 1.53 | 3/6 | 9.5 → 1.0 | 46 | anchored, ControlNet also sees P0's edges |
+| hires_tiles (R5) | 7.6 | 1.61 | 1/6 | 9.3 → 2.2 | 295 | upscale 1.5x, anchored tiles (4 × 640×448) |
+| anchored_hires | 8.2 | 1.79 | 1/6 | 9.0 → 2.2 | 175 | 3 anchored rungs, then tiled 1.5x rungs |
+
+"passes" = max drift < 6 **and** detail never falls; most anchored runs miss only the second
+part by a hair (detail flat after the first rung rather than rising).
+
+What we learned:
+- **Continuing the path (R1) repaints the scene** (drift 36; in the zoom crops the cat's face is
+  redrawn). SD-Turbo is not a many-step model; the research agrees (model card: 1-4 steps).
+- **Locking low frequencies works, in latent space more than in pixels.** Pixel locking keeps
+  the layout but the detail still decays because the underlying path drifts.
+- **anchored is the best fit to the rule**: lowest drift, most detail, shrinking steps, 44 ms per
+  rung. Tuning: σ 1.5-4 and γ 0-0.45 swept; σ 2.0 / γ 0.05 balanced best; starting the ladder at
+  t 38 instead of 34 lowered drift from 6.1 to 5.6 at the same detail. It is now the default.
+- **Outlines from P0 in the ControlNet (R4)** lower drift slightly but take some detail away.
+- **Tiled hires (R5)** adds real resolution and detail rises every rung, but costs ~300 ms per
+  rung and drifts a little more (the 1.5x resample). Anchoring every tile to the upscaled P0
+  (not to the previous rung) was essential: before, drift grew 6 → 13 over three rungs.
+- The first rung is still the most visible change (~9/255 average), mostly sharpening the soft
+  1-step drawing picture.
+
+Still to try: R6 (SD 1.5 + TCD offline), lineart/HED ControlNets for drawing, and the ControlNet
+strength lowered for refinement only.
