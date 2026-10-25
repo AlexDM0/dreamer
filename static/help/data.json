@@ -15,7 +15,7 @@
   "init_mode": "colors",
   "init_blur": 24,
   "jpeg_quality": 85,
-  "refine_steps": 8,
+  "refine_steps": 4,
   "upscale": "off",
   "resolution": 640
  },
@@ -52,42 +52,42 @@
   "steps": [
    {
     "picture": "help/steps-1.jpg",
-    "ms": 54,
+    "ms": 56,
     "value": "1",
     "default": false,
     "mode": "together"
    },
    {
     "picture": "help/steps-2.jpg",
-    "ms": 78,
+    "ms": 80,
     "value": "2",
     "default": true,
     "mode": "together"
    },
    {
     "picture": "help/steps-4.jpg",
-    "ms": 123,
+    "ms": 130,
     "value": "4",
     "default": false,
     "mode": "together"
    },
    {
     "picture": "help/steps-5.jpg",
-    "ms": 186,
+    "ms": 192,
     "value": "5",
     "default": false,
     "mode": "one by one"
    },
    {
     "picture": "help/steps-6.jpg",
-    "ms": 219,
+    "ms": 225,
     "value": "6",
     "default": false,
     "mode": "one by one"
    },
    {
     "picture": "help/steps-8.jpg",
-    "ms": 284,
+    "ms": 294,
     "value": "8",
     "default": false,
     "mode": "one by one"
@@ -240,30 +240,31 @@
    {
     "value": "while drawing",
     "default": false,
-    "picture": "help/refine-0.jpg"
+    "ms": 113,
+    "picture": "help/refine-1.jpg"
    },
    {
     "value": "4 steps",
-    "default": false,
-    "ms": 153,
+    "default": true,
+    "ms": 257,
     "picture": "help/refine-4.jpg"
    },
    {
     "value": "8 steps",
-    "default": true,
-    "ms": 286,
+    "default": false,
+    "ms": 449,
     "picture": "help/refine-8.jpg"
    },
    {
     "value": "12 steps",
     "default": false,
-    "ms": 418,
+    "ms": 644,
     "picture": "help/refine-12.jpg"
    },
    {
     "value": "20 steps",
     "default": false,
-    "ms": 681,
+    "ms": 1025,
     "picture": "help/refine-20.jpg"
    }
   ],
@@ -284,25 +285,25 @@
    {
     "value": "512\u00d7384",
     "default": false,
-    "ms": 56,
+    "ms": 58,
     "picture": "help/resolution-512.jpg"
    },
    {
     "value": "640\u00d7448",
     "default": true,
-    "ms": 79,
+    "ms": 83,
     "picture": "help/resolution-640.jpg"
    },
    {
     "value": "768\u00d7512",
     "default": false,
-    "ms": 102,
+    "ms": 103,
     "picture": "help/resolution-768.jpg"
    },
    {
     "value": "1024\u00d7704",
     "default": false,
-    "ms": 186,
+    "ms": 195,
     "picture": "help/resolution-1024.jpg"
    }
   ],
@@ -329,7 +330,7 @@
  },
  "drawing": "help/drawing.jpg",
  "gpu_memory_mb": [
-  8395,
+  8378,
   10240
  ]
 }
