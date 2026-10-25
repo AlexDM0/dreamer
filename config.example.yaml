@@ -24,8 +24,8 @@ model:
   t_index_list: [6, 26]  # lower first number = more imagination, higher = closer to the sketch
   max_steps: 8            # most steps the admin page can pick
   max_batch_steps: 4      # steps run together (fast, more GPU memory); more run one after another
-  refine_steps: 4         # after drawing pauses, refine step by step up to this many steps (0 = off);
-                          # 3-5 refines the same picture, above ~6 SD-Turbo starts changing the scene
+  refine_steps: 8         # after drawing pauses, refine up to this many steps in total (0 = off);
+                          # the "anchored" refinement model adds detail without changing the scene
   upscaler: "off"         # "x2": AI-upscale refined pictures (needs models/realesr-animevideov3.pth)
   controlnet: thibaud/controlnet-sd21-scribble-diffusers  # null disables ControlNet
   controlnet_scale: 0.55     # how strongly the lines shape the picture (0..2)

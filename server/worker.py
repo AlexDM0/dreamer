@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 from PIL import Image
 
-from . import imaging, refine
+from . import imaging, offline, refine
 from .config import canvas_dims
 from .mailbox import Mailbox
 from .params import T_INDEX_MAX, GenParams, defaults_from_config
@@ -211,6 +211,8 @@ class GpuWorker(threading.Thread):
             started = time.perf_counter()
             self.backend.warmup()
             log.info("backend %s ready in %.1fs", self.backend_name, time.perf_counter() - started)
+            if self.backend_name == "streamdiffusion":
+                offline.mark_ready(self.config)  # the models are cached now
         except Exception as exc:
             log.exception("backend warmup failed")
             self._record_failure(f"warmup failed: {exc}")

@@ -7,8 +7,7 @@ import sys
 
 import uvicorn
 
-from . import protocol
-from .app import create_app
+from . import offline, protocol
 from .config import load_config
 
 
@@ -30,6 +29,9 @@ def main() -> int:
     except ValueError as exc:
         logging.getLogger("dreamer").error("%s", exc)
         return 2
+    offline.apply(config)  # before anything imports the model libraries
+    from .app import create_app
+
     app = create_app(config)
     ip = _lan_address()
     if ip:

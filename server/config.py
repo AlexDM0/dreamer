@@ -42,7 +42,7 @@ class ModelConfig:
     # steps in total; 0 turns refinement off. Live-changeable (up to 20). SD-Turbo is made for
     # 1-4 steps: measured, paths up to 4 refine the same picture, from about 6 the scene
     # starts to change and at 12-20 it becomes a different picture.
-    refine_steps: int = 4
+    refine_steps: int = 8
     # AI upscaler for refined pictures (never while drawing): "off" or "x2".
     upscaler: str = "off"
     upscaler_model: str = "models/realesr-animevideov3.pth"
