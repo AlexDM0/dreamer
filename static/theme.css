@@ -1,0 +1,79 @@
+/* Dreamer shared palette and tokens, used by both the kid page and the admin page.
+   Only custom properties and a couple of tiny generic rules live here, so either page
+   can import it without inheriting the other's layout. */
+
+:root {
+  /* Brand palette: soft sky blue, sunny yellow, coral pink, mint. */
+  --sky: #8fd3ff;
+  --sky-soft: #e3f4ff;
+  --sky-deep: #3a8fd9;
+  --sun: #ffd84d;
+  --sun-soft: #fff4c2;
+  --sun-deep: #e8a900;
+  --coral: #ff7f8e;
+  --coral-soft: #ffe1e5;
+  --coral-deep: #e5485c;
+  --mint: #7fe0c3;
+  --mint-soft: #ddf8ef;
+  --mint-deep: #1fae86;
+  --lilac: #b9a3ff;
+
+  /* Neutrals. */
+  --ink: #2d3561;          /* deep friendly navy for text and outlines */
+  --ink-soft: #6b7299;
+  --paper: #ffffff;
+  --bg: #f4fbff;
+  --bg-2: #fff8e7;
+  --line: rgba(45, 53, 97, 0.12);
+
+  /* Status colours (connection dot etc.). */
+  --ok: #34c77b;
+  --warn: #ffb020;
+  --bad: #ff5a5f;
+
+  /* Shape and depth. */
+  --radius-s: 12px;
+  --radius-m: 18px;
+  --radius-l: 28px;
+  --radius-pill: 999px;
+  --shadow-s: 0 2px 0 rgba(45, 53, 97, 0.10), 0 3px 8px rgba(45, 53, 97, 0.08);
+  --shadow-m: 0 4px 0 rgba(45, 53, 97, 0.10), 0 8px 24px rgba(45, 53, 97, 0.12);
+  --focus: 0 0 0 4px rgba(58, 143, 217, 0.45);
+
+  /* Type: system rounded faces first, no downloads. */
+  --font-round: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Quicksand",
+    "Comic Sans MS", "Chalkboard SE", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --touch: 52px;           /* minimum touch target */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #eef1ff;
+    --ink-soft: #aab1d6;
+    --paper: #2a2f52;
+    --bg: #1b1f3b;
+    --bg-2: #232850;
+    --line: rgba(238, 241, 255, 0.14);
+    --sky-soft: #24406a;
+    --sun-soft: #4a4226;
+    --coral-soft: #4d2a3a;
+    --mint-soft: #1f4740;
+    --shadow-s: 0 2px 0 rgba(0, 0, 0, 0.25), 0 3px 8px rgba(0, 0, 0, 0.25);
+    --shadow-m: 0 4px 0 rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #eef1ff;
+  --ink-soft: #aab1d6;
+  --paper: #2a2f52;
+  --bg: #1b1f3b;
+  --bg-2: #232850;
+  --line: rgba(238, 241, 255, 0.14);
+  --sky-soft: #24406a;
+  --sun-soft: #4a4226;
+  --coral-soft: #4d2a3a;
+  --mint-soft: #1f4740;
+  --shadow-s: 0 2px 0 rgba(0, 0, 0, 0.25), 0 3px 8px rgba(0, 0, 0, 0.25);
+  --shadow-m: 0 4px 0 rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.35);
+}

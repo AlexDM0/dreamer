@@ -1,6 +1,12 @@
 """Admin authentication: PIN check with lockout, and an HMAC-signed session cookie.
 
-Cookie value: ``<expiry unix seconds>.<hex HMAC-SHA256(secret, expiry)>``.
+Cookie value: ``<expiry unix seconds>.<hex HMAC-SHA256(key, expiry)>``, where ``key`` is
+derived from the secret and the PIN, so changing the PIN logs every device out.
+
+Lockout: after MAX_FAILURES wrong PINs a client is locked out for LOCKOUT_SECONDS. Until
+it logs in successfully, every further wrong PIN locks it out again for twice as long
+(capped at LOCKOUT_MAX_SECONDS). A global budget does the same across all clients, so
+using many addresses does not multiply the guessing rate.
 """
 from __future__ import annotations
 
@@ -20,6 +26,9 @@ COOKIE_NAME = "sg_admin"
 COOKIE_MAX_AGE = 30 * 24 * 3600
 MAX_FAILURES = 5
 LOCKOUT_SECONDS = 30.0
+LOCKOUT_MAX_SECONDS = 15 * 60.0
+GLOBAL_KEY = "*"               # the all-clients budget
+GLOBAL_MAX_FAILURES = 20
 SECRET_FILE = "secret"
 
 
@@ -56,37 +65,41 @@ class AdminAuth:
 
     def __init__(self, pin: str, secret: bytes, clock: Callable[[], float] = time.time) -> None:
         self._pin = pin.encode("utf-8")
-        self._secret = secret
+        # Cookie key bound to the PIN: a new PIN invalidates existing cookies.
+        self._key = hmac.new(secret, b"dreamer-admin-cookie\0" + self._pin, hashlib.sha256).digest()
         self._clock = clock
         self._lock = threading.Lock()
-        # client key -> (consecutive failures, locked-until timestamp)
+        # key (client or GLOBAL_KEY) -> (failures since last success, locked-until timestamp)
         self._failures: dict[str, tuple[int, float]] = {}
 
     def check_pin(self, pin: str, client: str = "") -> bool:
-        """True if correct. Raises LockedOut while the client is locked out.
-
-        After MAX_FAILURES wrong attempts the client is locked out for LOCKOUT_SECONDS;
-        the counter then starts again.
-        """
+        """True if correct. Raises LockedOut while the client (or everyone) is locked out."""
         now = self._clock()
         with self._lock:
-            count, until = self._failures.get(client, (0, 0.0))
+            until = max(self._failures.get(k, (0, 0.0))[1] for k in (client, GLOBAL_KEY))
             if until > now:
                 raise LockedOut(until - now)
-            ok = hmac.compare_digest(pin.encode("utf-8"), self._pin)
-            if ok:
+            if hmac.compare_digest(pin.encode("utf-8"), self._pin):
                 self._failures.pop(client, None)
+                self._failures.pop(GLOBAL_KEY, None)
                 return True
-            count += 1
-            if count >= MAX_FAILURES:
-                log.warning("admin login: %d wrong PINs from %s; locking out", count, client)
-                self._failures[client] = (0, now + LOCKOUT_SECONDS)
-            else:
-                self._failures[client] = (count, 0.0)
+            self._fail(client, MAX_FAILURES, now)
+            self._fail(GLOBAL_KEY, GLOBAL_MAX_FAILURES, now)
             return False
 
+    def _fail(self, key: str, limit: int, now: float) -> None:
+        count = self._failures.get(key, (0, 0.0))[0] + 1
+        until = 0.0
+        if count >= limit:
+            # limit -> 30 s, limit+1 -> 60 s, ... capped; only a correct PIN resets it.
+            seconds = min(LOCKOUT_SECONDS * 2 ** min(count - limit, 16), LOCKOUT_MAX_SECONDS)
+            until = now + seconds
+            log.warning("admin login: %d wrong PINs from %s; locked out for %.0fs",
+                        count, "all clients" if key == GLOBAL_KEY else key, seconds)
+        self._failures[key] = (count, until)
+
     def _sign(self, payload: str) -> str:
-        return hmac.new(self._secret, payload.encode("ascii"), hashlib.sha256).hexdigest()
+        return hmac.new(self._key, payload.encode("ascii"), hashlib.sha256).hexdigest()
 
     def make_cookie(self) -> str:
         expiry = str(int(self._clock()) + COOKIE_MAX_AGE)

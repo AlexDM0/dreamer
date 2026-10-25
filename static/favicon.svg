@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <title>Dreamer</title>
+  <defs>
+    <!-- Wobble: low-frequency noise nudges every edge so lines look hand-drawn. -->
+    <filter id="wobble" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="4" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <!-- Crayon: wobble plus fine grain that eats into the stroke like wax on paper. -->
+    <filter id="crayon" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="4" xChannelSelector="R" yChannelSelector="G" result="w"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.7 1.4" numOctaves="2" seed="3" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.5 1.55" result="mask"/>
+      <feComposite in="w" in2="mask" operator="in"/>
+    </filter>
+  </defs>
+
+  <!-- Sticker halo so the mark reads on light and dark backgrounds. -->
+  <g filter="url(#wobble)">
+    <path d="M30 96 C13 96 9 74 25 69 C20 51 41 41 52 52 C55 32 85 28 90 50 C104 43 120 56 112 72 C124 78 119 98 104 96 Z"
+          fill="#fff" stroke="#fff" stroke-width="14" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Cloud body. -->
+  <g filter="url(#wobble)">
+    <path d="M30 96 C13 96 9 74 25 69 C20 51 41 41 52 52 C55 32 85 28 90 50 C104 43 120 56 112 72 C124 78 119 98 104 96 Z"
+          fill="#e3f4ff"/>
+    <!-- Soft scribble shading along the bottom. -->
+    <path d="M24 90 C40 86 60 92 76 87 C88 84 100 90 110 86" fill="none" stroke="#8fd3ff"
+          stroke-width="7" stroke-linecap="round" opacity="0.7"/>
+  </g>
+  <g filter="url(#crayon)">
+    <path d="M30 96 C13 96 9 74 25 69 C20 51 41 41 52 52 C55 32 85 28 90 50 C104 43 120 56 112 72 C124 78 119 98 104 96 Z"
+          fill="none" stroke="#3a8fd9" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+  <g filter="url(#wobble)">
+    <!-- Sleepy closed eyes and smile. -->
+    <path d="M48 74 C51 79 57 79 60 74 M74 74 C77 79 83 79 86 74" fill="none" stroke="#2d3561"
+          stroke-width="5" stroke-linecap="round"/>
+    <path d="M61 85 C64 89 70 89 73 85" fill="none" stroke="#2d3561" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <!-- Rosy cheeks. -->
+  <g filter="url(#wobble)" fill="#ff7f8e" opacity="0.75">
+    <ellipse cx="42" cy="83" rx="6" ry="4"/>
+    <ellipse cx="92" cy="83" rx="6" ry="4"/>
+  </g>
+
+  <!-- Sparkle star. -->
+  <g filter="url(#wobble)" transform="translate(101 24) rotate(-12)">
+    <path d="M0 -19 L5 -6 L19 -5 L8 4 L12 18 L0 10 L-12 18 L-8 4 L-19 -5 L-5 -6 Z"
+          fill="#fff" stroke="#fff" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M0 -19 L5 -6 L19 -5 L8 4 L12 18 L0 10 L-12 18 L-8 4 L-19 -5 L-5 -6 Z"
+          fill="#ffd84d" stroke="#e8a900" stroke-width="3.5" stroke-linejoin="round"/>
+  </g>
+  <g filter="url(#wobble)" fill="#ffd84d" stroke="#e8a900" stroke-width="2">
+    <circle cx="80" cy="16" r="3.5"/>
+    <circle cx="120" cy="44" r="3"/>
+  </g>
+</svg>

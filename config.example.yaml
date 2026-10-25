@@ -1,0 +1,28 @@
+# Dreamer configuration. Copy to config.yaml and edit. Every key is optional.
+# Point the SKETCH_CONFIG environment variable at another file to use that instead.
+
+host: 0.0.0.0            # listen on the whole LAN
+port: 7860
+backend: streamdiffusion  # "streamdiffusion" (needs the RTX GPU setup) or "mock" (no GPU)
+
+# Parent PIN for /admin. CHANGE THIS. Quote it so leading zeros are kept ("0420").
+admin_pin: "1234"
+
+# Key used to sign the admin cookie. Leave empty to auto-generate one into data/secret.
+secret_key: ""
+
+data_dir: data           # styles.json, uploaded style pictures, secret
+jpeg_quality: 85         # picture quality sent to the iPad (1-100)
+size: 512                # generation size in pixels (square, multiple of 8)
+default_view_mode: auto  # auto | sketch | picture | split (kid page default)
+mock_delay_ms: 30        # mock backend only: simulated GPU time per frame
+
+model:
+  base: stabilityai/sd-turbo
+  t_index_list: [30, 42]  # lower first number = more imagination, higher = closer to the sketch
+  controlnet: thibaud/controlnet-sd21-scribble-diffusers  # null disables ControlNet
+  controlnet_scale: 0.8
+  line_polarity: white_on_black  # what the ControlNet expects: white_on_black | black_on_white
+  engine_dir: engines            # TensorRT engines are built here on first run
+  safety_checker: true
+  safety_threshold: 0.5

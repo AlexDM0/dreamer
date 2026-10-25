@@ -89,3 +89,10 @@ def test_encode_jpeg_roundtrip():
     assert data[:2] == b"\xff\xd8"
     out = Image.open(io.BytesIO(data))
     assert out.format == "JPEG" and out.size == (64, 64)
+
+
+def test_decode_accepts_only_png():
+    buf = io.BytesIO()
+    _sketch().save(buf, format="JPEG")
+    with pytest.raises(ValueError):
+        imaging.decode_sketch(buf.getvalue(), 64)

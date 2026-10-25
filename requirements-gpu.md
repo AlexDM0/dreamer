@@ -39,16 +39,21 @@ The last line must print `True`.
 ## 4. StreamDiffusion (Daydream fork) with TensorRT and ControlNet
 
 ```powershell
-pip install "git+https://github.com/daydreamlive/StreamDiffusion.git@main#egg=streamdiffusion[tensorrt,controlnet]"
+pip install "streamdiffusion[tensorrt,controlnet] @ git+https://github.com/daydreamlive/StreamDiffusion.git@main"
 python -m streamdiffusion.tools.install-tensorrt
 ```
+
+This is the PEP 508 form of the install; the older `...#egg=streamdiffusion[tensorrt,controlnet]`
+form from the upstream README is deprecated in current pip and can silently drop the extras
+that the TensorRT engine build needs. For reproducible installs, replace `@main` with a
+commit SHA you have tested.
 
 On CUDA 12 the second command installs `tensorrt==10.12.0.36` and
 `nvidia-cudnn-cu12==9.7.1.26`; on Windows it also installs `pywin32` and `triton-windows`.
 
-This also brings in `diffusers` and `transformers`. Dreamer uses `transformers` to screen
-admin-uploaded style pictures with `Freepik/nsfw_image_detector`; if that model cannot be
-loaded, uploads are allowed and a warning is logged.
+Admin-uploaded style pictures are screened with the wrapper's own safety checker (loaded
+when `model.safety_checker: true`). If no checker is loaded, uploads are allowed and a
+warning is logged; if the checker fails, the upload is refused.
 
 ## 5. Configure and first run
 

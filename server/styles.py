@@ -14,7 +14,9 @@ import os
 import re
 import secrets
 import threading
+import time
 import unicodedata
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,7 @@ STYLES_FILE = "styles.json"
 PROMPT_MAX = 120
 LABEL_MAX = 40
 EMOJI_MAX = 16  # code points; ZWJ emoji sequences can be long
+REPLACE_RETRIES = 5  # Windows: os.replace fails while antivirus/indexer holds the file
 SAFETY_TAIL = "for children, friendly, bright colors, wholesome"
 PROMPT_HEAD = "a child's drawing turned into a picture"
 
@@ -160,11 +163,34 @@ class StyleStore:
         return out
 
     def _save(self) -> None:
+        """Atomically write styles.json (temp file, fsync, replace). Raises OSError."""
         self._dir.mkdir(parents=True, exist_ok=True)
         data = {"version": 1, **{k: self._serialise(k) for k in KINDS}}
         tmp = self._path.with_name(self._path.name + ".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, self._path)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        for attempt in range(REPLACE_RETRIES):
+            try:
+                os.replace(tmp, self._path)
+                return
+            except PermissionError:
+                if attempt == REPLACE_RETRIES - 1:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+
+    @contextmanager
+    def _mutation(self):
+        """Hold the lock for a change; if saving fails, roll memory back to match disk."""
+        with self._lock:
+            backup = copy.deepcopy(self._items)
+            try:
+                yield
+                self._save()
+            except BaseException:
+                self._items = backup
+                raise
 
     # ----- reads -------------------------------------------------------------------
 
@@ -229,7 +255,7 @@ class StyleStore:
 
     def _add_style(self, label: Any, emoji: Any, prompt: str, kind: str, image: str | None) -> dict[str, Any]:
         label = clean_text(label, LABEL_MAX, "label")
-        with self._lock:
+        with self._mutation():
             item = {
                 "id": self._new_id("styles", label),
                 "label": label,
@@ -240,8 +266,7 @@ class StyleStore:
                 "image": image,
             }
             self._items["styles"].append(item)
-            self._save()
-            return copy.deepcopy(item)
+        return copy.deepcopy(item)
 
     def add_custom_style(self, label: Any, emoji: Any, prompt: Any) -> dict[str, Any]:
         return self._add_style(label, emoji, clean_text(prompt, PROMPT_MAX, "prompt"), "custom", None)
@@ -253,8 +278,9 @@ class StyleStore:
 
     def update_item(self, kind: str, item_id: str, *, hidden: bool | None = None,
                     label: Any = None, emoji: Any = None, prompt: Any = None) -> dict[str, Any]:
-        """Patch an item. Raises KeyError (unknown id) or ValueError (invalid change)."""
-        with self._lock:
+        """Patch an item. Raises KeyError (unknown id), ValueError (invalid change) or
+        OSError (could not save; nothing changed)."""
+        with self._mutation():
             item = self._find(kind, item_id)
             changes: dict[str, Any] = {}
             if label is not None:
@@ -273,12 +299,12 @@ class StyleStore:
                     raise ValueError(f"at least one of the {kind} must stay visible")
                 changes["hidden"] = hidden
             item.update(changes)
-            self._save()
-            return copy.deepcopy(item)
+            result = copy.deepcopy(item)
+        return result
 
     def delete_style(self, item_id: str) -> dict[str, Any]:
         """Remove a custom/image style and return it (caller deletes any image file)."""
-        with self._lock:
+        with self._mutation():
             item = self._find("styles", item_id)
             if item["kind"] == "preset":
                 raise ValueError("preset styles can be hidden but not deleted")
@@ -286,12 +312,11 @@ class StyleStore:
                     not it["hidden"] for it in self._items["styles"] if it is not item):
                 raise ValueError("at least one style must stay visible")
             self._items["styles"].remove(item)
-            self._save()
-            return copy.deepcopy(item)
+        return copy.deepcopy(item)
 
     def set_order(self, kind: str, ids: list[str]) -> None:
         """Move the given ids to the front in that order; unlisted items keep their order."""
-        with self._lock:
+        with self._mutation():
             self._check_kind(kind)
             if not isinstance(ids, list) or len(set(ids)) != len(ids):
                 raise ValueError("ids must be a list without duplicates")
@@ -302,4 +327,3 @@ class StyleStore:
             listed = set(ids)
             self._items[kind] = [by_id[i] for i in ids] + [
                 it for it in self._items[kind] if it["id"] not in listed]
-            self._save()

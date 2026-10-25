@@ -30,7 +30,9 @@ def decode_sketch(png_bytes: bytes, size: int) -> Image.Image:
     if len(png_bytes) > MAX_SKETCH_BYTES:
         raise ValueError(f"sketch payload too large ({len(png_bytes)} bytes)")
     try:
-        img = Image.open(io.BytesIO(png_bytes))
+        # PNG only (the protocol says so): never expose other Pillow decoders to the
+        # unauthenticated kid socket.
+        img = Image.open(io.BytesIO(png_bytes), formats=["PNG"])
         if img.width * img.height > MAX_SKETCH_PIXELS:
             raise ValueError(f"sketch dimensions too large ({img.width}x{img.height})")
         img.load()
