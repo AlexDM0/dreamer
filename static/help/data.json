@@ -14,7 +14,10 @@
   "line_dilate": 1,
   "init_mode": "colors",
   "init_blur": 24,
-  "jpeg_quality": 85
+  "jpeg_quality": 85,
+  "refine_steps": 8,
+  "upscale": "off",
+  "resolution": 640
  },
  "size": [
   640,
@@ -49,42 +52,42 @@
   "steps": [
    {
     "picture": "help/steps-1.jpg",
-    "ms": 51,
+    "ms": 54,
     "value": "1",
     "default": false,
     "mode": "together"
    },
    {
     "picture": "help/steps-2.jpg",
-    "ms": 73,
+    "ms": 78,
     "value": "2",
     "default": true,
     "mode": "together"
    },
    {
     "picture": "help/steps-4.jpg",
-    "ms": 117,
+    "ms": 123,
     "value": "4",
     "default": false,
     "mode": "together"
    },
    {
     "picture": "help/steps-5.jpg",
-    "ms": 174,
+    "ms": 186,
     "value": "5",
     "default": false,
     "mode": "one by one"
    },
    {
     "picture": "help/steps-6.jpg",
-    "ms": 205,
+    "ms": 219,
     "value": "6",
     "default": false,
     "mode": "one by one"
    },
    {
     "picture": "help/steps-8.jpg",
-    "ms": 267,
+    "ms": 284,
     "value": "8",
     "default": false,
     "mode": "one by one"
@@ -233,6 +236,76 @@
     "init": "help/init-colors-64.jpg"
    }
   ],
+  "refine": [
+   {
+    "value": "while drawing",
+    "default": false,
+    "picture": "help/refine-0.jpg"
+   },
+   {
+    "value": "4 steps",
+    "default": false,
+    "ms": 153,
+    "picture": "help/refine-4.jpg"
+   },
+   {
+    "value": "8 steps",
+    "default": true,
+    "ms": 286,
+    "picture": "help/refine-8.jpg"
+   },
+   {
+    "value": "12 steps",
+    "default": false,
+    "ms": 418,
+    "picture": "help/refine-12.jpg"
+   },
+   {
+    "value": "20 steps",
+    "default": false,
+    "ms": 681,
+    "picture": "help/refine-20.jpg"
+   }
+  ],
+  "upscale": [
+   {
+    "value": "off (enlarged)",
+    "default": true,
+    "picture": "help/upscale-off.jpg"
+   },
+   {
+    "value": "AI 2\u00d7",
+    "default": false,
+    "ms": 31,
+    "picture": "help/upscale-x2.jpg"
+   }
+  ],
+  "resolution": [
+   {
+    "value": "512\u00d7384",
+    "default": false,
+    "ms": 56,
+    "picture": "help/resolution-512.jpg"
+   },
+   {
+    "value": "640\u00d7448",
+    "default": true,
+    "ms": 79,
+    "picture": "help/resolution-640.jpg"
+   },
+   {
+    "value": "768\u00d7512",
+    "default": false,
+    "ms": 102,
+    "picture": "help/resolution-768.jpg"
+   },
+   {
+    "value": "1024\u00d7704",
+    "default": false,
+    "ms": 186,
+    "picture": "help/resolution-1024.jpg"
+   }
+  ],
   "jpeg_quality": [
    {
     "value": "50",
@@ -256,7 +329,7 @@
  },
  "drawing": "help/drawing.jpg",
  "gpu_memory_mb": [
-  8408,
+  8395,
   10240
  ]
 }

@@ -30,6 +30,7 @@ TAKE_TIMEOUT = 0.5
 SETTLE_DELAY = 0.15
 # Step counts of the refinement passes after drawing pauses (up to params.refine_steps).
 REFINE_LEVELS = (4, 8, 12, 16, 20)
+REFINE_POLL = 0.005  # between refinement passes: just a check for a new stroke
 FPS_EMA_ALPHA = 0.2
 FPS_IDLE_GAP = 2.0  # seconds
 
@@ -116,6 +117,7 @@ class GpuWorker(threading.Thread):
         # Refinement once drawing pauses: the step lists still to run for _settle_job, and
         # the upscaler (loaded on first use, if its weights exist).
         self._refine_plan: list[tuple[int, ...]] = []
+        self._refine_waiting = True
         self._upscaler: Any = None
         # Picture size the backend is set up for (backends start in landscape).
         self._dims = canvas_dims(config)["landscape"]
@@ -179,8 +181,15 @@ class GpuWorker(threading.Thread):
         while not self._stop_event.is_set():
             self._drain_uploads()
             self._apply_pending_params()
-            idle_work = self._settle_left or self._refine_plan
-            job = self.mailbox.take(timeout=SETTLE_DELAY if idle_work else TAKE_TIMEOUT)
+            # Settling waits for the drawing to pause; once refining, only check quickly
+            # whether a new stroke came in between passes.
+            if self._settle_left:
+                timeout = SETTLE_DELAY
+            elif self._refine_plan:
+                timeout = SETTLE_DELAY if self._refine_waiting else REFINE_POLL
+            else:
+                timeout = TAKE_TIMEOUT
+            job = self.mailbox.take(timeout=timeout)
             if self._stop_event.is_set():
                 continue
             if job is None:
@@ -188,6 +197,7 @@ class GpuWorker(threading.Thread):
                     self._settle_left -= 1
                     self._process_frame(self._settle_job, settling=True)
                 elif self._refine_plan and self._settle_job is not None:
+                    self._refine_waiting = False
                     self._process_frame(self._settle_job, refine=self._refine_plan.pop(0))
                 continue
             if isinstance(job, FrameJob):
@@ -395,6 +405,7 @@ class GpuWorker(threading.Thread):
                     if not settling:
                         self._settle_job, self._settle_left = job, latency
                         self._refine_plan = self._plan_refinement(params)
+                        self._refine_waiting = True  # the first pass waits for a pause
             jpeg = imaging.encode_jpeg(picture, params.jpeg_quality)
         except Exception as exc:
             log.exception("frame seq=%d failed", job.seq)

@@ -1,0 +1,158 @@
+{
+ "engines": {
+  "4": {
+   "batch": 4,
+   "idle_mb": 817,
+   "warmup_s": 10.1,
+   "sizes": [
+    {
+     "size": [
+      512,
+      384
+     ],
+     "ms_1_steps": 40.5,
+     "ms_4_steps": 81.9,
+     "gpu_mb": 8096
+    },
+    {
+     "size": [
+      640,
+      448
+     ],
+     "ms_1_steps": 54.0,
+     "ms_4_steps": 147.1,
+     "gpu_mb": 8235
+    },
+    {
+     "size": [
+      768,
+      512
+     ],
+     "ms_1_steps": 67.1,
+     "ms_4_steps": 170.4,
+     "gpu_mb": 8347
+    },
+    {
+     "size": [
+      896,
+      640
+     ],
+     "ms_1_steps": 96.4,
+     "ms_4_steps": 250.5,
+     "gpu_mb": 8422
+    },
+    {
+     "size": [
+      1024,
+      704
+     ],
+     "ms_1_steps": 117.6,
+     "ms_4_steps": 322.4,
+     "gpu_mb": 8514
+    }
+   ]
+  },
+  "1": {
+   "batch": 1,
+   "idle_mb": 816,
+   "warmup_s": 9.0,
+   "sizes": [
+    {
+     "size": [
+      512,
+      384
+     ],
+     "ms_1_steps": 37.6,
+     "gpu_mb": 5918
+    },
+    {
+     "size": [
+      640,
+      448
+     ],
+     "ms_1_steps": 47.3,
+     "gpu_mb": 5936
+    },
+    {
+     "size": [
+      768,
+      512
+     ],
+     "ms_1_steps": 59.6,
+     "gpu_mb": 5938
+    },
+    {
+     "size": [
+      896,
+      640
+     ],
+     "ms_1_steps": 85.8,
+     "gpu_mb": 5974
+    },
+    {
+     "size": [
+      1024,
+      704
+     ],
+     "ms_1_steps": 104.7,
+     "gpu_mb": 5996
+    }
+   ]
+  },
+  "2": {
+   "batch": 2,
+   "idle_mb": 816,
+   "warmup_s": 10.0,
+   "sizes": [
+    {
+     "size": [
+      512,
+      384
+     ],
+     "ms_1_steps": 38.0,
+     "ms_2_steps": 50.3,
+     "gpu_mb": 8895
+    },
+    {
+     "size": [
+      640,
+      448
+     ],
+     "ms_1_steps": 51.3,
+     "ms_2_steps": 67.8,
+     "gpu_mb": 8912
+    },
+    {
+     "size": [
+      768,
+      512
+     ],
+     "ms_1_steps": 62.8,
+     "ms_2_steps": 90.3,
+     "gpu_mb": 8954
+    },
+    {
+     "size": [
+      896,
+      640
+     ],
+     "ms_1_steps": 86.9,
+     "ms_2_steps": 134.2,
+     "gpu_mb": 9010
+    },
+    {
+     "size": [
+      1024,
+      704
+     ],
+     "ms_1_steps": 109.6,
+     "ms_2_steps": 168.6,
+     "gpu_mb": 9054
+    }
+   ]
+  }
+ },
+ "upscaler_mb": 234,
+ "upscaler_note": "Measured on the RTX 3080: GPU memory before drawing vs after a refinement run with the x2 upscaler (includes the refine buffers).",
+ "budget_note": "Whole-card memory from nvidia-smi, including the Windows desktop (about 0.8-1.1 GB)."
+}

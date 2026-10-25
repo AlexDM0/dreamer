@@ -15,6 +15,9 @@ log = logging.getLogger("dreamer.config")
 DEFAULT_PIN = "1234"
 VIEW_MODES = ("auto", "sketch", "picture", "split")
 KID_THEMES = ("dark", "light")
+# Engine batch sizes known to build: the fork's ControlNet TensorRT engine fails to build
+# ("Invalid Engine") for a batch range of 1..3 on TensorRT 10.12.
+BATCH_STEPS = (1, 2, 4, 8)
 LINE_POLARITIES = ("white_on_black", "black_on_white")
 BACKENDS = ("streamdiffusion", "mock")
 CONFIG_ENV = "SKETCH_CONFIG"
@@ -108,6 +111,9 @@ def _validate(cfg: Config) -> None:
         raise ValueError(f"config: backend must be one of {BACKENDS}")
     if cfg.default_view_mode not in VIEW_MODES:
         raise ValueError(f"config: default_view_mode must be one of {VIEW_MODES}")
+    if cfg.model.max_batch_steps not in BATCH_STEPS:
+        raise ValueError(f"config: model.max_batch_steps must be one of {BATCH_STEPS} "
+                         "(the ControlNet engine does not build for other batch ranges)")
     if cfg.kid_theme not in KID_THEMES:
         raise ValueError(f"config: kid_theme must be one of {KID_THEMES}")
     if cfg.model.line_polarity not in LINE_POLARITIES:

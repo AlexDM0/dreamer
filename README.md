@@ -97,15 +97,19 @@ days in that browser; changing the PIN logs every device out. On the admin page 
 
 - **Now:** watch the live picture, the engine state and speed, and change the current
   topic, style and the iPad's starting view. Changes show on the iPad immediately.
-- **Picture controls:** creativity, steps (1 to 8; up to 4 run together, more one after
-  another), how closely the picture follows the
+- **Picture controls:** creativity, the draw reaction (steps while drawing, 1 to 4),
+  "refine when they stop" (the picture keeps improving up to 20 steps once the drawing
+  pauses), AI upscale of refined pictures (2x, Real-ESRGAN compact model in `models/`),
+  resolution (512 to 1024 px long side), how closely the picture follows the
   lines, the "surprise number" (seed), the safety filter, line detection, the starting
   image and picture quality. Changes apply live without a restart and are saved in
   `data/params.json`. If the engine cannot apply a change, the previous setting comes
   back and the page shows the error. Each control has an **ⓘ** button. It opens
   `/static/help.html` in a new tab, showing that control with real example pictures
   rendered on your GPU. Re-render them after changing models or defaults with
-  `.venv\Scripts\python.exe tools\make_help_images.py`.
+  `.venv\Scripts\python.exe tools\make_help_images.py`. A memory meter shows the estimated
+  graphics memory (from `static/vram.json`, measured with `tools/measure_vram.py`) against
+  10 GB; settings that would not fit are disabled.
 - **Styles:** hide or show, reorder, rename or re-emoji any style. You can also add your
   own style with a short description, up to 120 characters, such as "rainbow colors,
   shiny stickers". The safety tail is always added after it.
@@ -128,6 +132,10 @@ Settings are saved in `data/styles.json`.
   pipeline once, which takes about 8 seconds.
 - **Bigger drawing:** the minimise button shrinks the toolbar to just the colours and the
   brush size.
+- **Dark or light:** the drawing page is dark by default; switch it under "Drawing page
+  look" on the admin page (or `kid_theme` in `config.yaml`).
+- **Live, then polished:** while drawing, the picture follows every stroke quickly; when
+  your child stops, it refines in a few rounds (and gets upscaled, if that is on).
 
 ## Gallery
 

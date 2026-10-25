@@ -129,6 +129,50 @@ fixed: that loop re-noises between steps with `torch.randn_like` on the global C
 generator, so an unchanged drawing flickered by ~16/255 per frame. The backend re-seeds the
 generator with the surprise number before each such frame, which brings it to 0.00/255.
 
+## Update: draw fast, then refine; upscaler; resolution; memory per engine
+
+**How a picture is made now.** While the child draws, each new sketch is answered with the
+"draw reaction" steps (1 to `model.max_batch_steps`, run together as one UNet batch). As soon
+as the drawing pauses, the worker runs refinement passes at 4, 8, 12, 16 and 20 steps (up to
+the "refine" setting; steps run one after another at batch 1). Each pass is a complete picture
+of the current drawing and replaces the one shown, so the picture visibly refines; with the AI
+upscale on, refined pictures are 2x (1280×896). A new stroke stops refinement after the pass in
+progress.
+
+Measured on the live server (640×448, ControlNet, refine 20, upscale x2): the drawing picture
+arrives first, then refined pictures at +1.6, +2.0, +2.5, +3.2 and +4.0 s after the stroke; a
+new stroke during refinement gets its picture within ~0.2-0.3 s. Backend times per pass:
+
+| | ms |
+|---|---|
+| refine 4 steps | 153 |
+| refine 8 steps | 286 |
+| refine 12 steps | 418 |
+| refine 20 steps | 681 |
+| AI upscale x2 (realesr-animevideov3, 640×448 → 1280×896) | 31 |
+
+The upscaler (Real-ESRGAN compact, BSD-3-Clause, 2.5 MB, `models/`) adds ~0.23 GB.
+
+**GPU memory per engine batch size** (`tools/measure_vram.py`, clean processes, above the
+desktop's ~0.8 GB; `static/vram.json` has the full table the admin page estimates from):
+
+| engine built for | 512 px | 640 px | 1024 px | draw speed at 640 px |
+|---|---|---|---|---|
+| 1 step (`max_batch_steps: 1`) | 5.1 GB | 5.1 GB | 5.2 GB | 47 ms (1 step) |
+| up to 2 steps | 8.1 GB | 8.1 GB | 8.2 GB | 68 ms (2 steps) |
+| up to 4 steps (default) | 7.3 GB | 7.4 GB | 7.7 GB | 117 ms (4 steps), 53 ms (1 step) |
+
+Memory hardly depends on the picture size (the engines are dynamic up to 1024 px) and is not
+monotonic in the batch size: the 1-2 engine needs more than the 1-4 engine (measured twice).
+The fork's ControlNet TensorRT engine does not build for a batch range of 1-3 on TensorRT 10.12
+("Invalid Engine", reproduced three times, also after deleting the half-built files), and after
+that failure the fork carried on and later crashed with a CUDA illegal memory access when the
+pipeline was rebuilt. So `model.max_batch_steps` accepts 1, 2, 4 or 8, and the backend now
+refuses to start (with a clear message) when the fork reports a failed ControlNet engine.
+
+**Resolution** (long side; backend time with 2 steps): 512 → 56 ms, 640 → 79 ms, 768 → 102 ms,
+1024 → 186 ms. Changing it rebuilds the pipeline (a few seconds), not the engines.
+
 ## Problems found and fixed
 
 1. **`diffusers_ipadapter` missing.** The fork's TensorRT export imports it even without

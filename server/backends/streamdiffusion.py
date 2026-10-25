@@ -33,6 +33,17 @@ _INSTALL_HINT = (
 )
 
 
+class _WarningCollector(logging.Handler):
+    """Collects WARNING+ messages of a logger while attached."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+
 def _model_attr(config: Any, name: str, default: Any) -> Any:
     model = getattr(config, "model", None)
     return getattr(model, name, default) if model is not None else default
@@ -146,7 +157,27 @@ class StreamDiffusionBackend:
                  "which can take many minutes)", self._model_id, engine_dir)
         # The wrapper must start batched; more steps than the batch range are applied below.
         start_t_index = self._t_index_list[:self._batch_steps]
-        wrapper = self._wrapper_cls(
+        # The fork only logs a warning when the ControlNet engine fails to build or load and
+        # carries on in a state that later crashed with a CUDA illegal memory access (seen
+        # with max_batch_steps 3). Catch that warning and fail loudly instead.
+        engine_warnings = _WarningCollector()
+        fork_log = logging.getLogger("streamdiffusion.wrapper")
+        fork_log.addHandler(engine_warnings)
+        try:
+            wrapper = self._construct_wrapper(start_t_index, engine_dir, use_controlnet)
+        finally:
+            fork_log.removeHandler(engine_warnings)
+        failed = [msg for msg in engine_warnings.messages if "Failed to compile/load ControlNet engine" in msg]
+        if failed:
+            del wrapper
+            raise RuntimeError(
+                f"{failed[0]}. Delete the ControlNet engine folder under {engine_dir} for this "
+                "max_batch_steps and restart, or use another model.max_batch_steps.")
+        self._finish_warmup(wrapper, start_t_index)
+
+    def _construct_wrapper(self, start_t_index: list[int], engine_dir: str,
+                           use_controlnet: bool) -> Any:
+        return self._wrapper_cls(
             model_id_or_path=self._model_id,
             t_index_list=start_t_index,
             mode="img2img",
@@ -169,6 +200,8 @@ class StreamDiffusionBackend:
             safety_checker_threshold=self._safety_threshold,
             output_type="pil",
         )
+
+    def _finish_warmup(self, wrapper: Any, start_t_index: list[int]) -> None:
         wrapper.prepare(prompt=self._pending_prompt or self._prompt, num_inference_steps=50)
         if self._pending_prompt is not None:
             self._prompt, self._pending_prompt = self._pending_prompt, None
