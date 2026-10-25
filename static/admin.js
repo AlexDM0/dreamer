@@ -149,6 +149,7 @@ document.addEventListener("keydown", (e) => {
 async function enterAdmin() {
   await loadState();
   attempt(loadParams); // not fatal: the rest of the page works without it
+  attempt(() => loadGallery());
   $("login").hidden = true;
   $("admin").hidden = false;
   wantSocket = true;
@@ -484,6 +485,132 @@ picForm.addEventListener("submit", async (e) => {
   await refresh();
 });
 
+// ----- Gallery (saved artworks) -----------------------------------------------------
+
+const ART_PAGE = 24;
+let artTab = "saved";          // "saved" | "trash"
+let artItems = [];
+let artMore = false;
+let artOpen = null;            // artwork shown in the sheet
+let artGen = 0;                // newest load wins
+
+async function loadGallery(append = false) {
+  const gen = ++artGen;
+  const offset = append ? artItems.length : 0;
+  const trash = artTab === "trash" ? 1 : 0;
+  const res = await api("GET", `/api/admin/artworks?trash=${trash}&limit=${ART_PAGE}&offset=${offset}`);
+  if (gen !== artGen) return;
+  artItems = append ? artItems.concat(res.artworks.filter((a) => !artItems.some((b) => b.id === a.id)))
+                    : res.artworks;
+  artMore = res.more;
+  $("count-saved").textContent = res.total ? `(${res.total})` : "";
+  $("count-trash").textContent = res.trash ? `(${res.trash})` : "";
+  renderGallery(res.trash);
+  if (artOpen) {
+    const fresh = artItems.find((a) => a.id === artOpen.id);
+    if (fresh) showArt(fresh); else closeArt();
+  }
+}
+
+function renderGallery(trashCount) {
+  const grid = $("art-grid");
+  grid.replaceChildren(...artItems.map((art) => {
+    const b = el("button", { type: "button", className: "art-thumb" });
+    b.setAttribute("aria-label", art.title || `Picture from ${niceDate(art.created_at)}`);
+    b.append(el("img", { src: art.thumb, alt: "", loading: "lazy" }));
+    b.append(el("span", { className: "art-cap", textContent: art.title || niceDate(art.created_at) }));
+    b.addEventListener("click", () => showArt(art));
+    return b;
+  }));
+  const empty = $("art-empty");
+  empty.hidden = artItems.length > 0;
+  empty.textContent = artTab === "trash" ? "The trash is empty." : "No saved pictures yet.";
+  $("art-more").hidden = !artMore;
+  $("art-purge").hidden = artTab !== "trash" || !trashCount;
+  for (const [id, tab] of [["tab-saved", "saved"], ["tab-trash", "trash"]]) {
+    $(id).classList.toggle("active", artTab === tab);
+    $(id).setAttribute("aria-selected", String(artTab === tab));
+  }
+}
+
+function niceDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function itemLabel(kind, id) {
+  const item = state && state[kind] && state[kind].find((it) => it.id === id);
+  return item ? `${item.emoji} ${item.label}` : id;
+}
+
+function withParam(url, key, value) {
+  return url + (url.includes("?") ? "&" : "?") + `${key}=${value}`;
+}
+
+function showArt(art) {
+  artOpen = art;
+  const trashed = !!art.deleted_at;
+  $("art-title-h").textContent = art.title || "Picture";
+  $("art-picture").src = art.picture;
+  $("art-sketch").src = art.sketch;
+  $("art-meta").textContent = `Saved ${niceDate(art.created_at)}`
+    + (art.updated_at !== art.created_at ? ` · changed ${niceDate(art.updated_at)}` : "")
+    + (art.topic ? ` · ${itemLabel("topics", art.topic)}` : "")
+    + (art.style ? ` / ${itemLabel("styles", art.style)}` : "");
+  const input = $("art-title");
+  if (document.activeElement !== input) input.value = art.title || "";
+  $("art-rename").hidden = trashed;
+  $("art-dl-picture").href = withParam(art.picture, "download", 1);
+  $("art-dl-sketch").href = withParam(art.sketch, "download", 1);
+  $("art-delete").hidden = trashed;
+  $("art-restore").hidden = !trashed;
+  $("art-sheet").hidden = false;
+}
+
+function closeArt() {
+  artOpen = null;
+  $("art-sheet").hidden = true;
+}
+
+const artPath = (id) => `/api/admin/artworks/${encodeURIComponent(id)}`;
+
+$("tab-saved").addEventListener("click", () => { artTab = "saved"; attempt(() => loadGallery()); });
+$("tab-trash").addEventListener("click", () => { artTab = "trash"; attempt(() => loadGallery()); });
+$("art-more").addEventListener("click", () => attempt(() => loadGallery(true)));
+$("art-close").addEventListener("click", closeArt);
+$("art-sheet").addEventListener("click", (e) => { if (e.target === e.currentTarget) closeArt(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && artOpen) closeArt(); });
+
+$("art-rename").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!artOpen) return;
+  const input = $("art-title");
+  const res = await attempt(() => api("PATCH", artPath(artOpen.id), { title: input.value }), "Name saved");
+  if (res) { input.blur(); await attempt(() => loadGallery()); }
+});
+
+$("art-delete").addEventListener("click", async () => {
+  if (!artOpen) return;
+  const ok = await attempt(() => api("DELETE", artPath(artOpen.id)), "Moved to the trash");
+  if (ok) { closeArt(); await attempt(() => loadGallery()); }
+});
+
+$("art-restore").addEventListener("click", async () => {
+  if (!artOpen) return;
+  const ok = await attempt(() => api("POST", `${artPath(artOpen.id)}/restore`), "Back in the gallery");
+  if (ok) { closeArt(); await attempt(() => loadGallery()); }
+});
+
+$("art-purge").addEventListener("click", async () => {
+  if (!confirm("Delete every picture in the trash for good? This cannot be undone.")) return;
+  const res = await attempt(() => api("POST", "/api/admin/artworks/purge"));
+  if (res) {
+    toast(res.purged === 1 ? "1 picture deleted" : `${res.purged} pictures deleted`);
+    await attempt(() => loadGallery());
+  }
+});
+
 // ----- Live view over /ws/admin -----------------------------------------------------
 
 function openSocket() {
@@ -543,6 +670,8 @@ function onJson(text) {
   try { msg = JSON.parse(text); } catch { return; }
   if (msg.t === "params") {
     applyParams(msg); // changed on another phone, or reverted after an apply error
+  } else if (msg.t === "gallery") {
+    attempt(() => loadGallery()); // the kid saved, or another phone changed something
   } else if (msg.t === "status") {
     setLive(msg.state, msg.msg);
   } else if (msg.t === "stats") {

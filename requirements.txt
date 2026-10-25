@@ -1,4 +1,5 @@
-# Runtime + test dependencies WITHOUT torch (the GPU stack is installed separately; see README).
+# Runtime + test dependencies WITHOUT torch. Installed into .venv by setup.ps1 / setup.sh;
+# the GPU stack (torch, StreamDiffusion, TensorRT) is installed by those scripts too, see requirements-gpu.md.
 fastapi>=0.110
 uvicorn[standard]>=0.29
 websockets>=12

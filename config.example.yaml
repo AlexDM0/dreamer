@@ -11,7 +11,7 @@ admin_pin: "1234"
 # Key used to sign the admin cookie. Leave empty to auto-generate one into data/secret.
 secret_key: ""
 
-data_dir: data           # styles.json, uploaded style pictures, secret
+data_dir: data           # styles.json, params.json, secret, style pictures, gallery (dreamer.db + artworks/)
 jpeg_quality: 85         # picture quality sent to the iPad (1-100)
 size: 512                # generation size in pixels (square, multiple of 8)
 default_view_mode: auto  # auto | sketch | picture | split (kid page default)

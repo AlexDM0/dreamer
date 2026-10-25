@@ -55,6 +55,27 @@ export class DrawingCanvas extends EventTarget {
     this._dirty = true;
   }
 
+  /**
+   * Replace the drawing with an image (a saved sketch or the draft), scaled to 512x512.
+   * @param {CanvasImageSource} img
+   */
+  loadImage(img) {
+    this._endStroke(false);
+    this._fillWhite();
+    this.sctx.drawImage(img, 0, 0, SIZE, SIZE);
+    this._repaint();
+    this._dirty = true;
+  }
+
+  /** True when nothing is drawn (every pixel near white). */
+  isBlank() {
+    const d = this.sctx.getImageData(0, 0, SIZE, SIZE).data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] < 232 || d[i + 1] < 232 || d[i + 2] < 232) return false;
+    }
+    return true;
+  }
+
   setColor(color) { this.color = color; }
   setWidth(w) { this.width = Math.max(1, Number(w) || 1); }
 
