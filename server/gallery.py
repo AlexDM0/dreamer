@@ -3,9 +3,16 @@
 Layout under ``data_dir``::
 
     dreamer.db                              metadata (WAL mode, PRAGMA user_version schema)
-    artworks/YYYY-MM/<artwork_id>/picture.jpg   generated picture (as shown on screen)
-                                  sketch.png    the child's sketch, lossless
-                                  thumb.jpg     256 px thumbnail of the picture
+    artworks/YYYY-MM/<artwork_id>/picture.<v>.jpg   generated picture (as shown on screen)
+                                  sketch.<v>.png    the child's sketch, lossless
+                                  thumb.<v>.jpg     256 px thumbnail of the picture
+
+``<v>`` is the artwork's version (its ``updated_at`` digits, also the ``?v=`` of its URLs),
+so the files of one version never change: an update writes the next version's files next
+to the old ones, commits the row that points at them, and only then deletes the old
+files. A failure at any point leaves one complete, consistent set (and at worst stray
+files, which ``sweep()`` removes). Folders from before versioned names hold plain
+``picture.jpg`` etc.; those are still read, and replaced by the first update.
 
 Every path is built here from a validated id; nothing path-like is ever taken from a
 client. Files are written atomically (temp file + ``os.replace``) before the database
@@ -27,6 +34,7 @@ import re
 import secrets
 import shutil
 import sqlite3
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -44,6 +52,7 @@ DB_FILE = "dreamer.db"
 ARTWORKS_DIR = "artworks"
 ID_RE = re.compile(r"[A-Za-z0-9_-]{12}")      # secrets.token_urlsafe(9)
 DIR_RE = re.compile(r"artworks/\d{4}-\d{2}/([A-Za-z0-9_-]{12})")
+MONTH_RE = re.compile(r"\d{4}-\d{2}")
 FILES = {"picture.jpg": "image/jpeg", "sketch.png": "image/png", "thumb.jpg": "image/jpeg"}
 THUMB_SIZE = 256
 THUMB_QUALITY = 80
@@ -86,6 +95,17 @@ def valid_id(value: Any) -> bool:
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _version(stamp: str) -> str:
+    """Cache-busting / file version token of an ``updated_at`` timestamp."""
+    return re.sub(r"\D", "", stamp)
+
+
+def _versioned(name: str, version: str) -> str:
+    """``picture.jpg`` -> ``picture.<version>.jpg`` (the name on disk)."""
+    stem, ext = name.rsplit(".", 1)
+    return f"{stem}.{version}.{ext}"
 
 
 def is_blank_sketch(png: bytes) -> bool:
@@ -141,7 +161,7 @@ class Artwork:
     @property
     def version(self) -> str:
         """Cache-busting token for file URLs; changes on every update."""
-        return re.sub(r"\D", "", self.updated_at)
+        return _version(self.updated_at)
 
     def file_url(self, name: str, prefix: str = "/api/artworks") -> str:
         return f"{prefix}/{self.id}/{name}?v={self.version}"
@@ -295,9 +315,28 @@ class GalleryStore:
         return path
 
     def file_path(self, art: Artwork, name: str) -> Path:
+        """Where ``name`` (picture.jpg / sketch.png / thumb.jpg) of this version lives."""
         if name not in FILES:
             raise KeyError(name)
-        return self._dir(art) / name
+        folder = self._dir(art)
+        path = folder / _versioned(name, art.version)
+        legacy = folder / name  # written before file names carried the version
+        return legacy if not path.exists() and legacy.exists() else path
+
+    def _write_files(self, folder: Path, version: str,
+                     files: tuple[tuple[str, bytes], ...]) -> list[Path]:
+        """Write one version's files (each atomically); on failure remove what was written."""
+        written: list[Path] = []
+        try:
+            for name, data in files:
+                dst = folder / _versioned(name, version)
+                _replace(_write_temp(folder, name, data), dst)
+                written.append(dst)
+        except BaseException:
+            for path in written:
+                path.unlink(missing_ok=True)
+            raise
+        return written
 
     # ----- reads -----------------------------------------------------------------------
 
@@ -362,9 +401,8 @@ class GalleryStore:
             folder = self.root / rel
             folder.mkdir(parents=True, exist_ok=False)
             try:
-                for name, data in (("sketch.png", sketch_png), ("picture.jpg", picture_jpeg),
-                                   ("thumb.jpg", thumb)):
-                    _replace(_write_temp(folder, name, data), folder / name)
+                self._write_files(folder, _version(now), (
+                    ("sketch.png", sketch_png), ("picture.jpg", picture_jpeg), ("thumb.jpg", thumb)))
                 with self._tx() as db:
                     db.execute(
                         f"INSERT INTO artworks ({_COLUMNS}) VALUES "
@@ -383,9 +421,9 @@ class GalleryStore:
                meta: dict[str, Any] | None = None) -> Artwork:
         """Replace an artwork's images and metadata (keeps id, title and created_at).
 
-        Raises KeyError if it does not exist (or is in the trash). New files are staged as
-        temp files; the row is updated in a transaction that only commits once every file
-        is in place, so a failure leaves the old row (and normally the old files).
+        Raises KeyError if it does not exist (or is in the trash). The new version's files
+        are written next to the old ones before the row points at them, and the old files
+        are deleted only after the commit: a failure leaves the old row with its own files.
         """
         _check_images(sketch_png, picture_jpeg)
         thumb = make_thumb(picture_jpeg)
@@ -396,14 +434,13 @@ class GalleryStore:
                 raise KeyError(artwork_id)
             folder = self._dir(art)
             folder.mkdir(parents=True, exist_ok=True)
-            staged: list[tuple[Path, Path]] = []
+            old = [self.file_path(art, name) for name in FILES]
+            now = max(self._clock(), art.updated_at)
+            if now == art.updated_at:  # same clock tick: still bump the version
+                now = _bump(now)
+            written = self._write_files(folder, _version(now), (
+                ("sketch.png", sketch_png), ("picture.jpg", picture_jpeg), ("thumb.jpg", thumb)))
             try:
-                for name, data in (("sketch.png", sketch_png), ("picture.jpg", picture_jpeg),
-                                   ("thumb.jpg", thumb)):
-                    staged.append((_write_temp(folder, name, data), folder / name))
-                now = max(self._clock(), art.updated_at)
-                if now == art.updated_at:  # same clock tick: still bump the version
-                    now = _bump(now)
                 with self._tx() as db:
                     db.execute(
                         "UPDATE artworks SET updated_at = ?, topic_id = ?, style_id = ?, "
@@ -411,11 +448,15 @@ class GalleryStore:
                         (now, values["topic_id"], values["style_id"], values["prompt"],
                          values["params_json"], values["seed"], values["source_id"],
                          artwork_id))
-                    for tmp, dst in staged:
-                        _replace(tmp, dst)
-            finally:
-                for tmp, _ in staged:
-                    tmp.unlink(missing_ok=True)
+            except BaseException:
+                for path in written:
+                    path.unlink(missing_ok=True)
+                raise
+            for path in old:  # committed: the old version is no longer referenced
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError as exc:  # e.g. still being served on Windows
+                    log.warning("could not remove old file %s (sweep retries): %s", path, exc)
         art = self.get(artwork_id)
         assert art is not None
         return art
@@ -467,7 +508,7 @@ class GalleryStore:
         with self._tx() as db:
             db.execute("DELETE FROM artworks WHERE id = ?", (art.id,))
         if folder is not None:
-            shutil.rmtree(folder, ignore_errors=True)
+            _rmtree(folder)
             with contextlib.suppress(OSError):
                 folder.parent.rmdir()  # the YYYY-MM folder, once empty
 
@@ -478,7 +519,44 @@ class GalleryStore:
                 f"SELECT {_COLUMNS} FROM artworks WHERE deleted_at IS NOT NULL").fetchall()
             for row in rows:
                 self._remove(_row_to_artwork(row))
+            self.sweep()  # also retries files an earlier delete could not remove
         return len(rows)
+
+    def sweep(self) -> int:
+        """Remove what no row refers to: folders of artworks that are gone (or were never
+        committed), files of old versions, and temp files left by a crash. Returns how
+        many folders and files were removed. Only names this store creates are touched."""
+        removed = 0
+        with self._lock:
+            rows = [_row_to_artwork(r) for r in self._conn.execute(
+                f"SELECT {_COLUMNS} FROM artworks").fetchall()]
+            known = {art.dir: art for art in rows}
+            base = self.root / ARTWORKS_DIR
+            months = [p for p in base.iterdir() if p.is_dir() and MONTH_RE.fullmatch(p.name)] \
+                if base.is_dir() else []
+            for month in months:
+                for folder in month.iterdir():
+                    if not folder.is_dir() or not ID_RE.fullmatch(folder.name):
+                        continue
+                    art = known.get(f"{ARTWORKS_DIR}/{month.name}/{folder.name}")
+                    if art is None:
+                        log.info("removing orphaned artwork folder %s", folder)
+                        removed += _rmtree(folder)
+                        continue
+                    try:
+                        keep = {self.file_path(art, name).name for name in FILES}
+                    except ValueError:
+                        continue
+                    for path in folder.iterdir():
+                        if path.is_file() and path.name not in keep and _ours(path.name):
+                            try:
+                                path.unlink()
+                                removed += 1
+                            except OSError as exc:
+                                log.warning("could not remove stray file %s: %s", path, exc)
+                with contextlib.suppress(OSError):
+                    month.rmdir()  # once empty
+        return removed
 
     def delete_draft(self, artwork_id: str) -> bool:
         """Remove a draft for good (drafts never go to the trash)."""
@@ -488,6 +566,28 @@ class GalleryStore:
                 return False
             self._remove(art)
             return True
+
+
+_OURS_RE = re.compile(r"(sketch|picture|thumb)(\.\d+)?\.(png|jpg)|\.(sketch\.png|picture\.jpg|"
+                      r"thumb\.jpg)\.[0-9a-f]{8}\.tmp")
+
+
+def _ours(name: str) -> bool:
+    """A file name this store writes (any version, or a temp file)."""
+    return _OURS_RE.fullmatch(name) is not None
+
+
+def _rmtree(folder: Path) -> int:
+    """Remove a folder; failures are logged (sweep() retries later). 1 if it is gone."""
+    def failed(_func: Any, path: str, exc: Any) -> None:
+        log.warning("could not remove %s (sweep retries): %s", path, exc)
+    if not folder.exists():
+        return 1
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(folder, onexc=failed)
+    else:  # Python 3.10 on the PC
+        shutil.rmtree(folder, onerror=lambda f, p, info: failed(f, p, info[1]))
+    return 0 if folder.exists() else 1
 
 
 def _bump(stamp: str) -> str:

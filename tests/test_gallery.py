@@ -39,9 +39,10 @@ def test_save_get_list(store):
     assert art.seed == 7 and art.params["t_index_list"] == [30, 42]
     assert art.dir == f"artworks/{art.created_at[:7]}/{art.id}"
     folder = store.root / art.dir
-    assert (folder / "sketch.png").read_bytes() == sketch_png()  # lossless, byte-exact
-    assert (folder / "picture.jpg").read_bytes() == jpeg()
-    thumb = Image.open(folder / "thumb.jpg")
+    assert store.file_path(art, "sketch.png").parent == folder
+    assert store.file_path(art, "sketch.png").read_bytes() == sketch_png()  # lossless
+    assert store.file_path(art, "picture.jpg").read_bytes() == jpeg()
+    thumb = Image.open(store.file_path(art, "thumb.jpg"))
     assert thumb.format == "JPEG" and max(thumb.size) <= g.THUMB_SIZE
     assert not list(folder.glob("*.tmp"))
     assert store.get(art.id) == art
@@ -72,9 +73,63 @@ def test_update_replaces_files_and_bumps_version(store):
     assert updated.id == art.id and updated.created_at == art.created_at
     assert updated.title == "My rocket" and updated.topic_id == "ocean"
     assert updated.updated_at > art.updated_at and updated.version != art.version
-    assert (store.root / art.dir / "sketch.png").read_bytes() == new_sketch
-    assert not list((store.root / art.dir).glob("*.tmp"))
+    assert store.file_path(updated, "sketch.png").read_bytes() == new_sketch
+    assert store.file_path(updated, "sketch.png") != store.file_path(art, "sketch.png")
+    # Only the new version's three files are left.
+    assert sorted(p.name for p in (store.root / art.dir).iterdir()) == sorted(
+        store.file_path(updated, n).name for n in g.FILES)
     assert store.count() == 1
+
+
+def test_update_file_failure_keeps_old_version_intact(store, monkeypatch):
+    """A failed write half-way (e.g. a Windows file lock) leaves the old row with exactly
+    its old files: nothing served under the old ?v ever changes."""
+    art = store.save(sketch_png(), jpeg("red"), META)
+    folder = store.root / art.dir
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+    real = g._replace
+    calls = []
+
+    def flaky(src, dst):
+        calls.append(dst)
+        if len(calls) == 2:
+            raise PermissionError("in use")
+        real(src, dst)
+    monkeypatch.setattr(g, "_replace", flaky)
+    with pytest.raises(PermissionError):
+        store.update(art.id, sketch_png(color="blue"), jpeg("blue"), META)
+    monkeypatch.undo()
+    store.sweep()  # the temp file of the failed write
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
+    assert store.get(art.id) == art
+
+
+def test_legacy_unversioned_files_are_read_and_replaced(store):
+    art = store.save(sketch_png(), jpeg("red"), META)
+    folder = store.root / art.dir
+    for name in g.FILES:  # a folder written before file names carried the version
+        store.file_path(art, name).rename(folder / name)
+    assert store.file_path(art, "picture.jpg") == folder / "picture.jpg"
+    assert store.sweep() == 0  # legacy files are the current ones: kept
+    updated = store.update(art.id, sketch_png(color="blue"), jpeg("blue"), META)
+    assert not (folder / "picture.jpg").exists()
+    assert store.file_path(updated, "sketch.png").read_bytes() == sketch_png(color="blue")
+
+
+def test_sweep_removes_orphans_old_versions_and_temp_files(store):
+    keep = store.save(sketch_png(), jpeg(), META)
+    folder = store.root / keep.dir
+    orphan = store.root / "artworks" / "2020-01" / ("Z" * 12)  # files without a row
+    orphan.mkdir(parents=True)
+    (orphan / "picture.1.jpg").write_bytes(b"x")
+    (folder / ".picture.jpg.0123abcd.tmp").write_bytes(b"x")   # crash during a write
+    (folder / "picture.20200101000000000000.jpg").write_bytes(b"x")  # old version
+    (folder / "notes.txt").write_bytes(b"not ours")               # never touched
+    assert store.sweep() == 3
+    assert not orphan.parent.exists()
+    assert sorted(p.name for p in folder.iterdir()) == sorted(
+        [store.file_path(keep, n).name for n in g.FILES] + ["notes.txt"])
+    assert store.file_path(keep, "picture.jpg").read_bytes() == jpeg()
 
 
 def test_update_missing_or_deleted_raises(store):
@@ -135,7 +190,7 @@ def test_soft_delete_restore_purge(store):
     assert store.purge_deleted() == 1
     assert not gone_dir.exists()
     assert store.get(gone.id, include_deleted=True) is None
-    assert (store.root / keep.dir / "picture.jpg").is_file()
+    assert store.file_path(keep, "picture.jpg").is_file()
     assert store.purge_deleted() == 0
 
 

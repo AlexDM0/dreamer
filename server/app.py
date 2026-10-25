@@ -242,6 +242,12 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             factory = partial(make_backend, config)
         runtime.drafts = DraftAutosaver(gallery, lambda: session.last_frame,
                                         lambda: session.continuing_id, DRAFT_INTERVAL)
+        try:  # files a crash or a locked delete left behind
+            swept = await asyncio.to_thread(gallery.sweep)
+            if swept:
+                log.info("removed %d stray gallery files/folders", swept)
+        except (OSError, sqlite3.Error) as exc:
+            log.error("could not tidy the gallery folder: %s", exc)
         worker = GpuWorker(backend, mailbox, threadsafe(on_picture),
                            threadsafe(session.broadcast_status), config,
                            backend_factory=factory, params=params_store.get(),
@@ -325,8 +331,10 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             raise HTTPException(404, detail="not found")
         if not path.is_file():
             raise HTTPException(404, detail="not found")
-        # Versioned URLs (?v=updated_at) never change content; bare ones must revalidate.
-        headers = {"Cache-Control": IMMUTABLE if request.query_params.get("v") else NO_CACHE}
+        # Versioned URLs (?v=updated_at) never change content; bare ones must revalidate,
+        # and so must an outdated ?v (it gets the current files, not that version's).
+        current = request.query_params.get("v") == art.version
+        headers = {"Cache-Control": IMMUTABLE if current else NO_CACHE}
         filename = None
         if download:
             stem = "".join(c if c.isalnum() else "-" for c in (art.title or "").lower()).strip("-")
@@ -359,8 +367,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         """Worker result (on the loop): fan out, and remember it as what is on screen."""
         origin = owner if isinstance(owner, FrameOrigin) else None
         session.send_picture(seq, jpeg, origin.peer if origin else owner)
-        if origin is None or origin.peer is not session.kid:
-            return
+        if origin is None or origin.peer is not session.kid or origin.epoch != session.epoch:
+            return  # another socket's, or made from a drawing the kid has left behind
         worker = runtime.worker
         params = worker.params.to_dict() if worker is not None else {}
         session.last_frame = LastFrame(seq, origin.sketch_png, jpeg, origin.prompt,
@@ -377,19 +385,24 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         art = runtime.drafts.current() if runtime.drafts is not None else None
         if art is None:
             return None
-        return {"id": art.id, "sketch": art.file_url("sketch.png")}
+        return {"id": art.id, "sketch": art.file_url("sketch.png"), "source": art.source_id}
 
-    async def kid_hello(peer: Peer) -> None:
+    def live_artwork(artwork_id: Any) -> str | None:
+        """``artwork_id`` if it names a saved (non-draft, not deleted) artwork, else None."""
+        art = gallery.get(artwork_id) if valid_id(artwork_id) else None
+        return art.id if art is not None and not art.is_draft else None
+
+    async def kid_hello(peer: Peer, continuing: Any) -> None:
         drafts = runtime.drafts
         if drafts is not None:
             await drafts.flush()  # a reload must get the drawing it just left
+        # What is being continued belongs to the page's canvas, not to the server: a
+        # reconnecting page says which saved artwork it holds (if any); a freshly loaded
+        # page holds nothing until it restores the draft (see kid_restored). Until the
+        # page's own sketch comes back, nothing is on screen.
+        session.new_drawing(await asyncio.to_thread(live_artwork, continuing))
         msg = session.lists_msg("ready")
         msg["draft"] = await asyncio.to_thread(draft_info)
-        if msg["draft"] is not None and session.continuing_id is None:
-            # After a restart: the draft remembers which saved artwork it continues.
-            art = await asyncio.to_thread(gallery.get, msg["draft"]["id"])
-            if art is not None and art.source_id:
-                session.continuing_id = art.source_id
         peer.send_json(msg)
         peer.send_json(session.last_status)
 
@@ -425,22 +438,22 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         peer.send_json({"t": "saved", "artwork": art.public()})
         session.broadcast_admin({"t": "gallery"})
 
-    async def kid_fresh() -> None:
-        """Clear / New drawing: nothing on screen, nothing being continued, no draft."""
+    async def kid_fresh(continuing_id: str | None = None) -> None:
+        """Clear / New drawing (or a saved one put on the canvas): nothing on screen, no
+        draft of the old drawing, and only ``continuing_id`` being continued."""
         mailbox.clear()
-        session.continuing_id = None
+        session.new_drawing(continuing_id)  # before any await: stale pictures are ignored
         if runtime.drafts is not None:
             await runtime.drafts.discard()
-        session.last_frame = None
 
     async def kid_continue(peer: Peer, artwork_id: Any) -> None:
+        """"Keep drawing" asked: send the sketch to load. Nothing changes on the server until
+        the page says it has the sketch on its canvas ({"t":"continuing"}), so a sketch
+        that fails to load cannot make the next Save overwrite that artwork."""
         art = await asyncio.to_thread(gallery.get, artwork_id) if valid_id(artwork_id) else None
         if art is None or art.is_draft:
             kid_error(peer, "That picture is not there any more")
             return
-        mailbox.clear()
-        session.continuing_id = art.id
-        session.last_frame = None  # until the restored sketch comes back as a picture
         for t, kind, item_id in (("topic", "topics", art.topic_id), ("style", "styles", art.style_id)):
             item = styles.get(kind, item_id) if item_id else None
             if item is not None and not item["hidden"]:
@@ -449,13 +462,27 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         peer.send_json({"t": "continue", "id": art.id, "sketch": art.file_url("sketch.png"),
                         "topic": cur["topic"], "style": cur["style"]})
 
+    async def kid_continuing(artwork_id: Any) -> None:
+        """The page loaded a saved artwork's sketch: Save updates that artwork from now on
+        (or saves a new one, if it was deleted meanwhile). The previous drawing's draft
+        goes, like on New: the kid already agreed to leave that drawing."""
+        await kid_fresh(await asyncio.to_thread(live_artwork, artwork_id))
+
+    async def kid_restored(draft_id: Any) -> None:
+        """The page put the draft back on its canvas: it continues what the draft continued."""
+        mailbox.clear()
+        drafts = runtime.drafts
+        draft = await asyncio.to_thread(drafts.current) if drafts is not None else None
+        source = draft.source_id if draft is not None and draft.id == draft_id else None
+        session.new_drawing(await asyncio.to_thread(live_artwork, source) if source else None)
+
     async def handle_kid_text(peer: Peer, text: str) -> None:
         msg = protocol.parse_client_text(text)
         if msg is None:
             return
         t = msg["t"]
         if t == "hello":
-            await kid_hello(peer)
+            await kid_hello(peer, msg.get("continuing"))
         elif t in ("topic", "style"):
             kind = "topics" if t == "topic" else "styles"
             item_id = msg.get("id")
@@ -468,6 +495,10 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             await kid_save(peer)
         elif t == "continue":
             await kid_continue(peer, msg.get("id"))
+        elif t == "continuing":
+            await kid_continuing(msg.get("id"))
+        elif t == "restored":
+            await kid_restored(msg.get("id"))
         elif t == "ping":
             peer.send_json({"t": "pong"})
         # Unknown types are ignored on purpose (forward compatibility).
@@ -487,7 +518,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         # The prompt is built server-side from the selection; the kid never sends text.
         cur = session.current()
         prompt = styles.build_prompt(cur["topic"], cur["style"])
-        origin = FrameOrigin(peer, payload, prompt, cur["topic"], cur["style"])
+        origin = FrameOrigin(peer, payload, prompt, cur["topic"], cur["style"], session.epoch)
         mailbox.put(FrameJob(seq, payload, prompt, owner=origin))
 
     def same_origin(ws: WebSocket) -> bool:

@@ -49,6 +49,10 @@ export class Net extends EventTarget {
     this._stopped = false;
     this._ready = false;       // got "ready" on the current socket
     this._finalRetries = 0;    // resends of the current unanswered final frame
+    // The saved artwork the canvas holds (Save updates it), or null for a new drawing.
+    // It belongs to this page: sent with every hello so a reconnect keeps it, while a
+    // freshly loaded page starts with null and can never overwrite an artwork by mistake.
+    this.continuingId = null;
     this.state = "off";
     this._loop = this._loop.bind(this);
   }
@@ -74,6 +78,7 @@ export class Net extends EventTarget {
   /** Tell the server to drop queued work, then send the (now blank) canvas as a final frame. */
   clear() {
     this.floorSeq = this.seq + 1;
+    this.continuingId = null;
     this._sendJson({ t: "clear" });
     this.sendNow();
   }
@@ -84,12 +89,26 @@ export class Net extends EventTarget {
   /** Start a fresh drawing: the server forgets the draft and what was being continued. */
   newDrawing() {
     this.floorSeq = this.seq + 1;
+    this.continuingId = null;
     this._sendJson({ t: "new" });
     this.sendNow();
   }
 
   /** Ask to keep drawing a saved artwork; the reply arrives as a "continue" event. */
   continueArtwork(id) { return this._sendJson({ t: "continue", id }); }
+
+  /** The saved artwork's sketch is on the canvas now: Save updates that artwork. Call it
+   * before sending the restored sketch (the server starts a new drawing on it). */
+  continuing(id) {
+    this.continuingId = id;
+    this._sendJson({ t: "continuing", id });
+  }
+
+  /** The draft is back on the canvas; it continues `source` (a saved artwork) or nothing. */
+  restored(draftId, source) {
+    this.continuingId = source || null;
+    this._sendJson({ t: "restored", id: draftId });
+  }
 
   /** Pictures made from sketches sent so far are stale (the canvas content was replaced). */
   dropOlderPictures() { this.floorSeq = this.seq + 1; }
@@ -130,7 +149,7 @@ export class Net extends EventTarget {
       this._backoff = BACKOFF_MIN_MS;
       this._lastRx = Date.now();
       this._setState("open");
-      this._sendJson({ t: "hello", v: 1 });
+      this._sendJson({ t: "hello", v: 1, continuing: this.continuingId });
       clearInterval(this._pingTimer);
       this._pingTimer = setInterval(() => this._ping(), PING_MS);
     };
@@ -208,6 +227,9 @@ export class Net extends EventTarget {
         this._setState("replaced");
         break;
       case "saved":
+        if (msg.artwork && msg.artwork.id) this.continuingId = msg.artwork.id;
+        this._emit(msg.t, msg);
+        break;
       case "continue":
       case "gallery":
         this._emit(msg.t, msg);

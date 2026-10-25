@@ -22,6 +22,10 @@ $TorchVersion = "2.8.0"
 $TorchvisionVersion = "0.23.0"
 $TorchaudioVersion = "2.8.0"
 $StreamDiffusionRepo = "https://github.com/daydreamlive/StreamDiffusion.git"
+# The fork imports diffusers_ipadapter on every TensorRT path, but only its `ipadapter`
+# extra installs it, and that extra also pulls insightface, which needs the MSVC Build
+# Tools on Windows. Install just this small package, at the commit the fork pins.
+$DiffusersIpAdapter = "diffusers-ipadapter @ git+https://github.com/livepeer/Diffusers_IPAdapter.git@405f87da42932e30bd55ee8dca3ce502d7834a99"
 
 $VenvDir = Join-Path $PSScriptRoot ".venv"
 $VenvScripts = Join-Path $VenvDir "Scripts"
@@ -195,6 +199,9 @@ if (-not $Mock) {
     Invoke-Native "Installing StreamDiffusion (Daydream fork, tensorrt + controlnet)" $VenvPython @(
         "-m", "pip", "install", $sdSpec)
 
+    Invoke-Native "Installing diffusers-ipadapter (imported by StreamDiffusion's TensorRT code)" $VenvPython @(
+        "-m", "pip", "install", $DiffusersIpAdapter)
+
     Invoke-Native "Installing TensorRT (streamdiffusion.tools.install-tensorrt)" $VenvPython @(
         "-m", "streamdiffusion.tools.install-tensorrt")
 
@@ -211,6 +218,23 @@ if (-not $Mock) {
             "driver, then reinstall the CUDA build with: .venv\Scripts\python.exe -m pip install " +
             "--force-reinstall torch==$TorchVersion+$Cuda torchvision==$TorchvisionVersion+$Cuda " +
             "torchaudio==$TorchaudioVersion+$Cuda --index-url $indexUrl")
+    }
+
+    Write-Step "Checking cuDNN and StreamDiffusion's TensorRT imports"
+    $check = "import torch, torch.nn.functional as F; " +
+        "print('cuDNN', torch.backends.cudnn.version()); " +
+        "x = torch.ones(1, 3, 8, 8, device='cuda'); F.conv2d(x, torch.ones(4, 3, 3, 3, device='cuda')); " +
+        "torch.cuda.synchronize(); print('GPU convolution ok'); " +
+        "import tensorrt, streamdiffusion.acceleration.tensorrt.models.controlnet_models, streamdiffusion.acceleration.tensorrt.export_wrappers.unet_unified_export; " +
+        "print('TensorRT', tensorrt.__version__, '- StreamDiffusion TensorRT imports ok')"
+    $ErrorActionPreference = "Continue"
+    & $VenvPython -c $check
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($code -ne 0) {
+        Stop-Setup ("The GPU stack is installed but does not work (see the error above). If it says " +
+            "No module named 'diffusers_ipadapter', run: .venv\Scripts\python.exe -m pip install " +
+            "`"$DiffusersIpAdapter`"")
     }
 }
 
