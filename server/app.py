@@ -1,0 +1,591 @@
+"""FastAPI application: kid WebSocket, admin API + watcher socket, static pages."""
+from __future__ import annotations
+
+import asyncio
+import concurrent.futures
+import contextlib
+import io
+import logging
+import queue
+import secrets
+from contextlib import asynccontextmanager
+from functools import partial
+from pathlib import Path
+from typing import Any, Callable
+
+from fastapi import (APIRouter, Depends, FastAPI, File, Form, HTTPException, Request,
+                     Response, UploadFile, WebSocket, WebSocketDisconnect)
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps
+from pydantic import BaseModel
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from . import protocol
+from .auth import COOKIE_MAX_AGE, COOKIE_NAME, AdminAuth, LockedOut, load_or_create_secret
+from .config import DEFAULT_PIN, VIEW_MODES, Config
+from .mailbox import Mailbox
+from .params import LIMITS, GenParams, ParamsStore, defaults_from_config
+from .session import Peer, SessionManager
+from .styles import KINDS, LABEL_MAX, StyleStore, clean_text
+from .worker import FrameJob, GpuWorker
+
+log = logging.getLogger("dreamer.app")
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+STYLE_IMAGES_DIR = "style_images"
+MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+# Phone photos go up to ~48 MP; JPEGs are draft-decoded at reduced size anyway.
+MAX_UPLOAD_PIXELS = 50_000_000
+UPLOAD_FORMATS = ["PNG", "JPEG", "WEBP", "GIF"]
+# Request body caps, enforced before anything reads the body (see AdminGate).
+UPLOAD_PATH = "/api/admin/style-image"
+UPLOAD_BODY_MAX = MAX_UPLOAD_BYTES + 1024 * 1024  # file + multipart overhead
+JSON_BODY_MAX = 64 * 1024
+PUBLIC_ADMIN_PATHS = ("/api/admin/login", "/api/admin/logout")
+STORED_IMAGE_MAX_SIDE = 1024
+SCREEN_TIMEOUT = 60.0
+STATS_INTERVAL = 1.0
+IMAGE_STYLE_NOTE = ("Style pictures need phase 2 (SD 1.5 + IP-Adapter); "
+                    "stored but not applied yet.")
+NO_CACHE = "no-cache"
+
+
+class LoginBody(BaseModel):
+    pin: str
+
+
+class NewStyleBody(BaseModel):
+    label: str
+    emoji: str | None = None
+    prompt: str
+
+
+class PatchBody(BaseModel):
+    hidden: bool | None = None
+    label: str | None = None
+    emoji: str | None = None
+    prompt: str | None = None
+
+
+class OrderBody(BaseModel):
+    kind: str
+    ids: list[str]
+
+
+class SelectBody(BaseModel):
+    topic: str | None = None
+    style: str | None = None
+    view_mode: str | None = None
+
+
+class _Runtime:
+    """Things that exist only while the app is running (created in lifespan)."""
+
+    worker: GpuWorker | None = None
+
+
+def _bad_request(exc: Exception) -> HTTPException:
+    if isinstance(exc, KeyError):
+        return HTTPException(404, detail="not found")
+    return HTTPException(400, detail=str(exc))
+
+
+def _load_upload(data: bytes) -> Image.Image:
+    """Decode an admin upload into an upright, bounded-size RGB image.
+
+    Only common photo formats are decoded (no exotic Pillow plugins). Raises ValueError
+    if the data is not such a picture.
+    """
+    try:
+        img = Image.open(io.BytesIO(data), formats=UPLOAD_FORMATS)
+        if img.width * img.height > MAX_UPLOAD_PIXELS:
+            raise ValueError("picture is too big")
+        # JPEG: let the decoder downscale by up to 8x while decoding (much less memory).
+        img.draft("RGB", (STORED_IMAGE_MAX_SIDE, STORED_IMAGE_MAX_SIDE))
+        img.load()
+        # Phone photos store the sensor orientation plus an EXIF tag; bake it in, since
+        # the stored PNG keeps no EXIF.
+        img = ImageOps.exif_transpose(img)
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError("that file is not a picture") from exc
+    img = img.convert("RGB")
+    img.thumbnail((STORED_IMAGE_MAX_SIDE, STORED_IMAGE_MAX_SIDE))
+    return img
+
+
+class AdminGate:
+    """ASGI middleware for ``/api/*``: auth and body-size checks before the body is read.
+
+    FastAPI parses JSON / multipart bodies before running route dependencies, so without
+    this an unauthenticated client could make the server spool arbitrarily large uploads.
+    Here protected admin routes answer 401 without reading the body, a too-large
+    Content-Length gets 413 straight away, and a streamed (chunked) body is cut off with
+    413 as soon as it passes the cap.
+    """
+
+    def __init__(self, app: ASGIApp, auth: AdminAuth) -> None:
+        self.app = app
+        self.auth = auth
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope.get("path", "")
+        if scope["type"] != "http" or not path.startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1")
+                   for k, v in scope.get("headers", [])}
+        if path.startswith("/api/admin/") and path not in PUBLIC_ADMIN_PATHS:
+            if not self.auth.verify_cookie(_cookie(headers.get("cookie", ""), COOKIE_NAME)):
+                await JSONResponse({"detail": "Not logged in"}, 401)(scope, receive, send)
+                return
+        cap = UPLOAD_BODY_MAX if path == UPLOAD_PATH else JSON_BODY_MAX
+        length = headers.get("content-length", "")
+        if length.isdigit() and int(length) > cap:
+            await JSONResponse({"detail": "Request is too big"}, 413)(scope, receive, send)
+            return
+
+        seen = 0
+
+        async def capped_receive() -> Message:
+            nonlocal seen
+            message = await receive()
+            if message["type"] == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > cap:
+                    # FastAPI re-raises HTTPException from body parsing as-is -> 413.
+                    raise HTTPException(413, detail="Request is too big")
+            return message
+
+        await self.app(scope, capped_receive, send)
+
+
+def _cookie(header: str, name: str) -> str | None:
+    """Value of cookie ``name`` from a Cookie header (no quoting needed for ours)."""
+    for part in header.split(";"):
+        key, sep, value = part.strip().partition("=")
+        if sep and key == name:
+            return value
+    return None
+
+
+def create_app(config: Config, backend: Any = None) -> FastAPI:
+    """Build the app. With ``backend=None`` it is created by ``make_backend(config)``
+    on the GPU worker thread (and rebuilt there after repeated failures)."""
+    if config.admin_pin == DEFAULT_PIN:
+        log.warning("admin_pin is the default %r; set admin_pin in config.yaml", DEFAULT_PIN)
+
+    data_dir = Path(config.data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    styles = StyleStore(data_dir)
+    auth = AdminAuth(config.admin_pin, load_or_create_secret(config.secret_key, data_dir))
+    params_store = ParamsStore(data_dir, defaults_from_config(config))
+    mailbox = Mailbox()
+    runtime = _Runtime()
+
+    def backend_name() -> str:
+        if runtime.worker is not None:
+            return runtime.worker.backend_name
+        return backend.name if backend is not None else config.backend
+
+    session = SessionManager(styles, config.default_view_mode, backend_name)
+
+    def worker_stats() -> dict[str, Any]:
+        if runtime.worker is None:
+            return {"state": "stopped", "backend": backend_name()}
+        return runtime.worker.stats()
+
+    async def stats_loop() -> None:
+        while True:
+            await asyncio.sleep(STATS_INTERVAL)
+            if session.admins:
+                session.broadcast_admin({"t": "stats", **worker_stats(), **session.current()})
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        loop = asyncio.get_running_loop()
+
+        def threadsafe(fn: Callable[..., None]) -> Callable[..., None]:
+            """Wrap an event-loop-only callable so the worker thread can call it."""
+            def call(*args: Any) -> None:
+                try:
+                    loop.call_soon_threadsafe(fn, *args)
+                except RuntimeError:  # loop already closed during shutdown
+                    pass
+            return call
+
+        def params_reverted(previous: GenParams) -> None:
+            """The worker could not apply a change: persist and show what is live."""
+            try:
+                params_store.set(previous)
+            except OSError:
+                log.exception("could not save reverted params")
+            session.broadcast_admin(params_msg(previous))
+
+        factory = None
+        if backend is None:
+            from .backends import make_backend
+            factory = partial(make_backend, config)
+        worker = GpuWorker(backend, mailbox, threadsafe(session.send_picture),
+                           threadsafe(session.broadcast_status), config,
+                           backend_factory=factory, params=params_store.get(),
+                           on_params_error=threadsafe(params_reverted))
+        runtime.worker = worker
+        worker.start()
+        stats_task = asyncio.create_task(stats_loop())
+        log.info("Dreamer started (backend=%s)", backend_name())
+        try:
+            yield
+        finally:
+            stats_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await stats_task
+            await asyncio.to_thread(worker.stop)
+            runtime.worker = None
+            log.info("Dreamer stopped")
+
+    app = FastAPI(title="Dreamer", lifespan=lifespan, docs_url=None, redoc_url=None,
+                  openapi_url=None)
+    app.state.styles = styles
+    app.state.session = session
+    app.state.mailbox = mailbox
+    app.state.auth = auth
+    app.state.runtime = runtime
+    app.state.params = params_store
+    app.add_middleware(AdminGate, auth=auth)
+
+    # ----- caching: always revalidate pages and modules so the iPad picks up updates -----
+
+    @app.middleware("http")
+    async def no_cache_static(request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path in ("/", "/admin") or path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", NO_CACHE)
+        return response
+
+    def page(name: str) -> FileResponse:
+        path = STATIC_DIR / name
+        if not path.is_file():
+            raise HTTPException(404, detail=f"{name} is missing")
+        return FileResponse(path, media_type="text/html", headers={"Cache-Control": NO_CACHE})
+
+    @app.get("/", include_in_schema=False)
+    async def index() -> FileResponse:
+        return page("index.html")
+
+    @app.get("/admin", include_in_schema=False)
+    async def admin_page() -> FileResponse:
+        return page("admin.html")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> FileResponse:
+        path = STATIC_DIR / "favicon.svg"
+        if not path.is_file():
+            raise HTTPException(404)
+        return FileResponse(path, media_type="image/svg+xml")
+
+    app.mount("/static", StaticFiles(directory=STATIC_DIR, check_dir=False), name="static")
+
+    @app.get("/healthz")
+    async def healthz() -> dict[str, Any]:
+        state = runtime.worker.state if runtime.worker is not None else "stopped"
+        return {"ok": True, "backend": backend_name(), "state": state}
+
+    # ----- kid socket ----------------------------------------------------------------
+
+    def handle_kid_text(peer: Peer, text: str) -> None:
+        msg = protocol.parse_client_text(text)
+        if msg is None:
+            return
+        t = msg["t"]
+        if t == "hello":
+            peer.send_json(session.lists_msg("ready"))
+            peer.send_json(session.last_status)
+        elif t in ("topic", "style"):
+            kind = "topics" if t == "topic" else "styles"
+            item_id = msg.get("id")
+            item = styles.get(kind, item_id) if isinstance(item_id, str) else None
+            if item is not None and not item["hidden"]:
+                session.select(**{t: item_id})
+        elif t == "clear":
+            mailbox.clear()
+        elif t == "ping":
+            peer.send_json({"t": "pong"})
+        # Unknown types are ignored on purpose (forward compatibility).
+
+    def handle_kid_bytes(peer: Peer, data: bytes) -> None:
+        if len(data) > protocol.HEADER_SIZE + protocol.MAX_MESSAGE_BYTES:
+            log.warning("ignoring oversized frame (%d bytes)", len(data))
+            return
+        try:
+            msg_type, seq, payload = protocol.unpack(data)
+        except protocol.ProtocolError as exc:
+            log.warning("ignoring malformed frame: %s", exc)
+            return
+        if msg_type != protocol.SKETCH:
+            log.warning("ignoring frame type 0x%02x from kid", msg_type)
+            return
+        # The prompt is built server-side from the selection; the kid never sends text.
+        mailbox.put(FrameJob(seq, payload, session.current_prompt(), owner=peer))
+
+    def same_origin(ws: WebSocket) -> bool:
+        """Browsers always send Origin on WebSockets: refuse sockets opened by pages
+        served from elsewhere (a cross-site page could otherwise take over the session).
+        Non-browser clients without an Origin header are allowed."""
+        origin = ws.headers.get("origin")
+        if not origin:
+            return True
+        host = ws.headers.get("host", "")
+        return origin.split("://", 1)[-1].rstrip("/").lower() == host.lower()
+
+    @app.websocket("/ws")
+    async def kid_ws(ws: WebSocket) -> None:
+        if not same_origin(ws):
+            log.warning("refusing kid socket from foreign origin %r", ws.headers.get("origin"))
+            await ws.close(code=1008)
+            return
+        await ws.accept()
+        peer = Peer(ws, "kid")
+        session.attach_kid(peer)
+        mailbox.clear()  # a stale sketch from the previous socket is not wanted
+        try:
+            while True:
+                message = await ws.receive()
+                if message["type"] == "websocket.disconnect":
+                    break
+                if session.kid is not peer:
+                    continue  # replaced: ignore anything the old page still sends
+                if message.get("bytes") is not None:
+                    handle_kid_bytes(peer, message["bytes"])
+                elif message.get("text") is not None:
+                    handle_kid_text(peer, message["text"])
+        except (WebSocketDisconnect, RuntimeError):
+            pass  # RuntimeError: receive after the socket was closed
+        finally:
+            session.detach_kid(peer)
+            await peer.finish()
+
+    # ----- admin watcher socket ------------------------------------------------------
+
+    @app.websocket("/ws/admin")
+    async def admin_ws(ws: WebSocket) -> None:
+        if not auth.verify_cookie(ws.cookies.get(COOKIE_NAME)):
+            await ws.close(code=1008)  # before accept -> HTTP 403
+            return
+        await ws.accept()
+        peer = Peer(ws, "admin")
+        session.add_admin(peer)
+        peer.send_json(session.last_status)
+        peer.send_json({"t": "stats", **worker_stats(), **session.current()})
+        if session.last_picture is not None:
+            peer.send_bytes(session.last_picture)
+        try:
+            while True:  # read-only: drain and ignore anything the client sends
+                if (await ws.receive())["type"] == "websocket.disconnect":
+                    break
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            session.remove_admin(peer)
+            await peer.finish()
+
+    # ----- admin HTTP API ------------------------------------------------------------
+
+    @app.post("/api/admin/login")
+    async def login(body: LoginBody, request: Request, response: Response) -> dict[str, Any]:
+        client = request.client.host if request.client else ""
+        try:
+            ok = auth.check_pin(body.pin, client)
+        except LockedOut as exc:
+            raise HTTPException(429, detail="Too many tries. Wait a little.",
+                                headers={"Retry-After": str(int(exc.retry_after) + 1)})
+        if not ok:
+            raise HTTPException(401, detail="Wrong PIN")
+        response.set_cookie(COOKIE_NAME, auth.make_cookie(), max_age=COOKIE_MAX_AGE,
+                            httponly=True, samesite="strict", path="/")
+        return {"ok": True}
+
+    @app.post("/api/admin/logout")
+    async def logout(response: Response) -> dict[str, Any]:
+        response.delete_cookie(COOKIE_NAME, path="/", httponly=True, samesite="strict")
+        return {"ok": True}
+
+    def require_admin(request: Request) -> None:
+        if not auth.verify_cookie(request.cookies.get(COOKIE_NAME)):
+            raise HTTPException(401, detail="Not logged in")
+
+    admin = APIRouter(prefix="/api/admin", dependencies=[Depends(require_admin)])
+
+    def mutated() -> None:
+        """Push the new lists/defaults to the kid page after any admin change."""
+        session.broadcast_styles()
+
+    def params_msg(params: GenParams) -> dict[str, Any]:
+        return {"t": "params", "params": params.to_dict()}
+
+    def save_failed(exc: OSError) -> HTTPException:
+        log.error("could not save settings: %s", exc)
+        return HTTPException(503, detail="Could not save the change on the computer. Try again.")
+
+    @admin.get("/state")
+    async def get_state() -> dict[str, Any]:
+        return {**styles.admin_list(), **session.current(), "backend": backend_name(),
+                "stats": worker_stats()}
+
+    @admin.post("/styles")
+    async def add_style(body: NewStyleBody) -> dict[str, Any]:
+        try:
+            item = styles.add_custom_style(body.label, body.emoji, body.prompt)
+        except ValueError as exc:
+            raise _bad_request(exc)
+        except OSError as exc:
+            raise save_failed(exc)
+        mutated()
+        return {"ok": True, "style": item}
+
+    @admin.patch("/items/{kind}/{item_id}")
+    async def patch_item(kind: str, item_id: str, body: PatchBody) -> dict[str, Any]:
+        if kind not in KINDS:
+            raise HTTPException(404, detail="not found")
+        try:
+            item = styles.update_item(kind, item_id, hidden=body.hidden, label=body.label,
+                                      emoji=body.emoji, prompt=body.prompt)
+        except (KeyError, ValueError) as exc:
+            raise _bad_request(exc)
+        except OSError as exc:
+            raise save_failed(exc)
+        mutated()
+        return {"ok": True, "item": item}
+
+    @admin.delete("/items/styles/{item_id}")
+    async def delete_style(item_id: str) -> dict[str, Any]:
+        try:
+            item = styles.delete_style(item_id)
+        except (KeyError, ValueError) as exc:
+            raise _bad_request(exc)
+        except OSError as exc:
+            raise save_failed(exc)
+        if item.get("image"):
+            images = (data_dir / STYLE_IMAGES_DIR).resolve()
+            path = (data_dir / item["image"]).resolve()
+            if path.parent == images:  # never delete outside the images folder
+                path.unlink(missing_ok=True)
+        mutated()
+        return {"ok": True}
+
+    @admin.post("/order")
+    async def set_order(body: OrderBody) -> dict[str, Any]:
+        try:
+            styles.set_order(body.kind, body.ids)
+        except (KeyError, ValueError) as exc:
+            raise _bad_request(exc)
+        except OSError as exc:
+            raise save_failed(exc)
+        mutated()
+        return {"ok": True}
+
+    @admin.post("/select")
+    async def select(body: SelectBody) -> dict[str, Any]:
+        if body.topic is not None and styles.get("topics", body.topic) is None:
+            raise HTTPException(400, detail="unknown topic")
+        if body.style is not None and styles.get("styles", body.style) is None:
+            raise HTTPException(400, detail="unknown style")
+        if body.view_mode is not None and body.view_mode not in VIEW_MODES:
+            raise HTTPException(400, detail=f"view_mode must be one of {VIEW_MODES}")
+        session.select(topic=body.topic, style=body.style, view_mode=body.view_mode)
+        mutated()
+        return {"ok": True, **session.current()}
+
+    @admin.post("/style-image")
+    async def style_image(file: UploadFile = File(...), label: str = Form(...),
+                          emoji: str = Form("")) -> dict[str, Any]:
+        try:
+            clean_text(label, LABEL_MAX, "label")
+        except ValueError as exc:
+            raise _bad_request(exc)
+        if not (file.content_type or "").startswith("image/"):
+            raise HTTPException(415, detail="Please choose a picture file")
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, detail="Picture is too big (max 8 MB)")
+        try:
+            img = await asyncio.to_thread(_load_upload, data)
+        except ValueError as exc:
+            raise _bad_request(exc)
+
+        worker = runtime.worker
+        if worker is None:
+            raise HTTPException(503, detail="Server is not ready")
+        try:
+            future = worker.submit_upload(img)
+        except queue.Full:
+            raise HTTPException(503, detail="Busy, try again in a moment")
+        try:
+            safe = await asyncio.wait_for(asyncio.wrap_future(future), SCREEN_TIMEOUT)
+        except (asyncio.TimeoutError, concurrent.futures.CancelledError):
+            future.cancel()
+            raise HTTPException(503, detail="Checking the picture took too long")
+        except Exception as exc:
+            log.warning("upload screening error: %s", exc)
+            raise HTTPException(503, detail="Could not check the picture")
+        if not safe:
+            raise HTTPException(422, detail="That picture can't be used as a style")
+
+        rel = f"{STYLE_IMAGES_DIR}/{secrets.token_hex(8)}.png"
+        try:
+            (data_dir / STYLE_IMAGES_DIR).mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(img.save, data_dir / rel, "PNG")
+            item = styles.add_image_style(label, emoji or None, rel)
+        except (ValueError, OSError) as exc:
+            (data_dir / rel).unlink(missing_ok=True)  # no orphaned picture files
+            raise save_failed(exc) if isinstance(exc, OSError) else _bad_request(exc)
+        mutated()
+        result: dict[str, Any] = {"ok": True, "style": item}
+        if not getattr(worker.backend, "supports_image_styles", False):
+            result["note"] = IMAGE_STYLE_NOTE
+        return result
+
+    # ----- live diffusion params (SPEC-addendum-params) ------------------------------
+
+    def params_payload(params: GenParams) -> dict[str, Any]:
+        return {"params": params.to_dict(), "limits": LIMITS,
+                "defaults": params_store.defaults.to_dict()}
+
+    def params_changed(params: GenParams) -> None:
+        if runtime.worker is not None:
+            runtime.worker.set_params(params)
+        session.broadcast_admin(params_msg(params))  # keeps other admin phones in sync
+
+    @admin.get("/params")
+    async def get_params() -> dict[str, Any]:
+        return params_payload(params_store.get())
+
+    @admin.patch("/params")
+    async def patch_params(request: Request) -> dict[str, Any]:
+        try:
+            changes = await request.json()
+        except ValueError:
+            raise HTTPException(400, detail="expected a JSON object")
+        try:
+            params = params_store.patch(changes)
+        except ValueError as exc:
+            raise _bad_request(exc)
+        except OSError as exc:
+            raise save_failed(exc)
+        params_changed(params)
+        return params_payload(params)
+
+    @admin.post("/params/reset")
+    async def reset_params() -> dict[str, Any]:
+        try:
+            params = params_store.set(params_store.defaults)
+        except OSError as exc:
+            raise save_failed(exc)
+        params_changed(params)
+        return params_payload(params)
+
+    app.include_router(admin)
+    return app

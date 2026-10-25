@@ -202,24 +202,41 @@ def test_streamdiffusion_params(fake_sd):
     assert len(w.calls) == n + 1  # failed change was not committed; only the generate call
 
 
-def test_streamdiffusion_upload_screening(fake_sd, monkeypatch):
+def test_streamdiffusion_upload_screening(fake_sd):
+    # No wrapper / no checker loaded -> allowed (SPEC), with a warning.
     b = make_backend(Cfg(backend="streamdiffusion"))
-    # No transformers available -> allowed with a warning.
-    monkeypatch.setitem(sys.modules, "transformers", None)
+    assert b.check_image_safe(Image.new("RGB", (8, 8)))
+    b.warmup()
     assert b.check_image_safe(Image.new("RGB", (8, 8)))
 
-    b2 = make_backend(Cfg(backend="streamdiffusion"))
-    tf = types.ModuleType("transformers")
+    # The wrapper's own checker is used when present.
+    w = fake_sd.instances[0]
+    w.safety_checker = lambda img: img.getpixel((0, 0)) == (255, 0, 255)
+    assert b.check_image_safe(Image.new("RGB", (8, 8), "white"))
+    assert not b.check_image_safe(Image.new("RGB", (8, 8), (255, 0, 255)))
 
-    def pipeline(task, model, device):
-        assert task == "image-classification" and model == "Freepik/nsfw_image_detector"
-        return lambda img, top_k: (
-            [{"label": "high", "score": 0.9}, {"label": "neutral", "score": 0.1}]
-            if img.getpixel((0, 0)) == (255, 0, 255)
-            else [{"label": "neutral", "score": 0.95}, {"label": "medium", "score": 0.05}]
-        )
+    # Scores use the configured threshold; diffusers-style (images, flags) works too.
+    w.safety_checker = lambda img: 0.9
+    assert not b.check_image_safe(Image.new("RGB", (8, 8)))
+    w.safety_checker = lambda img: ([img], [False])
+    assert b.check_image_safe(Image.new("RGB", (8, 8)))
 
-    tf.pipeline = pipeline
-    monkeypatch.setitem(sys.modules, "transformers", tf)
-    assert b2.check_image_safe(Image.new("RGB", (8, 8), "white"))
-    assert not b2.check_image_safe(Image.new("RGB", (8, 8), (255, 0, 255)))
+    # A failing or unintelligible checker rejects (fail closed).
+    w.safety_checker = lambda img: object()
+    with pytest.raises(TypeError):
+        b.check_image_safe(Image.new("RGB", (8, 8)))
+
+
+def test_streamdiffusion_failed_frame_does_not_leave_stale_prompt(fake_sd):
+    b = make_backend(Cfg(backend="streamdiffusion"))
+    b.warmup()
+    w = fake_sd.instances[0]
+    b.set_prompt("A")
+    b.generate(_sketch(), None)
+    b.set_prompt("B")
+    w.update_control_image = lambda i, img: (_ for _ in ()).throw(RuntimeError("boom"))
+    with pytest.raises(RuntimeError):
+        b.generate(_sketch(), make_line_map(_sketch()))
+    b.set_prompt("A")  # the worker re-sends the prompt it wants after a failure
+    b.generate(_sketch(), None)
+    assert w.calls[-1] == ("call", None)  # still A: no stale "B"

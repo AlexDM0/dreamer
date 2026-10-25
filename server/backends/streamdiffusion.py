@@ -20,10 +20,6 @@ log = logging.getLogger("dreamer.backend.streamdiffusion")
 
 # Used for prepare() before the first real prompt arrives from the worker.
 DEFAULT_PROMPT = "a child's drawing turned into a picture, for children, friendly, bright colors, wholesome"
-NSFW_MODEL_ID = "Freepik/nsfw_image_detector"
-# VERIFY: label names of Freepik/nsfw_image_detector. The model card describes the
-# levels neutral / low / medium / high; "medium" and "high" are treated as unsafe.
-_UNSAFE_LABELS = {"medium", "high", "nsfw", "porn", "hentai", "sexy", "explicit", "unsafe"}
 
 _INSTALL_HINT = (
     "StreamDiffusion is not installed. Follow requirements-gpu.md, or set "
@@ -64,8 +60,7 @@ class StreamDiffusionBackend:
         self._prompt = DEFAULT_PROMPT
         self._pending_prompt: str | None = None
         self._pending_params: GenParamsLike | None = None
-        self._nsfw_pipe: Any = None
-        self._nsfw_failed = False
+        self._warned_no_screening = False
 
     @property
     def name(self) -> str:
@@ -120,8 +115,9 @@ class StreamDiffusionBackend:
 
     def set_prompt(self, prompt: str) -> None:
         # Applied on the next generate(); wrapper(prompt=...) calls update_prompt internally.
-        if prompt != self._prompt:
-            self._pending_prompt = prompt
+        # Always overwrite the slot: if a frame failed after an earlier set_prompt, a
+        # stale pending prompt must not win over the one asked for now.
+        self._pending_prompt = None if prompt == self._prompt else prompt
 
     def set_params(self, params: GenParamsLike) -> None:
         """Push changed live params into the stream. On error, local state is unchanged."""
@@ -194,34 +190,56 @@ class StreamDiffusionBackend:
 
     # -- admin upload screening ----------------------------------------------------
 
-    def _load_nsfw_pipe(self) -> Any:
-        if self._nsfw_pipe is None and not self._nsfw_failed:
-            try:
-                from transformers import pipeline
-
-                device = -1
-                try:
-                    import torch
-
-                    device = 0 if torch.cuda.is_available() else -1
-                except ImportError:
-                    pass
-                self._nsfw_pipe = pipeline("image-classification", model=NSFW_MODEL_ID, device=device)
-            except Exception:  # missing package, download failure, unsupported model...
-                self._nsfw_failed = True
-                log.warning("Dreamer: upload screening unavailable (could not load %s); "
-                            "style pictures will be allowed unscreened", NSFW_MODEL_ID, exc_info=True)
-        return self._nsfw_pipe
+    def _safety_checker(self) -> Any:
+        """The wrapper's loaded safety checker, if it exposes one."""
+        if self._wrapper is None or not self._safety_on:
+            return None
+        # VERIFY: attribute names. The checker is created when use_safety_checker=True;
+        # look on the wrapper and on its inner StreamDiffusion object.
+        for owner in (self._wrapper, getattr(self._wrapper, "stream", None)):
+            checker = getattr(owner, "safety_checker", None) if owner is not None else None
+            if checker is not None and callable(checker):
+                return checker
+        return None
 
     def check_image_safe(self, image: Image.Image) -> bool:
-        pipe = self._load_nsfw_pipe()
-        if pipe is None:
+        """Screen an admin upload with the wrapper's own safety checker (SPEC).
+
+        Without one, uploads are allowed and a warning is logged once. If the checker
+        exists but fails or answers in an unknown shape, the exception propagates and
+        the upload is rejected (fail closed): the admin sees "Could not check".
+        """
+        checker = self._safety_checker()
+        if checker is None:
+            if not self._warned_no_screening:
+                self._warned_no_screening = True
+                log.warning("Dreamer: upload screening unavailable (no safety checker loaded); "
+                            "style pictures are stored unscreened")
             return True
-        try:
-            results = pipe(image.convert("RGB"), top_k=10)
-        except Exception:
-            log.warning("Dreamer: upload screening failed; allowing image", exc_info=True)
-            return True
-        unsafe = sum(float(r["score"]) for r in results if str(r["label"]).lower() in _UNSAFE_LABELS)
-        log.info("Dreamer: upload screening %s -> unsafe score %.3f", results, unsafe)
-        return unsafe < self._safety_threshold
+        size = (self._size, self._size)
+        result = checker(image.convert("RGB").resize(size, Image.Resampling.LANCZOS))
+        return not _is_flagged(result, self._safety_threshold)
+
+
+def _is_flagged(result: Any, threshold: float) -> bool:
+    """Interpret a safety checker's answer. Raises TypeError for unknown shapes.
+
+    VERIFY: the fork's checker return type. Handled: a bool flag; a probability in
+    0..1 compared with the configured threshold; diffusers-style ``(images, flags)``;
+    or a sequence of per-image flags/scores.
+    """
+    if isinstance(result, bool):
+        return result
+    if isinstance(result, (int, float)):
+        return float(result) >= threshold
+    if isinstance(result, (list, tuple)) and result:
+        if len(result) == 2 and isinstance(result[1], (list, tuple, bool)):
+            result = result[1]  # (images, has_nsfw_concepts)
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, (list, tuple)) and result and all(
+                isinstance(r, (bool, int, float)) for r in result):
+            return any(_is_flagged(r, threshold) for r in result)
+    if hasattr(result, "item"):  # 0-d tensor / numpy scalar
+        return _is_flagged(result.item(), threshold)
+    raise TypeError(f"unexpected safety checker result: {type(result).__name__}")

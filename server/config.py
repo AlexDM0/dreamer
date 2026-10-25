@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ VIEW_MODES = ("auto", "sketch", "picture", "split")
 LINE_POLARITIES = ("white_on_black", "black_on_white")
 BACKENDS = ("streamdiffusion", "mock")
 CONFIG_ENV = "SKETCH_CONFIG"
+PIN_RE = re.compile(r"\d{4,12}")  # what the admin PIN pad can type
 
 
 @dataclass
@@ -94,8 +96,24 @@ def _validate(cfg: Config) -> None:
         raise ValueError("config: jpeg_quality must be 1..100")
     if not 64 <= cfg.size <= 2048 or cfg.size % 8:
         raise ValueError("config: size must be a multiple of 8 in 64..2048")
-    if not cfg.admin_pin:
-        raise ValueError("config: admin_pin must not be empty")
+    if not PIN_RE.fullmatch(cfg.admin_pin):
+        raise ValueError("config: admin_pin must be 4 to 12 digits (the PIN pad only has "
+                         'digits), written in quotes, e.g. admin_pin: "0420"')
+
+
+def _raw_pin(text: str, parsed: Any) -> Any:
+    """Recover an unquoted numeric PIN exactly as typed.
+
+    YAML turns ``admin_pin: 0420`` into the octal number 272 and drops leading zeros, so
+    when the parsed value is an int, take the digits from the file text instead.
+    """
+    if not isinstance(parsed, int) or isinstance(parsed, bool):
+        return parsed
+    match = re.search(r"^admin_pin:[ \t]*(\d+)[ \t]*(?:#.*)?$", text, re.MULTILINE)
+    raw = match.group(1) if match else str(parsed)
+    log.warning("config: admin_pin should be in quotes (admin_pin: \"%s\"); "
+                "unquoted numbers can lose leading zeros", raw)
+    return raw
 
 
 def load_config(path: str | os.PathLike | None = None) -> Config:
@@ -108,9 +126,12 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
     cfg = Config()
     p = Path(path)
     if p.is_file():
-        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        text = p.read_text(encoding="utf-8")
+        data = yaml.safe_load(text) or {}
         if not isinstance(data, dict):
             raise ValueError(f"config: {p} must contain a mapping")
+        if "admin_pin" in data:
+            data["admin_pin"] = _raw_pin(text, data["admin_pin"])
         _apply(cfg, data, "")
         log.info("loaded config from %s", p)
     else:

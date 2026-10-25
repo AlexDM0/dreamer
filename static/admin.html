@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Dreamer admin">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#e3f4ff">
+  <meta name="robots" content="noindex">
+  <title>Dreamer · Grown-ups</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+  <header class="top">
+    <img class="logo" src="/static/logo.svg" alt="Dreamer" width="146" height="40">
+    <span class="tag">Grown-ups</span>
+  </header>
+
+  <!-- PIN pad: shown until the server accepts the PIN (and again on any 401). -->
+  <main id="login" class="login" hidden>
+    <h1>Hi there, grown-up!</h1>
+    <p class="muted">Type the PIN to manage Dreamer.</p>
+    <div class="pin-dots" id="pin-dots" aria-live="polite" aria-label="PIN digits entered"></div>
+    <p class="pin-msg" id="pin-msg" role="alert"></p>
+    <div class="pin-pad" id="pin-pad">
+      <button type="button" data-k="1">1</button>
+      <button type="button" data-k="2">2</button>
+      <button type="button" data-k="3">3</button>
+      <button type="button" data-k="4">4</button>
+      <button type="button" data-k="5">5</button>
+      <button type="button" data-k="6">6</button>
+      <button type="button" data-k="7">7</button>
+      <button type="button" data-k="8">8</button>
+      <button type="button" data-k="9">9</button>
+      <button type="button" data-k="back" class="key-soft" aria-label="Delete last digit">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h11v14H9l-6-7zM12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>
+      </button>
+      <button type="button" data-k="0">0</button>
+      <button type="button" data-k="ok" class="key-go" aria-label="Log in">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      </button>
+    </div>
+  </main>
+
+  <main id="admin" class="admin" hidden>
+    <!-- 1. Now -->
+    <section class="card" aria-labelledby="h-now">
+      <h2 id="h-now">Now</h2>
+      <div class="live">
+        <img id="live-img" alt="The picture on the iPad right now" hidden>
+        <div class="live-empty" id="live-empty">The picture will show up here while your child draws.</div>
+        <span class="pill" id="live-state"><i></i><b>Connecting</b></span>
+      </div>
+      <dl class="stats">
+        <div><dt>Engine</dt><dd id="st-backend">-</dd></div>
+        <div><dt>Speed</dt><dd id="st-fps">-</dd></div>
+        <div><dt>Last picture</dt><dd id="st-ms">-</dd></div>
+      </dl>
+      <p class="status-msg" id="st-msg" hidden></p>
+
+      <label class="field">
+        <span>Topic</span>
+        <select id="sel-topic"></select>
+      </label>
+      <label class="field">
+        <span>Style</span>
+        <select id="sel-style"></select>
+      </label>
+      <label class="field">
+        <span>Starting view on the iPad</span>
+        <select id="sel-view">
+          <option value="auto">Auto: sketch, then picture</option>
+          <option value="sketch">Sketch only</option>
+          <option value="picture">Picture only</option>
+          <option value="split">Side by side</option>
+        </select>
+      </label>
+    </section>
+
+    <!-- 1b. Picture controls (live diffusion params) -->
+    <section class="card" aria-labelledby="h-params">
+      <h2 id="h-params">Picture controls</h2>
+      <p class="muted">Changes show up on the iPad within a moment. Watch the picture above.</p>
+      <form id="params-form" class="params" autocomplete="off" onsubmit="return false">
+        <div class="ctl">
+          <label for="p-creativity">Creativity <output id="o-creativity"></output></label>
+          <input type="range" id="p-creativity" min="0" max="100" step="1">
+          <small>How far the picture may stray from the drawing.</small>
+        </div>
+        <div class="ctl">
+          <label for="p-steps">Steps <output id="o-steps"></output></label>
+          <input type="range" id="p-steps" min="1" max="4" step="1">
+          <small>More steps add detail but are slower. Changing this can fail on a
+            prebuilt engine; if it does, the old setting comes back.</small>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head">
+            <label for="p-cn-on">Follow the lines</label>
+            <input type="checkbox" id="p-cn-on" class="switch">
+          </div>
+          <input type="range" id="p-cn-scale" min="0" max="2" step="0.05" aria-label="Line strength">
+          <small>How closely the picture sticks to the drawn lines <output id="o-cn-scale"></output>.</small>
+        </div>
+        <div class="ctl">
+          <label for="p-seed">Surprise number</label>
+          <div class="row">
+            <input type="number" id="p-seed" inputmode="numeric" min="0" max="2147483647" step="1">
+            <button type="button" class="btn ghost" id="p-seed-new">New</button>
+          </div>
+          <small>The same number gives the same look. Try a new one for a surprise.</small>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head">
+            <label for="p-safety">Safety filter</label>
+            <input type="checkbox" id="p-safety" class="switch">
+          </div>
+          <p class="danger-note" id="safety-off" hidden>The safety filter is OFF. Pictures are not checked.</p>
+          <input type="range" id="p-safety-th" min="0.05" max="0.95" step="0.05" aria-label="Safety strictness">
+          <small>Lower is stricter <output id="o-safety-th"></output>.</small>
+        </div>
+        <details class="more">
+          <summary>More settings</summary>
+          <div class="ctl">
+            <label for="p-line-th">Line sensitivity <output id="o-line-th"></output></label>
+            <input type="range" id="p-line-th" min="10" max="120" step="1">
+            <small>How dark a mark must be to count as a line. Lower picks up faint marks.</small>
+          </div>
+          <div class="ctl">
+            <label for="p-dilate">Line thickening <output id="o-dilate"></output></label>
+            <input type="range" id="p-dilate" min="0" max="3" step="1">
+            <small>Makes thin lines bolder before the computer reads them.</small>
+          </div>
+          <div class="ctl">
+            <label for="p-polarity">Line map</label>
+            <select id="p-polarity">
+              <option value="white_on_black">White lines on black</option>
+              <option value="black_on_white">Black lines on white</option>
+            </select>
+            <small>Must match what the line model expects. Leave it unless pictures ignore the lines.</small>
+          </div>
+          <div class="ctl">
+            <label for="p-jpeg">Picture quality <output id="o-jpeg"></output></label>
+            <input type="range" id="p-jpeg" min="50" max="95" step="1">
+            <small>Higher is sharper but sends more data over Wi-Fi.</small>
+          </div>
+        </details>
+        <button type="button" class="btn ghost" id="params-reset">Reset to defaults</button>
+      </form>
+    </section>
+
+    <!-- 2. Styles -->
+    <section class="card" aria-labelledby="h-styles">
+      <h2 id="h-styles">Styles</h2>
+      <p class="muted">Hidden styles don't show on the iPad. Use the arrows to change the order.</p>
+      <ul class="items" id="styles-list"></ul>
+
+      <details class="add" id="add-style">
+        <summary>Add a style</summary>
+        <form id="add-style-form" class="form" autocomplete="off">
+          <div class="row">
+            <label class="field emoji"><span>Emoji</span><input name="emoji" maxlength="16" placeholder="🌈"></label>
+            <label class="field grow"><span>Name</span><input name="label" maxlength="40" required placeholder="Rainbow"></label>
+          </div>
+          <label class="field"><span>What it should look like</span>
+            <textarea name="prompt" maxlength="120" rows="2" required placeholder="rainbow colors, shiny stickers"></textarea>
+          </label>
+          <button class="btn primary" type="submit">Add style</button>
+        </form>
+      </details>
+    </section>
+
+    <!-- 3. Style picture -->
+    <section class="card" aria-labelledby="h-pic">
+      <h2 id="h-pic">Style from a picture</h2>
+      <p class="muted">Snap or pick a picture whose look you like.</p>
+      <form id="pic-form" class="form" autocomplete="off">
+        <label class="file">
+          <input type="file" name="file" accept="image/*" required>
+          <span class="file-box" id="file-box">
+            <img id="file-preview" alt="" hidden>
+            <span id="file-label">Choose a picture</span>
+          </span>
+        </label>
+        <div class="row">
+          <label class="field emoji"><span>Emoji</span><input name="emoji" maxlength="16" placeholder="🖼️"></label>
+          <label class="field grow"><span>Name</span><input name="label" maxlength="40" required placeholder="Grandma's quilt"></label>
+        </div>
+        <button class="btn primary" type="submit">Upload</button>
+        <p class="note" id="pic-note" hidden></p>
+      </form>
+    </section>
+
+    <!-- 4. Topics -->
+    <section class="card" aria-labelledby="h-topics">
+      <h2 id="h-topics">Topics</h2>
+      <p class="muted">Pick which topics your child can choose from.</p>
+      <ul class="items" id="topics-list"></ul>
+    </section>
+
+    <!-- 5. Log out -->
+    <button class="btn ghost logout" type="button" id="logout">Log out</button>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="/static/admin.js"></script>
+</body>
+</html>
