@@ -183,10 +183,13 @@ class StreamDiffusionBackend:
         del old
         import gc
 
-        import torch
-
         gc.collect()
-        torch.cuda.empty_cache()
+        try:
+            import torch
+        except ImportError:  # only in tests with a fake wrapper
+            torch = None
+        if torch is not None and torch.cuda.is_available():
+            torch.cuda.empty_cache()
         self.warmup()
 
     # -- per-frame controls ----------------------------------------------------------
