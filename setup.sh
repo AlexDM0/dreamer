@@ -18,11 +18,11 @@ MOCK=0
 FORCE=0
 PYTHON=""
 CUDA="cu128"
-SD_REF="main"   # git ref of the StreamDiffusion fork; use a tested commit SHA for reproducible installs
+SD_REF="4c90d9e437aa28cca7cae1acfab1e52157261939"   # git ref of the StreamDiffusion fork (tested on Windows + RTX 3080)
 
 usage() {
     sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
-    echo "  --streamdiffusion-ref REF   git ref of the StreamDiffusion fork (default: main)"
+    echo "  --streamdiffusion-ref REF   git ref of the StreamDiffusion fork (default: the tested commit)"
 }
 
 while [ $# -gt 0 ]; do

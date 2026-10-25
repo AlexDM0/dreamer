@@ -7,7 +7,7 @@ Without them, Dreamer still runs with `backend: mock` in `config.yaml`.
 This page is the manual reference: it lists exactly what the script installs, in the same
 order and with the same pinned versions, for when you want to do it by hand or a step fails.
 `setup.ps1 -Cuda <tag>` swaps `cu128` below for another PyTorch wheel tag, and
-`-StreamDiffusionRef <sha>` installs a specific commit instead of `main`.
+`-StreamDiffusionRef <ref>` installs another commit or branch instead of the tested one below.
 
 ## 1. Prerequisites
 
@@ -44,14 +44,14 @@ The GPU check comes at the end of step 4, because installing StreamDiffusion can
 ## 4. StreamDiffusion (Daydream fork) with TensorRT and ControlNet
 
 ```powershell
-pip install "streamdiffusion[tensorrt,controlnet] @ git+https://github.com/daydreamlive/StreamDiffusion.git@main"
+pip install "streamdiffusion[tensorrt,controlnet] @ git+https://github.com/daydreamlive/StreamDiffusion.git@4c90d9e437aa28cca7cae1acfab1e52157261939"
 python -m streamdiffusion.tools.install-tensorrt
 ```
 
 This is the PEP 508 form of the install; the older `...#egg=streamdiffusion[tensorrt,controlnet]`
 form from the upstream README is deprecated in current pip and can silently drop the extras
-that the TensorRT engine build needs. For reproducible installs, replace `@main` with a
-commit SHA you have tested (`.\setup.ps1 -StreamDiffusionRef <sha>`).
+that the TensorRT engine build needs. The SHA is the fork commit tested on Windows with an
+RTX 3080 (2026-10-25); to try a newer one, use `@main` (`.\setup.ps1 -StreamDiffusionRef main`).
 
 On CUDA 12 the second command installs `tensorrt==10.12.0.36` and
 `nvidia-cudnn-cu12==9.7.1.26`; on Windows it also installs `pywin32` and `triton-windows`.

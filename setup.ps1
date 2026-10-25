@@ -11,8 +11,8 @@ param(
     [string]$Python = "",
     [string]$Cuda = "cu128",
     [switch]$Force,
-    # Git ref of the StreamDiffusion fork; replace with a tested commit SHA for reproducible installs.
-    [string]$StreamDiffusionRef = "main"
+    # Git ref of the StreamDiffusion fork. Default: the commit tested on Windows + RTX 3080 (2026-10-25).
+    [string]$StreamDiffusionRef = "4c90d9e437aa28cca7cae1acfab1e52157261939"
 )
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
