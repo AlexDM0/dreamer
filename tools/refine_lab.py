@@ -104,6 +104,9 @@ def main() -> int:
     width, height = canvas_dims(config)["landscape"]
     backend = StreamDiffusionBackend(config)
     backend.warmup()
+    from server.upscale import Upscaler
+
+    upscaler = Upscaler(REPO_ROOT / config.model.upscaler_model)
     defaults = defaults_from_config(config)
     topics = {topic: fragment for topic, _, _, fragment in PRESET_TOPICS}
     styles = {style: fragment for style, _, _, fragment in PRESET_STYLES}
@@ -130,7 +133,7 @@ def main() -> int:
             for _ in range(backend.latency_frames + 1):
                 p0 = backend.generate(init, line_map)
             started = time.perf_counter()
-            steps = list(refine.run(name, backend, p0, init, line_map, draw, args.budget))
+            steps = list(refine.run(name, backend, p0, init, line_map, draw, args.budget, upscaler))
             if steps:
                 timing[name].append((time.perf_counter() - started) * 1000 / len(steps))
             metrics = measure(p0, steps)
@@ -150,6 +153,20 @@ def main() -> int:
             for column, frame in enumerate(frames):
                 sheet.paste(frame.resize((tile_w, tile_h)), (label_w + column * tile_w, row_index * tile_h))
         sheet.save(OUT_IMG / f"refine-{drawing}.png")
+        # Detail check: the centre of each model's last picture, at 2x the drawing's pixels.
+        crop_w, crop_h = orientation_dims[0] // 4, orientation_dims[1] // 4
+        zoom = Image.new("RGB", (label_w + crop_w * 2 * 2, crop_h * 2 * len(rows)), "white")
+        zoom_text = ImageDraw.Draw(zoom)
+        for row_index, (name, frames) in enumerate(rows):
+            zoom_text.text((6, row_index * crop_h * 2 + crop_h - 6), name, fill="black")
+            for column, frame in enumerate((frames[0], frames[-1])):
+                scale = frame.width / orientation_dims[0]
+                cx, cy = frame.width // 2, frame.height // 2
+                half_w, half_h = round(crop_w * scale / 2), round(crop_h * scale / 2)
+                crop = frame.crop((cx - half_w, cy - half_h, cx + half_w, cy + half_h))
+                zoom.paste(crop.resize((crop_w * 2, crop_h * 2), Image.Resampling.LANCZOS),
+                           (label_w + column * crop_w * 2, row_index * crop_h * 2))
+        zoom.save(OUT_IMG / f"refine-{drawing}-zoom.png")
 
     # Summary table.
     lines = ["# Refinement models: measured results", "",

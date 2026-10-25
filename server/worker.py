@@ -346,8 +346,10 @@ class GpuWorker(threading.Thread):
             first = self._shown if self._shown is not None else init
             self._needs_prime = True  # the stream now runs refinement steps
             upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
+            if upscales_itself and self._upscaler is None:
+                self._upscale(first)  # loads the upscaler (and warns once if it is missing)
             steps = refine.run(params.refine_model, self.backend, first, init, line_map,
-                               tuple(params.t_index_list), params.refine_steps)
+                               tuple(params.t_index_list), params.refine_steps, self._upscaler)
             try:
                 for picture in steps:
                     if params.upscale == "x2" and not upscales_itself:

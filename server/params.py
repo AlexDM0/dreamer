@@ -26,7 +26,8 @@ UPSCALERS = ("off", "x2")
 RESOLUTIONS = (512, 640, 768, 896, 1024)  # long sides offered on the admin page
 REFINE_MAX_STEPS = 20
 # Refinement models (server/refine.py); listed here so params stay importable without it.
-REFINE_MODELS = ("path", "path_locked", "sdedit", "anchored", "anchored_edges")
+REFINE_MODELS = ("path", "path_locked", "sdedit", "anchored", "anchored_edges",
+                 "hires_tiles")
 
 # Numeric ranges (min, max, step) per field, also served to the admin UI.
 LIMITS: dict[str, dict[str, Any]] = {

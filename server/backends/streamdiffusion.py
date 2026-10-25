@@ -359,7 +359,8 @@ class StreamDiffusionBackend:
     def latent_ladder(self, first: Image.Image, line_map: Image.Image | None,
                       t_index: list[int], *, chain: bool, anchor_sigma: float | None,
                       gamma: float, anchor_weights: list[float] | None = None,
-                      control_images: list[Image.Image | None] | None = None) -> Iterator[Image.Image]:
+                      control_images: list[Image.Image | None] | None = None,
+                      anchor_image: Image.Image | None = None) -> Iterator[Image.Image]:
         """Refine ``first`` (the picture on screen) in single-step rungs at ``t_index`` (rising:
         less noise each rung), yielding the picture after every rung.
 
@@ -371,6 +372,8 @@ class StreamDiffusionBackend:
         - ``gamma``: re-noise with sqrt(1-gamma) * the predicted noise + sqrt(gamma) * fresh
           noise (TCD-style stochasticity): 0 is deterministic, 1 is fresh noise only.
         - ``control_images``: per-rung ControlNet image (None keeps ``line_map``).
+        - ``anchor_image``: pin the low frequencies to this picture instead of ``first`` (e.g.
+          the upscaled first picture while refining a later rung's result).
         """
         import torch
         from torch.nn import functional as F
@@ -405,13 +408,18 @@ class StreamDiffusionBackend:
             # The clean latent of the picture on screen (encode_image() would add noise).
             anchor = retrieve_latents(stream.vae.encode(x), stream.generator)
             anchor = (anchor * stream.vae.config.scaling_factor).to(stream.dtype)
-            anchor_low = low_pass(anchor) if anchor_sigma else None
             current = anchor
+            if anchor_image is not None:
+                pinned = wrapper.preprocess_image(self._prepare_inputs(anchor_image, None))
+                pinned = retrieve_latents(stream.vae.encode(pinned.to(device=stream.device, dtype=stream.vae.dtype)),
+                                          stream.generator)
+                anchor = (pinned * stream.vae.config.scaling_factor).to(stream.dtype)
+            anchor_low = low_pass(anchor) if anchor_sigma else None
             eps = stream.init_noise[0:1]
             for idx, timestep in enumerate(stream.sub_timesteps_tensor):
                 if control_images is not None and control_images[idx] is not None:
                     self._wrapper.update_control_image(0, control_images[idx])
-                start = current if chain else anchor
+                start = current if chain else (anchor if anchor_image is None else current)
                 noise = eps
                 if gamma > 0:
                     noise = (1 - gamma) ** 0.5 * eps + gamma ** 0.5 * torch.randn_like(eps)

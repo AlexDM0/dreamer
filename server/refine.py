@@ -140,6 +140,70 @@ def model_anchored_edges(backend, first, init, line_map, draw, total_steps):
                                      control_images=[control] * len(rungs))
 
 
+# Hires in tiles: upscale 2x, then single anchored low-noise steps over overlapping tiles of the
+# drawing's own size (the TensorRT engines are dynamic only up to 1024 px, and a bigger
+# pipeline would need a rebuild), feather-blended. Real detail at twice the resolution while
+# every tile keeps its own broad terms.
+TILE_RUNGS = (40, 44, 47)
+TILE_SIGMA = 2.5
+TILE_SCALE = 1.5  # 960x672 from 640x448: 4 tiles (2x needs 9, ~600 ms per rung)
+
+
+def _feather(width: int, height: int, overlap_x: int, overlap_y: int) -> np.ndarray:
+    def ramp(length: int, overlap: int) -> np.ndarray:
+        weights = np.ones(length, dtype=np.float32)
+        if overlap > 0:
+            edge = 0.5 - 0.5 * np.cos(np.linspace(0, np.pi, overlap, dtype=np.float32))
+            weights[:overlap] = np.maximum(edge, 1e-3)
+            weights[-overlap:] = np.maximum(edge[::-1], 1e-3)
+        return weights
+    return np.outer(ramp(height, overlap_y), ramp(width, overlap_x))[..., None]
+
+
+def _tiled_pass(backend: Any, picture: Image.Image, line_map: Image.Image | None,
+                rung: int, tile_size: tuple[int, int], anchor: Image.Image) -> Image.Image:
+    tile_w, tile_h = tile_size
+    width, height = picture.size
+    columns = max(1, -(-(width - tile_w) // (tile_w // 2)) + 1)
+    rows = max(1, -(-(height - tile_h) // (tile_h // 2)) + 1)
+    xs = [round(i * (width - tile_w) / max(1, columns - 1)) for i in range(columns)]
+    ys = [round(i * (height - tile_h) / max(1, rows - 1)) for i in range(rows)]
+    overlap_x = tile_w - (xs[1] - xs[0]) if len(xs) > 1 else 0
+    overlap_y = tile_h - (ys[1] - ys[0]) if len(ys) > 1 else 0
+    weight = _feather(tile_w, tile_h, overlap_x, overlap_y)
+    total = np.zeros((height, width, 3), dtype=np.float32)
+    weights = np.zeros((height, width, 1), dtype=np.float32)
+    big_map = line_map.resize((width, height), Image.Resampling.NEAREST) if line_map is not None else None
+    for y in ys:
+        for x in xs:
+            box = (x, y, x + tile_w, y + tile_h)
+            tile = picture.crop(box)
+            tile_map = big_map.crop(box) if big_map is not None else None
+            out = None
+            # Broad terms pinned to the (upscaled) first picture, so drift cannot build up.
+            for out in backend.latent_ladder(tile, tile_map, [rung], chain=True,
+                                             anchor_sigma=TILE_SIGMA, gamma=ANCHOR_GAMMA,
+                                             anchor_image=anchor.crop(box)):
+                pass
+            total[y:y + tile_h, x:x + tile_w] += np.asarray(out, dtype=np.float32) * weight
+            weights[y:y + tile_h, x:x + tile_w] += weight
+    return Image.fromarray(np.clip(total / weights, 0, 255).astype(np.uint8))
+
+
+def model_hires_tiles(backend, first, init, line_map, draw, total_steps, upscaler=None):
+    """Upscale (1.5x), then add detail tile by tile with low-noise steps (gentler each rung),
+    every tile's broad terms pinned to the upscaled first picture."""
+    size = (round(first.width * TILE_SCALE / 8) * 8, round(first.height * TILE_SCALE / 8) * 8)
+    if upscaler is not None and upscaler.available:
+        anchor = upscaler.upscale(first, 2).resize(size, Image.Resampling.LANCZOS)
+    else:
+        anchor = first.resize(size, Image.Resampling.LANCZOS)
+    picture = anchor
+    for rung in _rungs(TILE_RUNGS, draw, total_steps):
+        picture = _tiled_pass(backend, picture, line_map, rung, first.size, anchor)
+        yield picture
+
+
 # ---- the models -----------------------------------------------------------------------
 
 def model_path(backend, first, init, line_map, draw, total_steps):
@@ -159,11 +223,15 @@ MODELS: dict[str, tuple[Callable[..., Iterator[Image.Image]], str, bool]] = {
     "sdedit": (model_sdedit, "C: Gentle touch-ups from the first picture", False),
     "anchored": (model_anchored, "D: Anchored detail ladder", False),
     "anchored_edges": (model_anchored_edges, "E: Anchored detail ladder + outlines", False),
+    "hires_tiles": (model_hires_tiles, "F: Bigger, detail tile by tile", True),
 }
 DEFAULT_MODEL = "path"
 
 
 def run(name: str, backend: Any, first: Image.Image, init: Image.Image,
-        line_map: Image.Image | None, draw: tuple[int, ...], total_steps: int) -> Iterator[Image.Image]:
-    generator = MODELS.get(name, MODELS[DEFAULT_MODEL])[0]
+        line_map: Image.Image | None, draw: tuple[int, ...], total_steps: int,
+        upscaler: Any = None) -> Iterator[Image.Image]:
+    generator, _, upscales_itself = MODELS.get(name, MODELS[DEFAULT_MODEL])
+    if upscales_itself:
+        return generator(backend, first, init, line_map, tuple(draw), total_steps, upscaler=upscaler)
     return generator(backend, first, init, line_map, tuple(draw), total_steps)
