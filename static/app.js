@@ -38,13 +38,18 @@ toolbar.setMode(view.mode);
 // Toolbar -> canvas / net / view
 toolbar.addEventListener("color", (e) => canvas.setColor(e.detail.color));
 toolbar.addEventListener("width", (e) => canvas.setWidth(e.detail.width));
+// Clear also drops the autosaved draft, so an unsaved drawing is asked about first (the
+// big red button is easy to hit by accident).
 toolbar.addEventListener("clear", () => {
-  canvas.clear();
-  view.strokeStart(); // show the (blank) sketch right away in Auto
-  view.strokeEnd();
-  net.clear();
-  unsaved = false;
-  hideHint();
+  confirmThen(() => {
+    canvas.clear();
+    view.strokeStart(); // show the (blank) sketch right away in Auto
+    view.strokeEnd();
+    net.clear();
+    unsaved = false;
+    drewSomething = false;
+    hideHint();
+  }, "Clear this drawing?", "Clear it");
 });
 toolbar.addEventListener("mode", (e) => view.setMode(e.detail.mode));
 // A new topic/style re-renders the current drawing (the socket keeps message order, so
@@ -79,6 +84,8 @@ function showConn() {
 net.addEventListener("state", (e) => {
   $("#replaced").hidden = e.detail.state !== "replaced";
   if (e.detail.state === "open") backendState = null;
+  // A reply that never came on the old socket must not swallow later error statuses.
+  if (e.detail.state !== "open") { continuing = false; if (saving) saveDone(); }
   showConn();
 });
 net.addEventListener("status", (e) => {
@@ -104,6 +111,7 @@ net.addEventListener("ready", (e) => {
     // kid left (a reconnect keeps what is on the canvas).
     if (!firstReadyDone && m.draft && !drewSomething) restoreDraft(m.draft);
     firstReadyDone = true;
+    if (gallery.isOpen && gallery.failed) gallery.update(); // back online: try again
   }
   // The parent changed the topic/style from the admin page: re-render the drawing.
   // Compare with what the toolbar shows (it includes the kid's own picks, which the
@@ -144,6 +152,7 @@ function showHint(text, button = null, ms = 3200) {
     btn.onclick = () => { hideHint(); button.onClick(); };
   }
   const hint = $("#hint");
+  hint.classList.toggle("floating", gallery.isOpen); // stay visible over the gallery
   hint.hidden = false;
   hint.classList.remove("pop");
   void hint.offsetWidth;
@@ -166,12 +175,15 @@ function loadImage(url) {
 }
 
 /** Put a saved sketch on the canvas and get a fresh picture for it. `unless()` is checked
- * once the image has loaded: true means the canvas must not be replaced after all. */
-async function loadSketch(url, unless = () => false) {
+ * once the image has loaded: true means the canvas must not be replaced after all.
+ * `loaded()` runs once the sketch is on the canvas, before it is sent (it tells the
+ * server which drawing the canvas holds now). */
+async function loadSketch(url, unless = () => false, loaded = () => {}) {
   const img = await loadImage(url);
   if (unless()) return false;
   canvas.loadImage(img);
   net.dropOlderPictures();
+  loaded();
   view.strokeStart(); // show the sketch now; Auto fades to the picture when it arrives
   view.strokeEnd();
   net.sendNow();
@@ -181,7 +193,8 @@ async function loadSketch(url, unless = () => false) {
 async function restoreDraft(draft) {
   try {
     // The kid may already be drawing while the draft loads: never paint over that.
-    if (!await loadSketch(draft.sketch, () => drewSomething)) return;
+    if (!await loadSketch(draft.sketch, () => drewSomething,
+                          () => net.restored(draft.id, draft.source))) return;
   } catch {
     return; // the draft went away meanwhile: just start with an empty canvas
   }
@@ -249,7 +262,7 @@ net.addEventListener("saved", () => {
   saveDone();
   unsaved = false;
   celebrateSave();
-  if (gallery.isOpen) gallery.refresh();
+  if (gallery.isOpen) gallery.update();
 });
 
 /** The saved picture flies into the Gallery button, with a little star burst. */
@@ -320,7 +333,7 @@ function burst(el) {
 
 // Gallery view
 $("#open-gallery").addEventListener("click", () => { hideHint(); gallery.open(); });
-net.addEventListener("gallery", () => { if (gallery.isOpen) gallery.refresh(); });
+net.addEventListener("gallery", () => { if (gallery.isOpen) gallery.update(); });
 gallery.addEventListener("continue", (e) => {
   const art = e.detail.artwork;
   confirmThen(() => {
@@ -337,9 +350,10 @@ net.addEventListener("continue", async (e) => {
   if (m.topic) toolbar.select("topics", m.topic);
   if (m.style) toolbar.select("styles", m.style);
   try {
-    await loadSketch(m.sketch);
+    await loadSketch(m.sketch, undefined, () => net.continuing(m.id));
   } catch {
-    showHint("Could not open that picture.");
+    // Nothing changed: the canvas and the server still have the previous drawing.
+    showHint("Could not open that picture. Try again!");
     return;
   }
   drewSomething = true;

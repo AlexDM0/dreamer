@@ -9,15 +9,24 @@ from conftest import is_json, is_picture, recv_until, sketch_frame, sketch_png
 from server import protocol
 
 
-def hello(ws):
-    ws.send_json({"t": "hello", "v": 1})
+def hello(ws, continuing=None):
+    ws.send_json({"t": "hello", "v": 1, "continuing": continuing})
     return recv_until(ws, is_json("ready"))[1]
 
 
-def draw(ws, seq, blank=False):
+def draw(ws, seq, blank=False, color=None):
     """Send a sketch and wait for its picture (last_frame is set by then)."""
-    ws.send_bytes(sketch_frame(seq, blank))
+    if color is None:
+        ws.send_bytes(sketch_frame(seq, blank))
+    else:
+        ws.send_bytes(protocol.pack(protocol.SKETCH, seq, sketch_png(color=color)))
     return recv_until(ws, is_picture(seq))[1][2]
+
+
+def sync(ws):
+    """Wait until the server has handled everything sent so far."""
+    ws.send_json({"t": "ping"})
+    recv_until(ws, is_json("pong"))
 
 
 def save(ws):
@@ -162,6 +171,7 @@ def test_continue_restores_and_updates(client):
         assert msg == {"t": "continue", "id": art["id"],
                        "sketch": art["sketch"], "topic": "dinosaurs", "style": "clay"}
         assert client.get(msg["sketch"]).content == sketch_png()
+        ws.send_json({"t": "continuing", "id": art["id"]})  # the page loaded the sketch
         assert save(ws)["msg"] == "Nothing to save yet"  # nothing drawn since continuing
         draw(ws, 2)  # the page sends the restored sketch (plus new strokes)
         again = save(ws)["artwork"]
@@ -287,10 +297,126 @@ def test_draft_survives_restart_and_remembers_continuing(make_client, config):
     with make_client() as client:
         with client.websocket_connect("/ws") as ws:
             draft = hello(ws)["draft"]
-            assert draft is not None
+            assert draft is not None and draft["source"] == art["id"]
+            assert client.app.state.session.continuing_id is None  # not restored yet
+            ws.send_json({"t": "restored", "id": draft["id"]})
+            sync(ws)
             assert client.app.state.session.continuing_id == art["id"]
             draw(ws, 3)
             assert save(ws)["artwork"]["id"] == art["id"]
+
+
+def files_of(client, art_id):
+    store = client.app.state.gallery
+    art = store.get(art_id)
+    return {n: store.file_path(art, n).read_bytes() for n in ("sketch.png", "picture.jpg")}
+
+
+def test_new_page_without_restoring_saves_a_new_artwork(client):
+    """Continuing belongs to the page: a second page that did not restore the draft must
+    never save over the artwork the first page saved."""
+    with client.websocket_connect("/ws") as ws:
+        hello(ws)
+        draw(ws, 1)
+        first = save(ws)["artwork"]
+    before = files_of(client, first["id"])
+    with client.websocket_connect("/ws") as ws:
+        assert hello(ws)["draft"] is not None  # offered, but this page does not restore it
+        draw(ws, 1, color="red")
+        second = save(ws)["artwork"]
+    assert second["id"] != first["id"]
+    assert files_of(client, first["id"]) == before
+
+
+def test_reconnecting_page_keeps_continuing(client):
+    with client.websocket_connect("/ws") as ws:
+        hello(ws)
+        draw(ws, 1)
+        art = save(ws)["artwork"]
+    with client.websocket_connect("/ws") as ws:  # same page, socket dropped and back
+        hello(ws, continuing=art["id"])
+        assert client.app.state.session.continuing_id == art["id"]
+        draw(ws, 2)
+        assert save(ws)["artwork"]["id"] == art["id"]
+    with client.websocket_connect("/ws") as ws:  # bogus ids are not trusted
+        hello(ws, continuing="../" * 4)
+        assert client.app.state.session.continuing_id is None
+
+
+def test_continue_that_never_loads_changes_nothing(client):
+    """"Keep drawing" whose sketch fails to load on the page: the next Save must not
+    overwrite that artwork with whatever is on the canvas."""
+    with client.websocket_connect("/ws") as ws:
+        hello(ws)
+        draw(ws, 1)
+        art = save(ws)["artwork"]
+        before = files_of(client, art["id"])
+        ws.send_json({"t": "new"})
+        draw(ws, 2, color="red")
+        ws.send_json({"t": "continue", "id": art["id"]})
+        recv_until(ws, is_json("continue"))  # ...and the page never says "continuing"
+        draw(ws, 3, color="red")
+        other = save(ws)["artwork"]
+    assert other["id"] != art["id"]
+    assert files_of(client, art["id"]) == before
+
+
+def test_continuing_drops_the_previous_drawings_draft(make_client):
+    with make_client() as client:
+        client.app.state.runtime.drafts.interval = 0.05
+        store = client.app.state.gallery
+        with client.websocket_connect("/ws") as ws:
+            hello(ws)
+            draw(ws, 1)
+            art = save(ws)["artwork"]
+            ws.send_json({"t": "new"})
+            draw(ws, 2, color="red")
+            wait_for(lambda: len(store.drafts()) == 1 and store.drafts()[0].source_id is None)
+            ws.send_json({"t": "continuing", "id": art["id"]})
+            sync(ws)
+            assert store.drafts() == []  # the red drawing's draft cannot point at art
+            assert client.app.state.session.continuing_id == art["id"]
+
+
+@pytest.mark.parametrize("msg", ["new", "clear", "continuing"])
+def test_picture_of_an_abandoned_drawing_is_not_kept(make_client, msg):
+    """A picture still being made when the kid starts another drawing is not what is on
+    screen: it must not become last_frame, be saved, or come back as the draft."""
+    with make_client(delay_ms=300) as client:
+        client.app.state.runtime.drafts.interval = 0.01
+        store = client.app.state.gallery
+        session = client.app.state.session
+        with client.websocket_connect("/ws") as ws:
+            hello(ws)
+            draw(ws, 1)
+            art = save(ws)["artwork"]
+            before = files_of(client, art["id"])
+            ws.send_json({"t": "new"})
+            sync(ws)
+            ws.send_bytes(protocol.pack(protocol.SKETCH, 2, sketch_png(color="red")))
+            time.sleep(0.1)  # the worker is busy with seq 2 now
+            ws.send_json({"t": msg, "id": art["id"]})
+            recv_until(ws, is_picture(2))  # the stale picture still goes out (page drops it)
+            sync(ws)
+            assert session.last_frame is None
+            time.sleep(0.1)
+            assert store.drafts() == []
+            assert save(ws)["msg"] == "Nothing to save yet"
+        assert files_of(client, art["id"]) == before
+        with client.websocket_connect("/ws") as ws:
+            assert hello(ws)["draft"] is None
+
+
+def test_outdated_version_url_is_not_cached_forever(client):
+    with client.websocket_connect("/ws") as ws:
+        hello(ws)
+        draw(ws, 1)
+        first = save(ws)["artwork"]
+        draw(ws, 2)
+        second = save(ws)["artwork"]
+    assert "immutable" in client.get(second["picture"]).headers["cache-control"]
+    old = client.get(first["picture"])  # stale ?v: current file, but must revalidate
+    assert old.status_code == 200 and "immutable" not in old.headers["cache-control"]
 
 
 # ----- admin endpoints -------------------------------------------------------------------
