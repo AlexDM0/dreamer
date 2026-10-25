@@ -14,14 +14,19 @@ import logging
 import os
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from .base import GenParamsLike
 
 log = logging.getLogger("dreamer.backend.streamdiffusion")
 
+# With ControlNet on, img2img starts from a blurred sketch: the child's colours and rough
+# shapes survive, but the pen strokes themselves do not end up in the picture; the lines
+# reach the model only through the ControlNet. Radius as a fraction of the image size.
+SKETCH_BLUR = 1 / 32
+
 # Used for prepare() before the first real prompt arrives from the worker.
-DEFAULT_PROMPT = "a child's drawing turned into a picture, for children, friendly, bright colors, wholesome"
+DEFAULT_PROMPT = "a colorful illustration, for children, friendly, bright colors, wholesome"
 
 _INSTALL_HINT = (
     "StreamDiffusion is not installed. Follow requirements-gpu.md, or set "
@@ -49,10 +54,10 @@ class StreamDiffusionBackend:
         self._engine_dir = _model_attr(config, "engine_dir", "engines")
 
         # Live params (SPEC addendum); start from config.model defaults.
-        self._t_index_list = [int(t) for t in _model_attr(config, "t_index_list", [10, 30])]
+        self._t_index_list = [int(t) for t in _model_attr(config, "t_index_list", [6, 26])]
         self._seed: int | None = None  # None = wrapper's own default seed
         self._controlnet_enabled = self._controlnet_id is not None
-        self._controlnet_scale = float(_model_attr(config, "controlnet_scale", 0.8))
+        self._controlnet_scale = float(_model_attr(config, "controlnet_scale", 0.55))
         self._safety_on = bool(_model_attr(config, "safety_checker", True))
         self._safety_threshold = float(_model_attr(config, "safety_threshold", 0.5))
 
@@ -188,6 +193,7 @@ class StreamDiffusionBackend:
             if lm.size != size:
                 lm = lm.resize(size, Image.Resampling.NEAREST)
             self._wrapper.update_control_image(0, lm)
+            image = image.filter(ImageFilter.GaussianBlur(self._size * SKETCH_BLUR))
 
         if self._pending_prompt is not None:
             prompt = self._pending_prompt

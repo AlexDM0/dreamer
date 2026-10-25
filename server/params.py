@@ -38,10 +38,10 @@ LIMITS: dict[str, dict[str, Any]] = {
 
 @dataclass(frozen=True)
 class GenParams:
-    t_index_list: tuple[int, ...] = (10, 30)
+    t_index_list: tuple[int, ...] = (6, 26)
     seed: int = 2
     controlnet_enabled: bool = True
-    controlnet_scale: float = 0.8
+    controlnet_scale: float = 0.55
     safety_checker: bool = True
     safety_threshold: float = 0.5
     line_threshold: int = 40

@@ -70,9 +70,9 @@ size: 512
 default_view_mode: auto       # auto | sketch | picture | split
 model:
   base: stabilityai/sd-turbo
-  t_index_list: [10, 30]
+  t_index_list: [6, 26]
   controlnet: thibaud/controlnet-sd21-scribble-diffusers   # null disables ControlNet
-  controlnet_scale: 0.8
+  controlnet_scale: 0.55
   line_polarity: white_on_black   # or black_on_white; what the ControlNet expects
   engine_dir: engines
   safety_checker: true
@@ -140,7 +140,7 @@ Two lists: topics and styles. Each item:
   "image") persist in `data/styles.json`. Presets can be hidden/reordered via the same
   file (store order + hidden flags). Writes are atomic (temp file + replace).
 - `build_prompt(topic_id, style_id) -> str` =
-  `"a child's drawing turned into a picture, {topic}, {style}, for children, friendly, bright colors, wholesome"`.
+  `"a colorful illustration, {topic}, {style}, for children, friendly, bright colors, wholesome"`.
   Unknown ids fall back to defaults (first visible). The safety tail is always last.
 - Admin custom style text: strip, collapse whitespace, max 120 chars, reject control
   characters. (Parent-only, so no blocklist required, but keep the safety tail.)

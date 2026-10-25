@@ -23,9 +23,9 @@ PIN_RE = re.compile(r"\d{4,12}")  # what the admin PIN pad can type
 @dataclass
 class ModelConfig:
     base: str = "stabilityai/sd-turbo"
-    t_index_list: list[int] = field(default_factory=lambda: [10, 30])
+    t_index_list: list[int] = field(default_factory=lambda: [6, 26])
     controlnet: str | None = "thibaud/controlnet-sd21-scribble-diffusers"  # None disables
-    controlnet_scale: float = 0.8
+    controlnet_scale: float = 0.55
     line_polarity: str = "white_on_black"
     engine_dir: str = "engines"
     safety_checker: bool = True

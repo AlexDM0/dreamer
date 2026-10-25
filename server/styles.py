@@ -29,7 +29,8 @@ LABEL_MAX = 40
 EMOJI_MAX = 16  # code points; ZWJ emoji sequences can be long
 REPLACE_RETRIES = 5  # Windows: os.replace fails while antivirus/indexer holds the file
 SAFETY_TAIL = "for children, friendly, bright colors, wholesome"
-PROMPT_HEAD = "a child's drawing turned into a picture"
+# Not "a child's drawing ...": that asks for a drawing look and keeps the pen strokes.
+PROMPT_HEAD = "a colorful illustration"
 
 # (id, label, emoji, prompt fragment)
 PRESET_TOPICS = [

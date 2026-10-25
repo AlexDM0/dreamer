@@ -256,3 +256,14 @@ def test_streamdiffusion_safety_toggle_needs_loaded_checker(fake_sd):
     w.safety_checker = lambda img, threshold: False
     b.set_params(Params(safety_checker=True))
     assert w.calls[-1][1]["use_safety_checker"] is True
+
+
+def test_streamdiffusion_blurs_init_only_with_controlnet(fake_sd):
+    # The fake wrapper returns its input image, so the output shows what img2img started from.
+    b = make_backend(Cfg(backend="streamdiffusion"))
+    b.warmup()
+    sketch = _sketch()
+    with_lines = b.generate(sketch, make_line_map(sketch))
+    assert with_lines.tobytes() != sketch.tobytes()  # pen strokes softened away
+    b.set_params(Params(controlnet_enabled=False))
+    assert b.generate(sketch, None).tobytes() == sketch.tobytes()  # no ControlNet: the sketch is the structure

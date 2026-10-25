@@ -209,7 +209,7 @@ let paramsTimer = 0;
 
 /** creativity 0..100 + steps 1..4 -> strictly increasing t_index_list.
  * Lower first index = more noise = more creative. Later steps spread towards the end,
- * so the default (creativity 80, 2 steps) gives [10, 30] like config.example.yaml. */
+ * so the default (creativity 88, 2 steps) gives [6, 26] like config.example.yaml. */
 function tIndexList(creativity, steps) {
   const first = Math.min(Math.round(T_MAX * (1 - creativity / 100)), T_MAX - (steps - 1));
   if (steps === 1) return [first];

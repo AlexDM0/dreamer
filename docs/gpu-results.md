@@ -53,15 +53,33 @@ Without the safety checker (`--no-safety`), each frame is about 4 ms faster: 32.
   outline, flower shape). Black on white follows them clearly less. The model card's example
   image shows a black-on-white drawing, but that is a display image, not the conditioning
   format. See [img/gpu-quality-1step.png](img/gpu-quality-1step.png).
-- **Default creativity changed from `[30, 42]` to `[10, 30]`.** At t_index 30 and above, SD-Turbo
-  returns the sketch almost unchanged (mean pixel distance 2.5/255 without ControlNet).
-  At 10 it makes a real illustration that still follows the lines. Among the 2-step options,
-  `[6, 26]` drifts too far from the drawing, `[10, 30]` is the best balance, and `[14, 34]` and
-  above barely change the sketch. See [img/gpu-quality-2step.png](img/gpu-quality-2step.png).
-  The admin page's creativity slider spaces later steps 20 apart, so the default (creativity
-  80, 2 steps) maps to `[10, 30]`.
-- With the Ocean topic, a drawn circle became a fishbowl full of fish, and its outline was
-  kept exactly. See [img/gpu-live-settle.png](img/gpu-live-settle.png).
+- **The sketch is the outline, not part of the picture.** With the first settings, the child's
+  pen strokes showed up directly in the picture. Three reasons: img2img started from the raw
+  sketch, the ControlNet was strong (0.8), and the prompt began with "a child's drawing
+  turned into a picture". The defaults are now:
+  - With ControlNet on, img2img starts from a **blurred sketch** (radius = size/32, so 16 px
+    at 512). The child's colours and rough shapes stay, and the lines reach the model only
+    through the ControlNet. With ControlNet off, the raw sketch is still used, because it is
+    then the only source of structure.
+  - **`controlnet_scale: 0.55`** (was 0.8). At 0.35 the drawing is lost. At 0.8 the lines come
+    back as thick traced outlines.
+  - **`t_index_list: [6, 26]`** (creativity 88 on the admin page, which spaces later steps 20
+    apart). The first default `[30, 42]` returned the sketch almost unchanged: mean pixel
+    distance 2.5/255.
+  - **Prompt head "a colorful illustration"** instead of "a child's drawing turned into a
+    picture".
+
+  Results: in the Nature + Cartoon comparison, no row keeps pen strokes. The lines become
+  objects, such as a house frame or a tree, and the blurred start reinterprets them most
+  freely. See [img/gpu-no-pen-lines.png](img/gpu-no-pen-lines.png). Through the live server
+  with the default Ocean topic, the house became an underwater hut, the face a round
+  character, and the flower a fish. See [img/gpu-live-ocean.png](img/gpu-live-ocean.png).
+  If a parent wants the picture to stick closer to the drawing, "How closely the picture
+  follows the lines" on the admin page raises the ControlNet strength live.
+- Earlier pictures with the first fixes:
+  [img/gpu-quality-2step.png](img/gpu-quality-2step.png) and
+  [img/gpu-live-settle.png](img/gpu-live-settle.png). These were made before the change
+  above, so the lines are still visible in them.
 
 ## Problems found and fixed
 
@@ -101,6 +119,11 @@ e2e script (`tests/e2e/run.mjs`) was not run, because Playwright is not installe
 
 ## Not done / open
 
+- One CUDA "illegal address" crash happened once, during a long probe that changed settings
+  many times. It did not reproduce: two re-runs of the same probe, plus 45 rounds and 300
+  frames of live changes (1 to 3 steps, ControlNet on and off, strength 0.55 to 0.9), all
+  passed. If it happens in the server, restart Dreamer: a CUDA context error cannot be
+  recovered inside the process.
 - Not tested on a real iPad yet (only from the PC: WebSocket client and desktop browser).
 - Windows Firewall was not changed. To let the iPad connect, run this once from an
   **administrator** PowerShell:
