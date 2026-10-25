@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-25T21:26:27+0100",
+  "generated": "2026-10-25T22:16:09+0100",
   "generator": "tools/make_showcase.py",
   "note": "Real pictures made on the RTX 3080 PC (StreamDiffusion SD-Turbo + scribble ControlNet). UI shots are 2x device pixel ratio.",
   "files": [
@@ -32,7 +32,7 @@
       "orientation": "landscape",
       "width": 2560,
       "height": 1800,
-      "bytes": 679005
+      "bytes": 678189
     },
     {
       "file": "examples/castle-picture.jpg",
@@ -42,7 +42,7 @@
         "example",
         "after"
       ],
-      "title": "Princess castle: picture",
+      "title": "Fairy-tale castle: picture",
       "device": "none",
       "theme": "none",
       "artwork": "castle",
@@ -52,7 +52,7 @@
       "orientation": "landscape",
       "width": 1280,
       "height": 896,
-      "bytes": 89590
+      "bytes": 94469
     },
     {
       "file": "examples/castle-sketch.png",
@@ -62,7 +62,7 @@
         "example",
         "before"
       ],
-      "title": "Princess castle: drawing",
+      "title": "Fairy-tale castle: drawing",
       "device": "none",
       "theme": "none",
       "artwork": "castle",
@@ -92,7 +92,7 @@
       "orientation": "landscape",
       "width": 1280,
       "height": 896,
-      "bytes": 114283
+      "bytes": 118414
     },
     {
       "file": "examples/cat-sketch.png",
@@ -132,7 +132,7 @@
       "orientation": "landscape",
       "width": 1280,
       "height": 896,
-      "bytes": 98089
+      "bytes": 113144
     },
     {
       "file": "examples/dinosaur-sketch.png",
@@ -172,7 +172,7 @@
       "orientation": "landscape",
       "width": 1280,
       "height": 896,
-      "bytes": 88750
+      "bytes": 93956
     },
     {
       "file": "examples/house-sketch.png",
@@ -212,7 +212,7 @@
       "orientation": "portrait",
       "width": 896,
       "height": 1280,
-      "bytes": 95936
+      "bytes": 116668
     },
     {
       "file": "examples/meadow-sketch.png",
@@ -252,7 +252,7 @@
       "orientation": "landscape",
       "width": 1280,
       "height": 896,
-      "bytes": 92436
+      "bytes": 101738
     },
     {
       "file": "examples/rocket-sketch.png",
@@ -277,7 +277,7 @@
     {
       "file": "ipad-landscape-castle-sketch.png",
       "group": "kid",
-      "title": "Drawing: princess castle",
+      "title": "Drawing: fairy-tale castle",
       "caption": "The child's drawing (Castle world, clay style, on lilac paper), drawn with a finger.",
       "device": "ipad-landscape",
       "theme": "dark",
@@ -294,7 +294,7 @@
     {
       "file": "ipad-landscape-castle-split.png",
       "group": "kid",
-      "title": "Drawing and picture side by side: princess castle",
+      "title": "Drawing and picture side by side: fairy-tale castle",
       "caption": "The 'Both' view: the drawing and its finished picture side by side. Castle world, clay style, on lilac paper.",
       "device": "ipad-landscape",
       "theme": "dark",
@@ -309,7 +309,7 @@
       "paper": "#c9b6f2",
       "width": 2360,
       "height": 1640,
-      "bytes": 902577
+      "bytes": 933635
     },
     {
       "file": "ipad-landscape-cat-keep-drawing.jpg",
@@ -326,7 +326,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 407103
+      "bytes": 414925
     },
     {
       "file": "ipad-landscape-cat-sketch.png",
@@ -360,7 +360,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 425403
+      "bytes": 433282
     },
     {
       "file": "ipad-landscape-cat-split.jpg",
@@ -380,7 +380,7 @@
       "paper": "#1e2a5a",
       "width": 2360,
       "height": 1640,
-      "bytes": 399127
+      "bytes": 999549
     },
     {
       "file": "ipad-landscape-dinosaur-minimised.jpg",
@@ -396,7 +396,7 @@
       "artwork": "dinosaur",
       "width": 2360,
       "height": 1640,
-      "bytes": 382593
+      "bytes": 420831
     },
     {
       "file": "ipad-landscape-dinosaur-picture.jpg",
@@ -416,7 +416,7 @@
       "paper": "#ffffff",
       "width": 2360,
       "height": 1640,
-      "bytes": 436625
+      "bytes": 469393
     },
     {
       "file": "ipad-landscape-dinosaur-sketch.png",
@@ -450,7 +450,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 322051
+      "bytes": 326047
     },
     {
       "file": "ipad-landscape-gallery-detail.png",
@@ -467,7 +467,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 991162
+      "bytes": 325359
     },
     {
       "file": "ipad-landscape-gallery-light.jpg",
@@ -483,7 +483,7 @@
       "orientation": "landscape",
       "width": 2360,
       "height": 1640,
-      "bytes": 329752
+      "bytes": 342209
     },
     {
       "file": "ipad-landscape-gallery.jpg",
@@ -498,7 +498,7 @@
       "orientation": "landscape",
       "width": 2360,
       "height": 1640,
-      "bytes": 339516
+      "bytes": 352714
     },
     {
       "file": "ipad-landscape-house-picture.jpg",
@@ -518,7 +518,7 @@
       "paper": "#000000",
       "width": 2360,
       "height": 1640,
-      "bytes": 409046
+      "bytes": 419669
     },
     {
       "file": "ipad-landscape-house-saving.jpg",
@@ -535,7 +535,7 @@
       "artwork": "house",
       "width": 2360,
       "height": 1640,
-      "bytes": 449968
+      "bytes": 465049
     },
     {
       "file": "ipad-landscape-house-sketch.png",
@@ -623,7 +623,7 @@
       "paper": "#000000",
       "width": 2360,
       "height": 1640,
-      "bytes": 984337
+      "bytes": 366353
     },
     {
       "file": "ipad-landscape-start.png",
@@ -660,7 +660,7 @@
       "paper": "#8fd3ff",
       "width": 1640,
       "height": 2360,
-      "bytes": 424692
+      "bytes": 467227
     },
     {
       "file": "ipad-portrait-meadow-sketch.png",
@@ -697,7 +697,7 @@
       "paper": "#8fd3ff",
       "width": 1640,
       "height": 2360,
-      "bytes": 440095
+      "bytes": 464768
     },
     {
       "file": "phone-admin-artwork-dark.png",
@@ -714,7 +714,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 365929
+      "bytes": 373208
     },
     {
       "file": "phone-admin-artwork-light.png",
@@ -731,7 +731,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 374631
+      "bytes": 379812
     },
     {
       "file": "phone-admin-gallery-dark.png",
@@ -747,7 +747,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 440203
+      "bytes": 432844
     },
     {
       "file": "phone-admin-gallery-light.png",
@@ -763,7 +763,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 433529
+      "bytes": 429499
     },
     {
       "file": "phone-admin-login-dark.png",
@@ -813,7 +813,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 171472
+      "bytes": 172252
     },
     {
       "file": "phone-admin-memory-meter-light.png",
@@ -831,7 +831,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 165478
+      "bytes": 166057
     },
     {
       "file": "phone-admin-now-dark.png",
@@ -849,7 +849,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 391650
+      "bytes": 397902
     },
     {
       "file": "phone-admin-now-light.png",
@@ -867,7 +867,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 388130
+      "bytes": 394071
     },
     {
       "file": "phone-admin-picture-controls-dark.png",
@@ -883,7 +883,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 162835
+      "bytes": 166699
     },
     {
       "file": "phone-admin-picture-controls-light.png",
@@ -899,7 +899,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 159174
+      "bytes": 162860
     },
     {
       "file": "phone-help-refine.png",

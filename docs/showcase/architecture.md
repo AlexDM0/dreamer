@@ -16,11 +16,13 @@ flowchart LR
     iPad -- "stroke layer PNG + paper colour (WebSocket)" --> Server
     Server -- "picture JPEG (same WebSocket)" --> iPad
     Phone -- "settings (plain HTTP on the home network, PIN login)" --> Server
+    Server -- "live picture + status (WebSocket)" --> Phone
     Server <--> GPU
     Server <--> Disk
 ```
 
-Nothing leaves the home network while drawing. The models are downloaded once at setup.
+Drawings and pictures never leave the PC. Models are downloaded once, on the first start;
+after that Dreamer runs without contacting the internet.
 
 ## From a drawing to a picture
 
@@ -53,21 +55,28 @@ sequenceDiagram
     Kid->>W: stroke (seq 42)
     W-->>Kid: picture (~70 ms)
     Note over Kid,W: child stops drawing (150 ms pause)
-    W-->>Kid: refined, 4 steps (+ 2x upscale)
-    W-->>Kid: refined, 8 steps
-    W-->>Kid: refined, 12 steps
-    W-->>Kid: refined, 20 steps (~4 s after the stroke)
+    W-->>Kid: rung 1 (~44 ms)
+    W-->>Kid: rung 2 (~44 ms)
+    W-->>Kid: rung 3 ... up to rung 6 (~0.3 s in all)
+    Note over Kid,W: (+ 2x AI upscale, if it is switched on)
     Kid->>W: new stroke (seq 43)
-    Note over W: stops refining after the current pass
-    W-->>Kid: picture for seq 43 (~0.2-0.3 s)
+    Note over W: stops refining after the current rung
+    W-->>Kid: picture for seq 43
 ```
 
 - **While drawing:** the steps run together as one batch through the UNet (StreamDiffusion's
   "denoising batch"), so the picture keeps up with the stroke. That mode returns each picture
   one frame late, so the worker re-runs the last sketch once the child pauses ("settle").
-- **When the child stops:** complete passes with more and more steps, run one after another at
-  batch 1 (no extra graphics memory), each replacing the picture on screen. Refined pictures
-  go through the AI upscaler (Real-ESRGAN compact, 31 ms) to 1280×896.
+- **When the child stops:** the default "anchored" refinement model runs up to 6 single-step
+  rungs at batch 1 (no extra graphics memory), about 44 ms each, each replacing the picture on
+  screen. Every rung starts from less noise than the one before and its broad layout is pinned
+  to the first picture, so the picture keeps its shapes and only gains detail
+  ([refinement results](../research/refinement-models.md#results-2026-10-25-night-rtx-3080)).
+  With AI upscale on (off by default), refined pictures go through Real-ESRGAN compact (31 ms)
+  to 1280×896.
+- *Superseded:* the first version continued SD-Turbo's own path in passes of 4, 8, 12, 16 and
+  20 steps (153-681 ms per pass, done about 4 s after the stroke, `docs/gpu-results.md`). Past
+  about 6 steps that repainted the scene, which led to the anchored model.
 
 ## Graphics memory and speed (RTX 3080, 10 GB)
 
@@ -75,7 +84,7 @@ sequenceDiagram
 |---|---|
 | Engines for up to 4 steps at once (default), 640×448 | 7.4 GB + desktop (~0.8 GB) |
 | Engines for 1 step | 5.1 GB + desktop |
-| Resolution 512 → 1024 px | +0.3 GB, but 56 → 186 ms per picture (2 steps) |
+| Resolution 512 → 1024 px | +0.4 GB, but 56 → 186 ms per picture (2 steps) |
 | AI upscaler | +0.23 GB, 31 ms |
 
 The admin page estimates memory from a measured table (`static/vram.json`) and disables

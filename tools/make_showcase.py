@@ -239,7 +239,7 @@ def dinosaur() -> Artwork:
 
 
 def castle() -> Artwork:
-    art = Artwork("castle", "Princess castle", "castle", "clay", "#c9b6f2", "landscape", ["split"])
+    art = Artwork("castle", "Fairy-tale castle", "castle", "clay", "#c9b6f2", "landscape", ["split"])
     battlements = [(210, 225)]
     for i in range(6):
         x = 210 + i * 38
@@ -438,9 +438,12 @@ class Output:
         if group not in self.groups:
             return
         image = Image.open(io.BytesIO(png))
+        # Keep an existing shot's format so links in the docs survive a re-run; the size rule
+        # only picks the format of a new shot.
+        previous = [old.suffix for old in OUT.glob(f"{stem}.*")]
         for old in OUT.glob(f"{stem}.*"):
             old.unlink()
-        if len(png) > MAX_PNG_BYTES:
+        if previous[:1] == [".jpg"] or (not previous and len(png) > MAX_PNG_BYTES):
             path = OUT / f"{stem}.jpg"
             image.convert("RGB").save(path, "JPEG", quality=JPEG_QUALITY, optimize=True,
                                       progressive=True, subsampling=0)
@@ -980,7 +983,7 @@ def main() -> int:
     try:
         server.start()
         server.login()
-        params = server.request("PATCH", "/api/admin/params", {"refine_steps": 4, "upscale": "x2"})
+        params = server.request("PATCH", "/api/admin/params", {"refine_steps": 8, "upscale": "x2"})
         applied = params.get("params", params)
         log(f"output: {OUT}{' (mock backend)' if args.mock else ''}")
         log(f"params: refine_steps={applied.get('refine_steps')} upscale={applied.get('upscale')}")
