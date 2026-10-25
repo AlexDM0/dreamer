@@ -36,7 +36,7 @@
   --accent-soft: var(--iris-50);
   --accent-soft-strong: var(--iris-100);
   --focus-color: var(--iris-500);
-  --success: var(--green-600); --success-soft: var(--green-100);
+  --success: var(--green-600); --success-soft: var(--green-100); --success-text: #166b44;
   --warning: var(--amber-600); --warning-text: var(--amber-800); --warning-soft: var(--amber-100);
   --danger: var(--red-600); --danger-text: var(--red-700); --danger-soft: var(--red-100);
   --celebrate: var(--amber-400);
@@ -66,7 +66,7 @@
     --border: var(--sand-800); --border-strong: var(--sand-600);
     --accent: var(--iris-500); --accent-hover: var(--iris-600); --accent-text: var(--iris-300);
     --accent-soft: var(--iris-950); --accent-soft-strong: var(--iris-900); --focus-color: var(--iris-400);
-    --success: var(--green-500); --success-soft: var(--green-900);
+    --success: var(--green-500); --success-soft: var(--green-900); --success-text: var(--green-500);
     --warning-text: var(--amber-400); --warning-soft: var(--amber-900);
     --danger-text: var(--red-300); --danger-soft: var(--red-900);
     --neutral-bar: var(--sand-700); --track-rung: var(--iris-400);
@@ -80,7 +80,7 @@
   --border: var(--sand-800); --border-strong: var(--sand-600);
   --accent: var(--iris-500); --accent-hover: var(--iris-600); --accent-text: var(--iris-300);
   --accent-soft: var(--iris-950); --accent-soft-strong: var(--iris-900); --focus-color: var(--iris-400);
-  --success: var(--green-500); --success-soft: var(--green-900);
+  --success: var(--green-500); --success-soft: var(--green-900); --success-text: var(--green-500);
   --warning-text: var(--amber-400); --warning-soft: var(--amber-900);
   --danger-text: var(--red-300); --danger-soft: var(--red-900);
   --neutral-bar: var(--sand-700); --track-rung: var(--iris-400);
@@ -206,7 +206,7 @@ label.switch input { width: 20px; height: 20px; accent-color: var(--accent); }
 .track { position: relative; height: 64px; background: var(--surface-sunken); border-radius: var(--radius-sm); overflow: hidden; margin-top: 10px; }
 .track .blk { position: absolute; top: 10px; height: 30px; border-radius: 5px; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--text-on-accent); border: 1px solid var(--surface); }
 .track .blk.draw { background: var(--accent); }
-.track .blk.settle { background: var(--iris-800); }
+.track .blk.settle { background: var(--green-500); }
 .track .blk.rung { background: var(--track-rung); color: var(--iris-900); }
 .track .blk.pen { top: 46px; height: 8px; background: var(--celebrate); border: 0; border-radius: 4px; }
 .track .now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); opacity: 0.6; }
@@ -247,7 +247,7 @@ label.switch input { width: 20px; height: 20px; accent-color: var(--accent); }
 .p-head { background: var(--surface-pressed); }
 .p-topic { background: var(--accent-soft-strong); color: var(--accent-text); }
 .p-style { background: var(--warning-soft); color: var(--warning-text); }
-.p-tail { background: var(--success-soft); color: var(--success); }
+.p-tail { background: var(--success-soft); color: var(--success-text); }
 .keyrow { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; margin-top: 10px; color: var(--text-muted); }
 .keyrow i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 5px; }
 .safety { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: center; margin-top: 12px; }
@@ -255,13 +255,21 @@ label.switch input { width: 20px; height: 20px; accent-color: var(--accent); }
 .safety .tile { background: var(--surface-sunken); border-radius: var(--radius-md); padding: 12px; text-align: center; font-size: 14px; }
 .safety .tile img { border-radius: 8px; margin: 0 auto 8px; aspect-ratio: 640 / 448; object-fit: cover; width: 100%; }
 .safety .verdict { font-weight: 700; }
-.safety .ok { color: var(--success); }
+.safety .ok { color: var(--success-text); }
 .safety .flag { color: var(--danger-text); }
 
 /* ---- 5. memory ---- */
 .vram { height: 44px; display: flex; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-sunken); box-shadow: inset 0 0 0 1px var(--border); margin: 14px 0 8px; }
 .vram span { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; transition: width var(--dur-slow) var(--ease-out); }
 .vram .desk { background: var(--neutral-bar); color: var(--text); }
+.vram-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+.vram-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 5px; }
+details.techy { margin-top: 14px; }
+details.techy summary { cursor: pointer; font-weight: 600; font-size: 15px; color: var(--accent-text); min-height: 32px; }
+.glossary { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 20px; margin: 12px 0 0; }
+.glossary dt { font-weight: 700; font-size: 15px; }
+.glossary dd { margin: 2px 0 0; font-size: 14px; color: var(--text-muted); }
+.scale-row { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-top: 2px; }
 .vram .eng { background: var(--accent); color: var(--text-on-accent); }
 .vram .up { background: var(--celebrate); color: var(--sand-900); }
 .vram-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
@@ -317,14 +325,14 @@ footer ul { padding-left: 20px; }
   <div class="pair">
     <figure><img src="../screenshots/examples/cat-sketch.png" alt="A finger drawing of an orange cat, a fish and seaweed on dark blue paper"><figcaption>The drawing (Ocean topic, cartoon style, night-blue paper)</figcaption></figure>
     <div class="arrow" aria-hidden="true">&rarr;</div>
-    <figure><img src="../screenshots/examples/cat-picture.jpg" alt="The same scene as a cartoon picture: a smiling cat under the sea with a fish friend"><figcaption>The polished picture Dreamer made from it</figcaption></figure>
+    <figure><img src="../screenshots/examples/cat-picture.jpg" alt="The same scene as a cartoon picture: a smiling cat under the sea with a fish friend"><figcaption>The polished picture Dreamer made from it (with the optional AI upscale on)</figcaption></figure>
   </div>
 
   <div class="stats">
-    <div class="stat"><b>~0.1&ndash;0.2 s</b><span>from a new line to a new picture (128 ms measured on average)</span></div>
-    <div class="stat"><b>6 &times; ~44 ms</b><span>polishing rungs after the child pauses</span></div>
+    <div class="stat"><b>~0.1&ndash;0.2 s</b><span>from a new line to a new picture (128 ms mean, measured with a test client on the PC)</span></div>
+    <div class="stat"><b>6 &times; 44&ndash;48 ms</b><span>polishing rungs after the child pauses</span></div>
     <div class="stat"><b>10 GB</b><span>graphics card it is tuned for (RTX 3080)</span></div>
-    <div class="stat"><b>Offline</b><span>after the first start; drawings never leave the PC</span></div>
+    <div class="stat"><b>Offline</b><span>after the first start; drawings never leave your home network</span></div>
   </div>
 </header>
 
@@ -340,6 +348,21 @@ footer ul { padding-left: 20px; }
 </nav>
 
 <main class="wrap">
+<details class="card tight" style="margin-top:28px">
+  <summary style="cursor:pointer;font-weight:700;min-height:32px">Words used on this page (a small glossary)</summary>
+  <dl class="glossary">
+    <div><dt>Denoising step</dt><dd>One run of the image model: it guesses the noise in a noisy picture and removes part of it.</dd></div>
+    <div><dt>Schedule position (timestep)</dt><dd>How noisy the picture is at a step, from 0 (most noise) to 49 (the least) in Dreamer's 50-position schedule.</dd></div>
+    <div><dt>UNet</dt><dd>The main network inside Stable Diffusion that does the guessing. It is named after its U shape: it shrinks the picture to see the big picture, then grows it back for detail.</dd></div>
+    <div><dt>ControlNet</dt><dd>A helper network that makes the UNet follow a guide image, here the child's lines.</dd></div>
+    <div><dt>Latent</dt><dd>A compressed version of the picture, 8&times; smaller on each side, where the model does its work. The VAE turns it back into pixels.</dd></div>
+    <div><dt>TensorRT engine</dt><dd>The model compiled by NVIDIA's TensorRT for this exact graphics card, so it runs much faster. Built once, on the first start.</dd></div>
+    <div><dt>Batch</dt><dd>Several pieces of work sent through the model together in one go. While drawing, Dreamer's 2 steps run as one batch.</dd></div>
+    <div><dt>Rung</dt><dd>One polishing step after the child pauses. The six rungs form a &ldquo;ladder&rdquo;, each using less noise than the last.</dd></div>
+    <div><dt>Low-pass</dt><dd>A filter that keeps only the broad, slowly changing parts of a picture (a blur). Dreamer uses it to pin the layout.</dd></div>
+    <div><dt>Drift</dt><dd>How much the broad layout changed compared to the first picture, on a 0&ndash;255 scale.</dd></div>
+  </dl>
+</details>
 
 <!-- ============================================================ 1 -->
 <section class="chapter" id="loop">
@@ -398,14 +421,14 @@ footer ul { padding-left: 20px; }
     <li class="stage" data-stage="4"><button type="button"><span class="num">STAGE 5</span><span class="thumb"><svg viewBox="0 0 160 112"><rect width="160" height="112" fill="var(--accent-soft)"/><g fill="var(--accent)"><rect x="22" y="22" width="12" height="68" rx="3"/><rect x="40" y="34" width="12" height="44" rx="3"/><rect x="58" y="44" width="12" height="24" rx="3"/><rect x="74" y="50" width="12" height="12" rx="3"/><rect x="90" y="44" width="12" height="24" rx="3"/><rect x="108" y="34" width="12" height="44" rx="3"/><rect x="126" y="22" width="12" height="68" rx="3"/></g><path d="M34 26 H126 M52 38 H108 M70 48 H90" stroke="var(--accent-text)" stroke-width="1.5" stroke-dasharray="3 3"/><rect x="10" y="96" width="140" height="10" rx="3" fill="var(--celebrate)"/><text x="80" y="104" text-anchor="middle" style="font:700 7px var(--font-sans)" fill="#1c1a18">ControlNet: the line map</text></svg></span>SD-Turbo + ControlNet<small>the actual painting</small></button></li>
     <li class="stage" data-stage="5"><button type="button"><span class="num">STAGE 6</span><span class="thumb"><svg viewBox="0 0 160 112"><rect width="160" height="112" fill="var(--surface-sunken)"/><g opacity="0.9"><rect x="16" y="36" width="10" height="10" fill="#2b4c9b"/><rect x="26" y="36" width="10" height="10" fill="#f0a030"/><rect x="36" y="36" width="10" height="10" fill="#2b4c9b"/><rect x="16" y="46" width="10" height="10" fill="#3fbf7f"/><rect x="26" y="46" width="10" height="10" fill="#f0a030"/><rect x="36" y="46" width="10" height="10" fill="#2b4c9b"/><rect x="16" y="56" width="10" height="10" fill="#3fbf7f"/><rect x="26" y="56" width="10" height="10" fill="#f0a030"/><rect x="36" y="56" width="10" height="10" fill="#e0705a"/></g><path d="M58 51 h28 m-8 -7 l8 7 l-8 7" stroke="var(--accent-text)" stroke-width="2.5" fill="none" stroke-linecap="round"/><image href="../screenshots/examples/cat-picture.jpg" x="96" y="28" width="52" height="46" preserveAspectRatio="xMidYMid slice"/></svg></span>Tiny VAE decode<small>from latent grid to pixels</small></button></li>
     <li class="stage" data-stage="6"><button type="button"><span class="num">STAGE 7</span><span class="thumb"><svg viewBox="0 0 160 112"><rect width="160" height="112" fill="var(--success-soft)"/><path d="M80 18 l30 11 v22 c0 20 -14 33 -30 40 c-16 -7 -30 -20 -30 -40 v-22 z" fill="var(--surface)" stroke="var(--success)" stroke-width="3"/><path d="M67 54 l9 9 l17 -19" fill="none" stroke="var(--success)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Safety check<small>every picture, about 4 ms</small></button></li>
-    <li class="stage" data-stage="7"><button type="button"><span class="num">STAGE 8</span><span class="thumb"><img src="../screenshots/examples/cat-picture.jpg" alt="" style="object-fit:cover"></span>Picture to the iPad<small>JPEG, same WebSocket</small></button></li>
+    <li class="stage" data-stage="7"><button type="button"><span class="num">STAGE 8</span><span class="thumb"><img src="../screenshots/examples/cat-picture.jpg" alt="" style="object-fit:cover"></span>Picture to the iPad<small>JPEG (shown: with the optional AI upscale)</small></button></li>
   </ol>
   <div class="stage-detail" id="stageDetail" aria-live="polite"></div>
 
   <h3>How long it takes</h3>
   <p>Measured on the development PC (RTX 3080, 10 GB). The graphics card does the heavy part; packing the images and the trip over the network add the rest.</p>
   <div class="card tight latency" id="latency"></div>
-  <p class="note">The round trip of 128 ms was measured at 512&nbsp;px with 2 steps; the extra ~40 ms over the bare GPU work is image encoding and the socket. The very first picture after start-up takes longer (733 ms), because the pipeline warms up and the prompt is encoded for the first time.</p>
+  <p class="note">The two rows used different settings. The 67&ndash;80 ms is graphics-card work alone at 640&times;448. The 128 ms round trip was measured earlier through the real server with a WebSocket test client on the same PC (512&times;512, 2 steps), so it includes image encoding and the socket (about 40 ms more than the bare benchmark of that time), but not the iPad or the Wi-Fi. The very first picture after start-up takes longer (733 ms), because the pipeline warms up and the prompt is encoded for the first time.</p>
 </section>
 
 <!-- ============================================================ 2 -->
@@ -423,14 +446,17 @@ footer ul { padding-left: 20px; }
           <canvas id="noiseCanvas" width="160" height="112" aria-hidden="true"></canvas>
           <span class="badge" id="noisyBadge">noise level</span>
         </div>
-        <label for="tSlider" class="small" style="display:block;margin-top:14px;font-weight:600">Where on the noise schedule (0 = all noise, 49 = no noise left)</label>
-        <input type="range" id="tSlider" min="0" max="49" value="0">
-        <div class="scale" id="tScale" aria-hidden="true"></div>
+        <label for="tSlider" class="small" style="display:block;margin-top:14px;font-weight:600">Position on the noise schedule (0 = most noise, 49 = the last and least noisy position)</label>
+        <input type="range" id="tSlider" min="0" max="49" value="0" aria-valuetext="position 0 of 49: pure noise">
+        <div class="scale-row">Drawing pass (one go, 2 steps)</div>
+        <div class="scale" id="tScaleDraw" aria-hidden="true"></div>
+        <div class="scale-row">Polishing pass (6 separate rungs, each re-noises the picture on screen)</div>
+        <div class="scale" id="tScaleRung" aria-hidden="true"></div>
         <div class="row" style="margin-top:8px"><button type="button" class="primary" id="playSteps">&#9654; Play Dreamer's steps</button></div>
       </div>
       <div class="stepcopy" id="stepCopy" aria-live="polite"></div>
     </div>
-    <p class="note" style="margin-top:14px">An illustration: the real model does not &ldquo;unblur&rdquo; a finished picture, it predicts the picture from noise. The markers are Dreamer's real settings: drawing steps at positions 6 and 26, polishing rungs at 38, 41, 44, 46, 47 and 48.</p>
+    <p class="note" style="margin-top:14px">An illustration: the real model does not &ldquo;unblur&rdquo; a finished picture, it predicts the picture from noise. The markers are Dreamer's real settings: drawing steps at positions 6 and 26, polishing rungs at 38, 41, 44, 46, 47 and 48. &ldquo;Play&rdquo; shows the two passes: the drawing pass goes down the schedule once; each polishing rung first adds a little noise back to the picture on screen, then removes it again in one step.</p>
   </div>
 
   <h3>Two more things the model gets</h3>
@@ -445,7 +471,7 @@ footer ul { padding-left: 20px; }
   <p class="kicker">3 &middot; Drawing fast, refining slowly</p>
   <h2>Keep up while the pen moves. Polish when it stops.</h2>
   <p><b>While the child draws,</b> Dreamer runs 2 steps per picture, and runs them <i>together</i> as one batch through the model (StreamDiffusion's &ldquo;denoising batch&rdquo;). That keeps up with the pen, at the cost of each picture arriving one frame late, so once the child pauses Dreamer re-draws the last sketch once (&ldquo;settle&rdquo;).</p>
-  <p><b>When the child stops for 150 ms,</b> the polishing starts: up to 6 single-step <b>rungs</b>, each about 44 ms, each one replacing the picture on screen. A new stroke stops it after the rung in progress, and the pen is followed again straight away.</p>
+  <p><b>When the child stops for 150 ms,</b> the polishing starts: up to 6 single-step <b>rungs</b>, each 44&ndash;48 ms, each one replacing the picture on screen. A new stroke stops it after the rung in progress, and the pen is followed again straight away.</p>
 
   <div class="card">
     <div class="sim">
@@ -467,18 +493,18 @@ footer ul { padding-left: 20px; }
         <div class="track" id="track" aria-hidden="true"></div>
         <div class="legend">
           <span><i style="background:var(--accent)"></i>drawing picture (2 steps, ~70 ms)</span>
-          <span><i style="background:var(--iris-800)"></i>settle</span>
-          <span><i style="background:var(--track-rung)"></i>polishing rung (~44 ms)</span>
+          <span><i style="background:var(--green-500)"></i>settle</span>
+          <span><i style="background:var(--track-rung)"></i>polishing rung (44&ndash;48 ms)</span>
           <span><i style="background:var(--celebrate)"></i>pen down</span>
         </div>
         <div class="readout" id="simReadout" aria-live="polite">Hold the picture (or the space bar) to draw.</div>
-        <p class="note" style="margin-top:10px">Timings follow the worker's real rules: one picture in flight, 150 ms of quiet before settling and again before polishing, then the rungs. The picture on the left is a real frame from Dreamer's refinement test of this cat.</p>
+        <p class="note" style="margin-top:10px">Timings follow the worker's real rules: one picture in flight, 150 ms of quiet before settling and again before polishing, then the rungs, so the last rung lands about 0.65&ndash;0.72 s after the pen lifts (depending on where in a frame it lifts). The picture on the left is a real frame from Dreamer's refinement lab for the <span id="padDrawingName">cat</span> drawing (lab run: 1-step drawing picture).</p>
       </div>
     </div>
   </div>
 
   <h3>Why not simply keep going with more steps?</h3>
-  <p>The obvious way to polish is to continue the model's own path with more steps. Dreamer's first version did exactly that, in passes of 4, 8, 12, 16 and 20 steps. It looked fine up to about 4 steps, but from about 6 the picture <b>started repainting the scene</b>: in the close-ups, the cat's face is redrawn. SD-Turbo is made for 1 to 4 steps, not twenty.</p>
+  <p>The obvious way to polish is to continue the model's own path with more steps. Dreamer's first version did exactly that, in passes of 4, 8, 12, 16 and 20 steps. By eye, the first few extra steps looked like the same picture getting sharper. Measured, the layout already shifts after the first extra step (drift 20&ndash;26 in the slider below), and from about 6 steps the picture visibly <b>repaints the scene</b>: in the close-ups, the cat's face is redrawn. SD-Turbo is made for 1 to 4 steps, not twenty.</p>
   <p>Drag the slider to compare, on a real test drawing. <b>Drift</b> is how much the broad layout changed compared to the first picture (shrink both pictures to a tiny 40&times;28 thumbnail and measure the average difference, on a 0&ndash;255 scale). The target was to stay under about 6.</p>
 
   <div class="card">
@@ -499,15 +525,15 @@ footer ul { padding-left: 20px; }
         <div class="meter"><span id="anchMeter" style="background:var(--accent)"></span></div>
       </figure>
     </div>
-    <p class="note" style="margin-top:12px">Frames and numbers from <code>docs/research</code> (refinement lab, draw reaction 1 step, refine budget 8: the plain path gets 7 more steps, the anchored ladder 6 rungs). Meters run from 0 to 45.</p>
+    <p class="note" style="margin-top:12px">Lab run: 1-step drawing picture (the app draws with 2), refine budget 8, so the plain path gets 7 more steps and the anchored ladder 6 rungs. Frames and numbers from <code>docs/research</code>. The picker shows the five landscape drawings; the sixth test drawing (an upright meadow) is in the averages below but not here. Meters run from 0 to 45.</p>
   </div>
 
   <h3>The fix: pin the broad shapes, let only the detail change</h3>
-  <p>The <b>anchored</b> model treats every picture as two layers: the <b>broad shapes</b> (layout, big colour areas, light) and the <b>fine detail</b> on top. After every rung, Dreamer swaps the broad layer back to the one from the first picture, so only the detail can grow. Technically it is a low-pass filter on the latent grid (a Gaussian blur of 2 latent pixels, about 16 picture pixels), pinned to the first picture.</p>
-  <p>Two more tricks keep each change small. Each rung starts from <i>less</i> noise than the one before (positions 38 &rarr; 41 &rarr; 44 &rarr; 46 &rarr; 47 &rarr; 48 on the schedule), so it can only touch finer things. And each rung builds on the previous one, adding just a pinch (5%) of fresh noise. Detail builds up, the scene stays.</p>
+  <p>The <b>anchored</b> model treats every picture as two layers: the <b>broad shapes</b> (layout, big colour areas, light) and the <b>fine detail</b> on top. The polishing is a separate pass, not a continuation of the drawing's steps: each rung takes the picture now on screen, adds some noise back, and lets the model remove it in one step. In the model's answer, Dreamer then swaps the broad layer back to the one from the first picture, so mostly the detail can change. Technically it is a <b>low-pass</b> filter (keeps only the slow, broad variations) on the latent grid: a Gaussian blur of 2 latent pixels, about 16 picture pixels. The pin is full strength on the first rung and tapers to 80% on the last, so later rungs are slightly freer.</p>
+  <p>Two more tricks keep each change small. Each rung re-noises to a <i>lower</i> level than the one before (positions 38 &rarr; 41 &rarr; 44 &rarr; 46 &rarr; 47 &rarr; 48 on the schedule), so it can only touch finer things. And each rung builds on the previous one: the noise it adds back is mostly the model's own estimate of the noise, with only 5% of its variance fresh random noise. Detail builds up, and the scene mostly stays.</p>
 
   <div class="card">
-    <p class="small" style="margin-top:0"><b>See it for yourself:</b> blur the pictures so only the broad shapes remain. After 6 anchored rungs, the blurred picture still matches the first one. The plain path does not.</p>
+    <p class="small" style="margin-top:0"><b>See it for yourself:</b> blur the pictures so only the broad shapes remain. After 6 anchored rungs, the blurred picture stays close to the first one (a small shift remains, mostly from the first rung). The plain path moves much further.</p>
     <div class="blurrow">
       <figure><div class="cell" id="blurP0"></div><figcaption>First picture, blurred</figcaption></figure>
       <figure><div class="cell" id="blurAnch"></div><figcaption>Anchored, after 6 rungs, blurred</figcaption></figure>
@@ -517,12 +543,12 @@ footer ul { padding-left: 20px; }
   </div>
 
   <h3>All seven refinement models, measured</h3>
-  <p>Measured overnight on the six showcase drawings, averaged. Lower drift is better (the dashed line is the target of 6); higher detail is better (how much fine detail the last picture has, compared with the first).</p>
+  <p>Measured overnight on the six showcase drawings (the five above plus an upright meadow), averaged. Lower drift is better (the dashed line is the target of 6); higher detail is better (how much fine detail the last picture has, compared with the first).</p>
   <div class="grid2">
     <div class="card tight"><b>Max drift</b> <span class="note">lower is better</span><div class="bars" id="driftBars"></div></div>
     <div class="card tight"><b>Final detail (&times; first picture)</b> <span class="note">higher is better</span><div class="bars" id="detailBars"></div></div>
   </div>
-  <p class="note">Anchored has the lowest drift, almost the most detail, shrinking steps (9.0 &rarr; 0.9) and the fastest rungs (44 ms), so it is the default. The tiled hi-res variants add slightly more detail but cost 175&ndash;295 ms per rung and drift more.</p>
+  <p class="note">Anchored has the lowest average max drift (5.6), almost the most detail, shrinking steps (9.0 &rarr; 0.9) and the fastest rungs (44 ms in the lab), so it is the default. It is not perfect: averaged it stays under 6, but the cat (8.3 at the first rung, 7.1 at the last) and the meadow (7.4&ndash;7.9) still go over, mostly at the first rung, and only 2 of 6 drawings pass the full rule (the others miss it by detail staying flat rather than rising). The tiled hi-res variants add slightly more detail but cost 175&ndash;295 ms per rung and drift more.</p>
 
   <div class="card tight">
     <b>Optional: AI upscale</b>
@@ -556,26 +582,22 @@ footer ul { padding-left: 20px; }
   <div class="card">
     <div class="row"><label class="switch"><input type="checkbox" id="flagToggle"> Pretend the new picture is flagged</label></div>
     <div class="safety">
-      <div class="tile"><img src="../screenshots/examples/cat-picture.jpg" alt="Previous picture"><span>Previous picture</span></div>
-      <div class="tile"><img src="../screenshots/examples/house-picture.jpg" alt="New picture"><span>New picture &rarr; classifier: </span><span class="verdict ok" id="verdict">looks fine</span></div>
-      <div class="tile"><img src="../screenshots/examples/house-picture.jpg" alt="What the child sees" id="shownImg"><span>What the child sees</span></div>
+      <div class="tile"><div class="cell" id="safePrev" role="img" aria-label="The previous picture of the cat drawing" style="margin-bottom:8px"></div><span>Previous picture</span></div>
+      <div class="tile"><div class="cell" id="safeNew" role="img" aria-label="The next picture of the same cat drawing" style="margin-bottom:8px"></div><span>New picture &rarr; classifier: </span><span class="verdict ok" id="verdict">looks fine</span></div>
+      <div class="tile"><div class="cell" id="safeShown" role="img" aria-label="What the child sees: the new picture" style="margin-bottom:8px"></div><span id="safeShownLabel">What the child sees: the new one</span></div>
     </div>
   </div>
-  <p class="small muted">A classifier can make mistakes, so the honest claim is &ldquo;checks every picture&rdquo;, not &ldquo;guarantees&rdquo;. Style pictures a parent uploads are screened by the same checker while the filter is on.</p>
+  <p class="small muted">Both pictures are frames of the same cat drawing; nothing here was actually flagged. A classifier can make mistakes, so the honest claim is &ldquo;checks every picture&rdquo;, not &ldquo;guarantees&rdquo;. Style pictures a parent uploads are screened by the same checker while the filter is on.</p>
 </section>
 
 <!-- ============================================================ 5 -->
 <section class="chapter" id="memory">
   <p class="kicker">5 &middot; Hardware and memory</p>
   <h2>Fitting it all in 10 GB</h2>
-  <p>The models run as <b>TensorRT engines</b>: versions compiled for this exact graphics card, which is a big part of the speed. Building them takes roughly 10&ndash;25 minutes on the very first start; after that Dreamer is ready in about 8&ndash;10 seconds. Engines must fit in the card's memory together with the Windows desktop. The parent page estimates memory from a measured table and disables settings that would not fit.</p>
+  <p>The models run as <b>TensorRT engines</b>: versions compiled for this exact graphics card, which is a big part of the speed. Building them takes roughly 10&ndash;25 minutes on the very first start; after that Dreamer is ready in about 8&ndash;10 seconds. Engines must fit in the card's memory together with the Windows desktop. By default Dreamer draws with 2 steps, using engines built for up to 4 steps at 640&times;448. The parent page estimates memory from a measured table and disables settings that would not fit.</p>
 
   <div class="card">
     <div class="row" style="gap:16px">
-      <div>
-        <div class="small" style="font-weight:600;margin-bottom:6px">Engines built for</div>
-        <div class="seg" role="group" aria-label="Engine batch" id="engPick"></div>
-      </div>
       <div>
         <div class="small" style="font-weight:600;margin-bottom:6px">Picture size</div>
         <div class="seg" role="group" aria-label="Picture size" id="sizePick"></div>
@@ -583,9 +605,15 @@ footer ul { padding-left: 20px; }
       <label class="switch"><input type="checkbox" id="upToggle"> AI upscaler</label>
     </div>
     <div class="vram" id="vramBar" role="img" aria-label="Graphics memory use"></div>
-    <div class="vram-scale"><span>0</span><span>2.5 GB</span><span>5 GB</span><span>7.5 GB</span><span>10 GB</span></div>
+    <div class="vram-scale"><span>0</span><span>2.5 GB</span><span>5 GB</span><span>7.5 GB</span><span>10 GB (10,240 MB)</span></div>
+    <div class="vram-legend"><span><i style="background:var(--neutral-bar)"></i>Windows desktop</span><span><i style="background:var(--accent)"></i>Dreamer's engines</span><span><i style="background:var(--celebrate)"></i>AI upscaler</span><span><i style="background:var(--surface-sunken);box-shadow:inset 0 0 0 1px var(--border)"></i>free</span></div>
     <div class="vram-stats" id="vramStats"></div>
-    <p class="note" style="margin:12px 0 0">From <code>static/vram.json</code>: whole-card memory measured with <code>nvidia-smi</code> on the RTX 3080, including the desktop. Surprise from the measurements: engines for &ldquo;up to 2 steps&rdquo; need <i>more</i> memory than &ldquo;up to 4&rdquo; (measured twice). Picture size barely matters for memory, but a lot for speed.</p>
+    <details class="techy">
+      <summary>For the tech-curious: engine size</summary>
+      <p class="small muted" style="margin:8px 0">An engine is built for a fixed range of steps that can run together in one batch. A bigger range needs more memory, but not always: see the note below.</p>
+      <div class="seg" role="group" aria-label="Engine batch" id="engPick"></div>
+    </details>
+    <p class="note" style="margin:12px 0 0">GB here means 1,024 MB, so the parts add up to the bar. From <code>static/vram.json</code>: whole-card memory measured with <code>nvidia-smi</code> on the RTX 3080, including the desktop. Surprise from the measurements: engines for &ldquo;up to 2 steps&rdquo; need <i>more</i> memory than &ldquo;up to 4&rdquo; (measured twice). Picture size barely matters for memory, but a lot for speed.</p>
   </div>
 </section>
 
@@ -615,6 +643,7 @@ footer ul { padding-left: 20px; }
       <tbody id="cnTable"></tbody>
     </table>
   </div>
+  <p class="note" style="margin-top:8px">The 7.6 GB was measured in a separate ControlNet lab process (marked &ldquo;lab&rdquo;), so it does not match the memory section exactly.</p>
   <p class="small muted" style="margin-top:14px">They all cost the same, so speed decides nothing. Lineart and HED are trained on thin edges of real images, so they read a child's thick strokes as outlines to reproduce, and draw the strokes instead of the thing. Scribble is trained on rough strokes and turns them into objects, which is exactly what a drawing game needs. <b>Scribble stays.</b> Smaller alternatives (ControlNet-XS, T2I-Adapter) have no sketch version for this model family, so there is no cheaper drop-in.</p>
 </section>
 
@@ -622,20 +651,21 @@ footer ul { padding-left: 20px; }
 
 <footer class="wrap">
   <h3 style="color:var(--text)">Private by design</h3>
-  <p>Everything runs on the home network, in one program on the PC, with no account. Drawings and pictures never leave the PC. The models are downloaded once, on the first start; after that Dreamer switches its model loaders to offline mode and runs without contacting the internet.</p>
+  <p>Everything runs on the home network, in one program on the PC, with no account. Drawings and pictures never leave your home network. The models are downloaded once, on the first start; after that Dreamer switches its model loaders to offline mode and runs without contacting the internet. One exception: changing a model in <code>config.yaml</code>, or switching the safety filter on when it was off, may download once more.</p>
   <h3 style="color:var(--text)">Honest about where it stands</h3>
   <ul>
     <li>Used on one real iPad at home so far; most testing was in a desktop browser and with a test client.</li>
     <li>One child at a time.</li>
     <li>Needs a Windows PC with an NVIDIA RTX graphics card (tested on an RTX 3080, 10 GB).</li>
   </ul>
-  <p class="note">Every number on this page was measured on the development PC (Windows 11, RTX 3080 10 GB) on 2026-10-25. Sources: <code>docs/showcase/facts.md</code>, <code>docs/gpu-results.md</code>, <code>docs/research/refinement-models.md</code>, <code>docs/research/refinement-results.json</code>, <code>static/vram.json</code>, <code>server/refine.py</code>, <code>server/styles.py</code>, <code>server/imaging.py</code>, <code>server/worker.py</code>.</p>
+  <p class="note">The measured numbers on this page come from the development PC (Windows 11, RTX 3080 10 GB), measured on 2026-10-25. A few figures come from elsewhere, such as SD-Turbo's &ldquo;1 to 4 steps&rdquo; (its model card) and the settings in the code. Sources: <code>docs/showcase/facts.md</code>, <code>docs/gpu-results.md</code>, <code>docs/research/refinement-models.md</code>, <code>docs/research/refinement-results.json</code>, <code>static/vram.json</code>, <code>server/refine.py</code>, <code>server/styles.py</code>, <code>server/imaging.py</code>, <code>server/worker.py</code>.</p>
 </footer>
 
 <script>
 (function () {
   "use strict";
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const RUNG_MS = 46; // one anchored rung: 44-48 ms
   const byId = (id) => document.getElementById(id);
 
   /* ---------- shared: sprite-sheet crops ---------- */
@@ -688,12 +718,15 @@ footer ul { padding-left: 20px; }
     { title: "SD-Turbo UNet + scribble ControlNet", body: "The heart of it. SD-Turbo's UNet removes noise in 2 steps while the scribble ControlNet keeps it on the child's lines (strength 0.55). Both run as TensorRT engines compiled for this graphics card. While drawing, the 2 steps run together as one batch, so the picture keeps pace with the pen.", facts: ["2 steps, batched", "ControlNet strength 0.55", "ControlNet ≈ 27 ms of a 49 ms one-step frame"] },
     { title: "Tiny VAE decode", body: "The denoising happens on a compact latent grid, eight times smaller than the picture on each side. A small, fast decoder (TinyVAE) turns that grid into the full-colour picture.", facts: ["latent grid → pixels", "TensorRT engine"] },
     { title: "Safety check", body: "An image classifier looks at every picture before it leaves the PC. If it flags one, the previous picture stays on the iPad. It costs about 4 ms per picture.", facts: ["Freepik/nsfw_image_detector", "≈ 4 ms", "flagged → previous picture stays"] },
-    { title: "Picture to the iPad", body: "The picture goes back as a JPEG on the same WebSocket and appears next to the drawing. Mean round trip from a new stroke to a new picture: 128 ms, so about 0.1–0.2 s once running.", facts: ["JPEG", "128 ms mean round trip", "first picture after start-up 733 ms"] },
+    { title: "Picture to the iPad", body: "The picture goes back as a JPEG on the same WebSocket and appears next to the drawing. Measured with a WebSocket test client on the PC itself (512 px), the mean round trip from a new sketch to a new picture was 128 ms; the facts sheet puts it at about 0.1–0.2 s once running. The picture in this panel was made with the optional AI upscale on (off by default).", facts: ["JPEG", "128 ms mean (test client, Wi-Fi not included)", "first picture after start-up 733 ms"] },
   ];
   const stageItems = [...document.querySelectorAll(".stage")];
   const stageDetail = byId("stageDetail");
   function showStage(index) {
-    stageItems.forEach((item, position) => item.classList.toggle("on", position === index));
+    stageItems.forEach((item, position) => {
+      item.classList.toggle("on", position === index);
+      item.querySelector("button").setAttribute("aria-pressed", String(position === index));
+    });
     const stage = STAGES[index];
     stageDetail.innerHTML = `<h4>${index + 1}. ${stage.title}</h4><p>${stage.body}</p><div class="facts">${stage.facts.map((fact) => `<span class="chip accent">${fact}</span>`).join("")}</div>`;
   }
@@ -736,15 +769,15 @@ footer ul { padding-left: 20px; }
     const rows = [
       { title: "Graphics card, one picture", note: "640×448, 2 steps",
         bar: segment("gpu", 0, 80, "67-80 ms") + after(80, "67–80 ms") },
-      { title: "Round trip, iPad to iPad", note: "mean of 30 frames, real server",
-        bar: segment("gpu", 0, 88, "GPU work") + segment("net", 88, 40, "encoding and socket") + after(128, "128 ms") },
+      { title: "Round trip, test client on the PC", note: "512 px, Wi-Fi not included",
+        bar: segment("net", 0, 128, "128 ms mean round trip") + after(128, "128 ms") },
     ];
     let polish = segment("wait", 0, 150, "150 ms quiet") + segment("gpu", 150, 70, "settle") + segment("wait", 220, 150, "150 ms quiet");
-    for (let i = 0; i < 6; i++) polish += segment("rung", 370 + i * 44, 44, `rung ${i + 1}`);
-    rows.push({ title: "Child pauses", note: "quiet, settle, quiet, 6 rungs × ~44 ms", bar: polish });
+    for (let i = 0; i < 6; i++) polish += segment("rung", 370 + i * RUNG_MS, RUNG_MS, `rung ${i + 1}`);
+    rows.push({ title: "Child pauses", note: "quiet, settle, quiet, 6 rungs × 44–48 ms", bar: polish });
     byId("latency").innerHTML = rows.map((row) =>
       `<div class="lat-row"><span>${row.title}<br><span class="note">${row.note}</span></span><div class="lat-bar">${row.bar}</div></div>`).join("")
-      + `<div class="legend" style="margin-top:2px"><span><i style="background:var(--accent)"></i>graphics card</span><span><i style="background:var(--iris-300)"></i>encoding + network</span><span><i style="background:var(--track-rung)"></i>polishing rung</span><span><i style="background:var(--surface-pressed)"></i>waiting for quiet</span><span>full width = 0.7 s</span></div>`;
+      + `<div class="legend" style="margin-top:2px"><span><i style="background:var(--accent)"></i>graphics card</span><span><i style="background:var(--iris-300)"></i>whole round trip</span><span><i style="background:var(--track-rung)"></i>polishing rung</span><span><i style="background:var(--surface-pressed)"></i>waiting for quiet</span><span>full width = 0.7 s</span></div>`;
   })();
 
   /* ---------- 2. denoising slider ---------- */
@@ -769,52 +802,62 @@ footer ul { padding-left: 20px; }
   const noisyBadge = byId("noisyBadge");
   const stepCopy = byId("stepCopy");
   const T_MAX = 49;
-  const MARKERS = [
-    { t: 6, label: "draw 1", kind: "d" },
-    { t: 26, label: "draw 2", kind: "d" },
-    { t: 38, label: "rungs", kind: "r" },
-    { t: 48, label: "", kind: "r" },
-  ];
-  byId("tScale").innerHTML = MARKERS.map((marker) => `<span class="${marker.kind}" style="left:${(marker.t / T_MAX) * 100}%">${marker.label}</span>`).join("")
-    + [41, 44, 46, 47].map((position) => `<span class="r" style="left:${(position / T_MAX) * 100}%"></span>`).join("");
+  const DRAW_POSITIONS = [6, 26];
+  const RUNG_POSITIONS = [38, 41, 44, 46, 47, 48];
+  const markerHtml = (positions, kind, firstLabel) => positions.map((position, index) =>
+    `<span class="${kind}" style="left:${(position / T_MAX) * 100}%">${index === 0 ? firstLabel : ""}</span>`).join("");
+  byId("tScaleDraw").innerHTML = markerHtml(DRAW_POSITIONS, "d", "6") + `<span class="d" style="left:${(26 / T_MAX) * 100}%">26</span>`;
+  byId("tScaleRung").innerHTML = markerHtml(RUNG_POSITIONS, "r", "38 … 48");
   function noiseShare(position) {
     // Illustrative: noise falls off faster early on, like a real schedule.
     const progress = position / T_MAX;
     return Math.pow(1 - progress, 1.6);
   }
-  function renderDenoise() {
+  function describe(position) {
+    if (position < 6) {
+      return { title: "Pure noise", body: "This is where a classic model would start. Dreamer never starts this far back: it begins from the child's colour clouds with noise mixed in." };
+    }
+    if (position < 26) {
+      return { title: "Drawing pass, step 1 (position 6)", body: "The first, biggest step. The model sees the noisy start image, the line map (via the ControlNet) and the prompt, and makes its best guess of the whole picture. Big shapes and colours get decided here." };
+    }
+    if (position < 38) {
+      return { title: "Drawing pass, step 2 (position 26)", body: "The second step starts from less noise and firms up the guess. While the child draws, these two steps run together as one batch on the graphics card, about 67–80 ms per picture. Then the picture goes to the iPad." };
+    }
+    return { title: "Polishing pass: rungs at 38 → 48", body: "A separate pass, after the child pauses. Each rung takes the picture on screen, adds noise back up to its position (38, then 41, 44, 46, 47, 48), and removes it in one step. Later rungs add back less noise, so they can only change smaller things. 44–48 ms each. Position 49 is the last, least noisy point of the schedule; Dreamer's last rung is at 48. Section 3 shows why this matters." };
+  }
+  function renderDenoise(override) {
     const position = Number(tSlider.value);
-    const share = noiseShare(position);
+    const share = override && override.clean ? 0 : noiseShare(position);
     noiseCanvas.style.opacity = share.toFixed(3);
     noisyImg.style.filter = `blur(${(share * 14).toFixed(1)}px) saturate(${(0.4 + 0.6 * (1 - share)).toFixed(2)})`;
-    noisyBadge.textContent = position === 0 ? "pure noise" : `position ${position} of ${T_MAX}`;
-    let html;
-    if (position < 6) {
-      html = "<h4>Pure noise</h4><p class='small'>This is where a classic model would start. Dreamer never starts this far back: it begins from the child's colour clouds with noise mixed in.</p>";
-    } else if (position < 26) {
-      html = "<h4>Draw step 1 (position 6)</h4><p class='small'>The first, biggest step. The model sees the noisy start image, the line map (via the ControlNet) and the prompt, and makes its best guess of the whole picture. Big shapes and colours get decided here.</p>";
-    } else if (position < 38) {
-      html = "<h4>Draw step 2 (position 26)</h4><p class='small'>The second step starts from less noise and firms up the guess. While the child draws, these two steps run together as one batch on the graphics card, about 67–80 ms per picture. Then the picture goes to the iPad.</p>";
-    } else if (position < 49) {
-      html = "<h4>Polishing rungs (38 → 48)</h4><p class='small'>After the child pauses, single steps at 38, 41, 44, 46, 47 and 48 each start from a little less noise, so each can only change smaller things than the one before. About 44 ms each. Section 3 shows why that matters.</p>";
-    } else {
-      html = "<h4>Done</h4><p class='small'>No noise left: the finished, polished picture.</p>";
-    }
-    stepCopy.innerHTML = html;
+    const badge = override && override.badge ? override.badge : (position === 0 ? "pure noise" : `position ${position} of ${T_MAX}`);
+    noisyBadge.textContent = badge;
+    const text = override && override.copy ? override.copy : describe(position);
+    tSlider.setAttribute("aria-valuetext", `position ${position} of ${T_MAX}: ${text.title}`);
+    stepCopy.innerHTML = `<h4>${text.title}</h4><p class='small'>${text.body}</p>`;
   }
-  tSlider.addEventListener("input", renderDenoise);
+  tSlider.addEventListener("input", () => renderDenoise());
   renderDenoise();
   let stepAnimation = null;
   byId("playSteps").addEventListener("click", () => {
     if (stepAnimation) clearTimeout(stepAnimation);
-    const sequence = [0, 6, 26, 38, 41, 44, 46, 47, 48, 49];
+    const onScreen = { title: "Picture on screen", body: "The drawing pass is done and this picture is on the iPad. When the child pauses, the polishing pass starts from here." };
+    const frames = [
+      { position: 0 }, { position: 6 }, { position: 26 },
+      { position: 26, override: { clean: true, badge: "drawing picture on screen", copy: onScreen } },
+    ];
+    RUNG_POSITIONS.forEach((position, index) => {
+      frames.push({ position, override: { badge: `rung ${index + 1}: noise added back to ${position}`, copy: { title: `Rung ${index + 1}: re-noise to position ${position}`, body: "The picture on screen gets some noise added back (mostly the model's own noise estimate, 5% of its variance fresh), then one step removes it. The broad shapes of the answer are pinned to the first picture." } } });
+      frames.push({ position, override: { clean: true, badge: `after rung ${index + 1}`, copy: { title: `After rung ${index + 1}`, body: index === RUNG_POSITIONS.length - 1 ? "The ladder is done: same scene, more detail." : "This replaces the picture on the iPad, and the next rung starts from it with a little less noise." } } });
+    });
     let index = 0;
     const advance = () => {
-      tSlider.value = String(sequence[index]);
+      const frame = frames[index];
+      tSlider.value = String(frame.position);
       paintNoise();
-      renderDenoise();
+      renderDenoise(frame.override);
       index += 1;
-      if (index < sequence.length) stepAnimation = setTimeout(advance, reducedMotion ? 50 : (index <= 3 ? 1100 : 600));
+      if (index < frames.length) stepAnimation = setTimeout(advance, reducedMotion ? 50 : (index <= 4 ? 1100 : 650));
     };
     advance();
   });
@@ -908,7 +951,6 @@ footer ul { padding-left: 20px; }
   /* ---------- 3. draw / refine simulator ---------- */
   const DRAW_MS = 70;     // 2 batched steps at 640x448: 67-80 ms
   const SETTLE_DELAY_MS = 150;
-  const RUNG_MS = 44;
   const WINDOW_MS = 1600;
   const pad = byId("pad");
   const padCrop = byId("padCrop");
@@ -926,6 +968,7 @@ footer ul { padding-left: 20px; }
   let job = null;      // current GPU block
   let phase = "idle";  // idle | draw | wait1 | settle | wait2 | rung
   let waitUntil = 0;
+  let eventTime = 0;  // simulated time of the last worker transition
   let rungIndex = 0;
   let shownRung = 0;   // 0 = drawing picture; 1..6 = rung pictures
   let shownLabel = "Hold here to “draw”";
@@ -934,9 +977,11 @@ footer ul { padding-left: 20px; }
   function renderPad() {
     setCrop(padCrop, "refine", currentDrawing, Math.min(shownRung, ANCHORED_RUNGS), ANCHORED_ROW);
     padTag.textContent = shownLabel;
+    byId("padDrawingName").textContent = DRAWING_LABEL[currentDrawing].toLowerCase();
   }
-  function startBlock(kind, duration) {
-    job = { kind, start: simTime, end: simTime + duration };
+  // Blocks start at the exact simulated time their trigger happened, not at the next animation frame.
+  function startBlock(kind, duration, startAt) {
+    job = { kind, start: startAt, end: startAt + duration };
     blocks.push(job);
   }
   function step(now) {
@@ -954,10 +999,14 @@ footer ul { padding-left: 20px; }
     if (!running) { running = true; lastFrame = null; requestAnimationFrame(step); }
   }
   function advanceWorker() {
-    // Finish the current GPU block when its time is up.
+    // Several transitions can fall inside one animation frame; replay them all at their own times.
+    for (let guard = 0; guard < 32 && advanceOnce(); guard++) { /* keep going */ }
+  }
+  function advanceOnce() {
     if (job && simTime >= job.end) {
       const finished = job;
       job = null;
+      eventTime = finished.end;
       if (finished.kind === "draw" || finished.kind === "settle") {
         shownRung = 0;
         shownLabel = finished.kind === "draw" ? "Drawing picture" : "Settled picture";
@@ -965,26 +1014,27 @@ footer ul { padding-left: 20px; }
         shownRung = rungIndex;
         shownLabel = `Rung ${rungIndex} of ${ANCHORED_RUNGS}`;
         if (rungIndex === ANCHORED_RUNGS && lastPenUp !== null) {
-          simReadout.textContent = `Polished: last rung arrived ${Math.round(simTime - lastPenUp)} ms after the pen lifted (ladder itself: ${ANCHORED_RUNGS} × ${RUNG_MS} ms ≈ ${ANCHORED_RUNGS * RUNG_MS} ms).`;
+          simReadout.textContent = `Polished: last rung arrived ${Math.round(finished.end - lastPenUp)} ms after the pen lifted (ladder itself: ${ANCHORED_RUNGS} \u00d7 ${RUNG_MS} ms \u2248 ${ANCHORED_RUNGS * RUNG_MS} ms).`;
         }
       }
       renderPad();
     }
-    if (job) return; // one block in flight
+    if (job) return false; // one block in flight
     if (penDown) {
       // A new stroke is waiting: answer it (refinement already stopped after the rung in progress).
       phase = "draw";
-      startBlock("draw", DRAW_MS);
-      return;
+      startBlock("draw", DRAW_MS, Math.max(eventTime, penStart));
+      return true;
     }
-    if (phase === "draw") { phase = "wait1"; waitUntil = simTime + SETTLE_DELAY_MS; return; }
-    if (phase === "wait1" && simTime >= waitUntil) { phase = "settle"; startBlock("settle", DRAW_MS); return; }
-    if (phase === "settle") { phase = "wait2"; waitUntil = simTime + SETTLE_DELAY_MS; return; }
-    if (phase === "wait2" && simTime >= waitUntil) { phase = "rung"; rungIndex = 1; startBlock("rung", RUNG_MS); return; }
+    if (phase === "draw") { phase = "wait1"; waitUntil = Math.max(eventTime, lastPenUp ?? eventTime) + SETTLE_DELAY_MS; return true; }
+    if (phase === "wait1" && simTime >= waitUntil) { phase = "settle"; eventTime = waitUntil; startBlock("settle", DRAW_MS, waitUntil); return true; }
+    if (phase === "settle") { phase = "wait2"; waitUntil = eventTime + SETTLE_DELAY_MS; return true; }
+    if (phase === "wait2" && simTime >= waitUntil) { phase = "rung"; rungIndex = 1; eventTime = waitUntil; startBlock("rung", RUNG_MS, waitUntil); return true; }
     if (phase === "rung") {
-      if (rungIndex < ANCHORED_RUNGS) { rungIndex += 1; startBlock("rung", RUNG_MS); }
-      else { phase = "idle"; }
+      if (rungIndex < ANCHORED_RUNGS) { rungIndex += 1; startBlock("rung", RUNG_MS, eventTime); return true; }
+      phase = "idle";
     }
+    return false;
   }
   function drawTrack() {
     const windowStart = Math.max(0, simTime - WINDOW_MS);
@@ -1059,7 +1109,7 @@ footer ul { padding-left: 20px; }
   ];
   const STYLES = [
     ["Cartoon", "\u{1F58D}️", "cartoon style, bold outlines, flat colors"],
-    ["Crayon", "\u{1F58D}", "crayon drawing, waxy texture"],
+    ["Crayon", "✏️", "crayon drawing, waxy texture"],
     ["Watercolor", "\u{1F3A8}", "soft watercolor painting"],
     ["Clay", "\u{1F9F8}", "claymation, plasticine models"],
     ["Storybook", "\u{1F4D6}", "storybook illustration"],
@@ -1103,8 +1153,17 @@ footer ul { padding-left: 20px; }
     const verdict = byId("verdict");
     verdict.textContent = flagged ? "flagged" : "looks fine";
     verdict.className = `verdict ${flagged ? "flag" : "ok"}`;
-    byId("shownImg").src = flagged ? "../screenshots/examples/cat-picture.jpg" : "../screenshots/examples/house-picture.jpg";
+    renderSafety(flagged);
   });
+  // Safety demo: two consecutive anchored frames of the same cat drawing (refine-cat.png, columns 2 and 3).
+  function renderSafety(flagged) {
+    setCrop(byId("safePrev"), "refine", "cat", 2, ANCHORED_ROW);
+    setCrop(byId("safeNew"), "refine", "cat", 3, ANCHORED_ROW);
+    setCrop(byId("safeShown"), "refine", "cat", flagged ? 2 : 3, ANCHORED_ROW);
+    byId("safeShown").setAttribute("aria-label", flagged ? "What the child sees: the previous picture stays" : "What the child sees: the new picture");
+    byId("safeShownLabel").textContent = flagged ? "What the child sees: the previous one stays" : "What the child sees: the new one";
+  }
+  renderSafety(false);
 
   /* ---------- 5. memory (static/vram.json) ---------- */
   const BUDGET_MB = 10 * 1024;
@@ -1117,8 +1176,9 @@ footer ul { padding-left: 20px; }
   const SIZE_LABEL = { 512: "512×384", 640: "640×448", 768: "768×512", 896: "896×640", 1024: "1024×704" };
   let engineBatch = 4;
   let longSide = 640;
-  // GB as the measurement docs write them (7418 MB -> 7.4 GB); the budget bar is 10 x 1024 MB, like the admin page.
-  const gigabytes = (megabytes) => (megabytes / 1000).toFixed(1);
+  // One unit convention: GB = 1024 MB, and the bar is 10 x 1024 MB like the admin page's budget.
+  const gigabytes = (megabytes) => (megabytes / 1024).toFixed(1);
+  const DEFAULT_DRAW_MS = 73; // 2 steps together, 1-4 engine, 640x448 (docs/gpu-results.md)
   function renderVram() {
     const engine = VRAM[engineBatch];
     const [wholeCard, oneStepMs, multiStepMs] = engine.sizes[longSide];
@@ -1128,15 +1188,18 @@ footer ul { padding-left: 20px; }
     const free = BUDGET_MB - total;
     const percent = (megabytes) => `${(megabytes / BUDGET_MB) * 100}%`;
     byId("vramBar").innerHTML =
-      `<span class="desk" style="width:${percent(engine.idle)}" title="Windows desktop">desktop</span>` +
+      `<span class="desk" style="width:${percent(engine.idle)}" title="Windows desktop"></span>` +
       `<span class="eng" style="width:${percent(engines)}">engines ${gigabytes(engines)} GB</span>` +
       `<span class="up" style="width:${percent(upscaler)}">${upscaler ? "AI" : ""}</span>`;
-    byId("vramBar").setAttribute("aria-label", `Graphics memory: ${gigabytes(total)} of 10 GB in use`);
+    byId("vramBar").setAttribute("aria-label", `Graphics memory: ${gigabytes(total)} of 10 GB (10,240 MB) in use`);
+    const isDefault = engineBatch === 4 && longSide === 640;
+    const defaultLabel = isDefault
+      ? `<div class="stat"><b>${DEFAULT_DRAW_MS} ms</b><span>per picture, 2 steps: the default while drawing</span></div>`
+      : `<div class="stat"><b>${Math.round(oneStepMs)} ms</b><span>per picture, 1 step</span></div>`;
     const multiLabel = engineBatch === 1 ? "" : `<div class="stat"><b>${Math.round(multiStepMs)} ms</b><span>per picture, ${engineBatch} steps</span></div>`;
     byId("vramStats").innerHTML =
-      `<div class="stat"><b>${gigabytes(total)} GB</b><span>in use of 10 GB (incl. desktop ~${gigabytes(engine.idle)} GB)</span></div>` +
-      `<div class="stat"><b>${gigabytes(free)} GB</b><span>left over</span></div>` +
-      `<div class="stat"><b>${Math.round(oneStepMs)} ms</b><span>per picture, 1 step</span></div>` + multiLabel;
+      `<div class="stat"><b>${gigabytes(total)} GB</b><span>in use of 10 GB (10,240 MB): desktop ${gigabytes(engine.idle)} + engines ${gigabytes(engines)}${upscaler ? ` + upscaler ${gigabytes(upscaler)}` : ""}</span></div>` +
+      `<div class="stat"><b>${gigabytes(free)} GB</b><span>left over</span></div>` + defaultLabel + multiLabel;
   }
   segmented(byId("engPick"), [
     { value: 1, label: "1 step" }, { value: 2, label: "up to 2" }, { value: 4, label: "up to 4 (default)" },
@@ -1147,11 +1210,11 @@ footer ul { padding-left: 20px; }
 
   /* ---------- 6. ControlNet comparison (refinement-models.md + controlnet sheets) ---------- */
   const VARIANTS = [
-    { id: "scribble", label: "Scribble 0.55", row: 0, ms: 51.5, memory: "7.6 GB", look: "Pen lines become solid, coloured objects.", current: true },
-    { id: "lineart55", label: "Lineart 0.55", row: 1, ms: 52.7, memory: "7.6 GB", look: "Traces the pen strokes as glowing tubes; houses go see-through." },
-    { id: "lineart40", label: "Lineart 0.4", row: 2, ms: 52.9, memory: "7.6 GB", look: "A little softer, same traced-tube look." },
-    { id: "hed55", label: "HED 0.55", row: 3, ms: 53.7, memory: "7.6 GB", look: "Follows the lines closely, hazy halos around shapes." },
-    { id: "hed40", label: "HED 0.4", row: 4, ms: 53.7, memory: "7.6 GB", look: "Best of the alternatives; still ghostlier than scribble." },
+    { id: "scribble", label: "Scribble 0.55", row: 0, ms: 51.5, memory: "7.6 GB (lab)", look: "Pen lines become solid, coloured objects.", current: true },
+    { id: "lineart55", label: "Lineart 0.55", row: 1, ms: 52.7, memory: "7.6 GB (lab)", look: "Traces the pen strokes as glowing tubes; houses go see-through." },
+    { id: "lineart40", label: "Lineart 0.4", row: 2, ms: 52.9, memory: "7.6 GB (lab)", look: "A little softer, same traced-tube look." },
+    { id: "hed55", label: "HED 0.55", row: 3, ms: 53.7, memory: "7.6 GB (lab)", look: "Follows the lines closely, hazy halos around shapes." },
+    { id: "hed40", label: "HED 0.4", row: 4, ms: 53.7, memory: "7.6 GB (lab)", look: "Best of the alternatives; still ghostlier than scribble." },
   ];
   let variantIndex = 0;
   let cnDrawing = "cat";

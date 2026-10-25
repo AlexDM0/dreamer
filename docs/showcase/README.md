@@ -1,6 +1,7 @@
 # Dreamer showcase kit
 
 Everything needed to put together a short presentation (or a social post) about Dreamer.
+For a live walkthrough, open the interactive explainer [`../how-it-works.html`](../how-it-works.html).
 All pictures in the kit are real: they were made on the development PC (RTX 3080) by the
 actual app, driven by scripts. Nothing is mocked up by hand.
 

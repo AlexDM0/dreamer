@@ -144,6 +144,11 @@ The safety filter checks every picture, but it is not perfect, and AI pictures c
 odd. You can move any saved picture to the Trash from the parent page, and hide topics or
 styles that don't work well for your child.
 
+## 🔍 Curious how it works?
+
+Open [docs/how-it-works.html](docs/how-it-works.html) in a browser: an interactive page that
+walks through one stroke from the iPad to the picture, with real pictures and measurements.
+
 ## 💻 What you need
 
 - A **Windows gaming PC with an NVIDIA RTX graphics card**. Dreamer is tested on an
