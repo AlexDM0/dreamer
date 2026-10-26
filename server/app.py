@@ -51,6 +51,7 @@ from .gallery import FILES, LIST_MAX, DraftAutosaver, GalleryStore, LastFrame, i
 from .imaging import COLOR_RE
 from .mailbox import Mailbox
 from .params import LIMITS, GenParams, ParamsStore, defaults_from_config
+from .refine_trace import JUMP_DRIFT, JUMP_STEP, SMALL_FACTOR, RefineTraces
 from .session import FrameOrigin, Peer, SessionManager
 from .styles import KINDS, LABEL_MAX, StyleStore, clean_text
 from .worker import FrameJob, GpuWorker
@@ -232,6 +233,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     gallery = GalleryStore(data_dir)
     mailbox = Mailbox()
     runtime = _Runtime()
+    # The last few refinements, step by step (admin "Refinement steps" card); memory only.
+    traces = RefineTraces()
 
     def backend_name() -> str:
         if runtime.worker is not None:
@@ -282,6 +285,11 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             session.broadcast_admin(params_msg(previous))
             announce_canvas(before, previous)
 
+        def trace_changed(meta: dict[str, Any]) -> None:
+            """A refinement step was recorded: tell admin pages (metadata, no pictures)."""
+            if session.admins:
+                session.broadcast_admin({"t": "refine_trace", "trace": meta})
+
         def restart_process(msg: str) -> None:
             """The GPU crashed: leave with RESTART_EXIT_CODE after the status went out, so
             run.ps1 / run.sh start a fresh process (a crashed CUDA context can't recover)."""
@@ -303,7 +311,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
                            threadsafe(session.broadcast_status), config,
                            backend_factory=factory, params=params_store.get(),
                            on_params_error=threadsafe(params_reverted),
-                           on_fatal=restart_process)
+                           on_fatal=restart_process, traces=traces,
+                           on_trace=threadsafe(trace_changed))
         runtime.worker = worker
         worker.start()
         stats_task = asyncio.create_task(stats_loop())
@@ -328,6 +337,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     app.state.runtime = runtime
     app.state.params = params_store
     app.state.gallery = gallery
+    app.state.traces = traces
     app.add_middleware(AdminGate, auth=auth)
 
     # ----- caching: always revalidate pages and modules so the iPad picks up updates -----
@@ -990,6 +1000,39 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             raise save_failed(exc)
         log.info("emptied the gallery trash (%d artworks)", purged)
         return {"ok": True, "purged": purged}
+
+    # ----- refinement traces (debug: which refinement step changes the picture) -------
+
+    trace_headers = {"Cache-Control": "private, max-age=3600"}  # a trace's files never change
+
+    @admin.get("/refine-traces")
+    async def list_refine_traces() -> dict[str, Any]:
+        return {"traces": traces.list(),
+                "thresholds": {"step": JUMP_STEP, "drift": JUMP_DRIFT, "small_factor": SMALL_FACTOR}}
+
+    @admin.get("/refine-traces/{trace_id}/step/{index}.jpg")
+    async def refine_trace_step(trace_id: str, index: str) -> Response:
+        jpeg = traces.step_jpeg(trace_id, int(index)) if index.isdigit() and len(index) < 4 else None
+        if jpeg is None:
+            raise artwork_404()
+        return Response(jpeg, media_type="image/jpeg", headers=trace_headers)
+
+    @admin.get("/refine-traces/{trace_id}/sketch.png")
+    async def refine_trace_sketch(trace_id: str) -> Response:
+        trace = traces.get(trace_id)
+        if trace is None:
+            raise artwork_404()
+        return Response(trace.sketch_png, media_type="image/png", headers=trace_headers)
+
+    @admin.post("/refine-traces/{trace_id}/save")
+    async def save_refine_trace(trace_id: str) -> dict[str, Any]:
+        try:
+            folder = await asyncio.to_thread(traces.save, trace_id, data_dir)
+        except KeyError:
+            raise artwork_404()
+        except OSError as exc:
+            raise save_failed(exc)
+        return {"ok": True, "folder": folder, "name": folder.rsplit("/", 1)[-1]}
 
     app.include_router(admin)
     return app

@@ -234,6 +234,39 @@
       </form>
     </section>
 
+    <!-- 1c. Refinement steps (debug: which step changes the picture too much) -->
+    <section class="card trace-card" aria-labelledby="h-trace">
+      <details id="trace-details">
+        <summary>
+          <h2 id="h-trace">Refinement steps</h2>
+          <span class="trace-badge" id="trace-badge" hidden></span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <p class="muted trace-intro">Every picture of the last refinements, side by side.
+          <button type="button" class="info" id="trace-info" aria-expanded="false" aria-controls="trace-help" aria-label="What this shows" title="What does this show?"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button></p>
+        <div class="note trace-help" id="trace-help" hidden>
+          <p><b>Brush up</b> is the picture on the iPad when your child lifts the brush. Then come
+            the refinement steps: the pictures sent while the drawing pauses.</p>
+          <p><b>Change</b> is how much a step differs from the step before, <b>drift</b> how far it
+            has moved from "brush up": the mean difference (0 to 255) at 1/16 size, so only layout
+            and big colour areas count (as in tools/refine_lab.py). A step over
+            <output id="trace-th-step">6</output> change or <output id="trace-th-drift">6</output>
+            drift is marked red. Times are after the pause.</p>
+          <p>The last 5 runs are kept in memory only. <b>Save batch</b> writes one to
+            <code>data/refine-batches/</code> with the drawing and all settings, so it can be
+            replayed with <code>tools/replay_batch.py</code>.</p>
+        </div>
+        <div class="trace-bar">
+          <select id="trace-pick" aria-label="Which refinement to show"></select>
+          <button type="button" class="btn ghost" id="trace-save" disabled>Save batch</button>
+        </div>
+        <p class="trace-summary" id="trace-summary"></p>
+        <div class="trace-strip" id="trace-strip" role="list" aria-label="Refinement steps"></div>
+        <p class="muted trace-empty" id="trace-empty">No refinement yet. Draw on the iPad and pause: the steps show up here.</p>
+        <p class="note trace-saved" id="trace-saved" hidden></p>
+      </details>
+    </section>
+
     <!-- 2. Styles -->
     <section class="card" aria-labelledby="h-styles">
       <h2 id="h-styles">Styles</h2>
@@ -348,6 +381,24 @@
         Move to trash
       </button>
       <button type="button" class="btn primary" id="art-restore" hidden>Put back in the gallery</button>
+    </div>
+  </div>
+
+  <!-- One refinement step, enlarged. -->
+  <div class="sheet" id="trace-sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="trace-sheet-h">
+      <div class="sheet-head">
+        <h3 id="trace-sheet-h">Step</h3>
+        <button type="button" class="icon" id="trace-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <img class="trace-big" id="trace-big" alt="">
+      <p class="art-meta muted" id="trace-big-meta"></p>
+      <div class="row downloads">
+        <button type="button" class="btn ghost" id="trace-prev"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Previous</button>
+        <button type="button" class="btn ghost" id="trace-next">Next<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
     </div>
   </div>
 

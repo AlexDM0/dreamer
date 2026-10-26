@@ -140,9 +140,41 @@ page you can:
 - **Topics:** hide or show and reorder, or add your own topic with a short description of
   what the pictures are about (up to 120 characters, such as "a pirate ship on a sunny
   sea"). Your own topics can be deleted again.
+- **Refinement steps:** a debug card (closed by default) for finding refinement steps that
+  change the picture too much. See below.
 - **Gallery:** see below.
 
 Topics and styles are saved in `data/styles.json`.
+
+### Refinement steps
+
+Open the **Refinement steps** card to see the latest refinement as a strip of pictures (it
+scrolls sideways on a phone): first **brush up**, the picture on the iPad when the child
+lifted the brush, then every refinement step as it was sent (after upscaling, if on). Each
+step shows its **change** (Δ, the mean difference 0 to 255 to the step before) and its
+**drift** (the same against brush up), both measured at 1/16 size like
+`tools/refine_lab.py`, and the time after the pause. A step with a change or drift over 6
+gets a red outline; the card's title shows how many such jumps the latest run had. Tap a
+step to enlarge it. The strip updates live while refining; the picker shows one of the
+last 5 runs instead. The ⓘ button explains the numbers.
+
+The runs are kept in memory only. **Save batch** writes the run shown to
+`data/refine-batches/<YYYYmmdd-HHMMSS>-<model>/`:
+
+- `sketch.png`: the drawing exactly as the iPad sent it (the stroke layer);
+- `step-00.jpg` (brush up), `step-01.jpg`, ...: every step as shown;
+- `settings.json`: everything needed to run it again: all picture settings
+  (`params`, as in `data/params.json`), the derived creativity %, the prompt, paper colour,
+  orientation, picture size, engine, per-step time and scores, and the Dreamer git commit.
+
+Replay a batch on the GPU with
+`.venv\Scripts\python.exe tools\replay_batch.py data\refine-batches\<name>`. It makes the
+drawing picture again from `sketch.png` with the saved settings, runs the same refinement,
+writes `replay-step-XX.jpg` next to the originals and prints the recorded and replayed
+scores per step, plus how far each replayed step is from the original. `--saved-first`
+refines from the saved brush-up picture instead (the fresh drawing picture can differ a
+little from the live one); `--param refine_steps=6` and `--set ANCHOR_SIGMA=1.5` try other
+settings or `server/refine.py` constants on the same drawing.
 
 ## Drawing on the iPad
 

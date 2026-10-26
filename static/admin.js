@@ -154,6 +154,7 @@ async function enterAdmin() {
   await loadState();
   attempt(loadParams); // not fatal: the rest of the page works without it
   attempt(() => loadGallery());
+  attempt(loadTraces);
   $("login").hidden = true;
   $("admin").hidden = false;
   wantSocket = true;
@@ -355,6 +356,7 @@ function applyParams(res) {
   if (!res || !res.params) return;
   params = res.params;
   if (res.refine_models) {
+    refineModelLabels = res.refine_models;
     const select = $("p-refine-model");
     const signature = Object.keys(res.refine_models).join(",");
     if (select.dataset.signature !== signature) { // built once: keeps an open picker intact
@@ -782,6 +784,192 @@ $("art-purge").addEventListener("click", async () => {
   }
 });
 
+// ----- Refinement steps (debug) -----------------------------------------------------
+// The server keeps the last few refinements in memory (server/refine_trace.py) and pushes
+// {"t":"refine_trace"} metadata on every step; the pictures are fetched by URL.
+
+const TRACE_KEEP = 5;          // as many as the server keeps (TRACE_RING)
+const TCD_REFINER = "SD 1.5 + TCD (its own refinement)";
+let traceList = [];            // trace metadata, newest first
+let tracePick = "";            // "" = follow the latest; else a trace id
+let traceThresholds = { step: 6, drift: 6 };
+let refineModelLabels = {};    // refine_model -> label (from GET /api/admin/params)
+let traceBig = null;           // {id, index} shown in the sheet
+
+const tracePath = (id) => `/api/admin/refine-traces/${encodeURIComponent(id)}`;
+const stepUrl = (id, index) => `${tracePath(id)}/step/${index}.jpg`;
+const shownTrace = () => (tracePick && traceList.find((trace) => trace.id === tracePick)) || traceList[0] || null;
+const modelLabel = (model) => (model === "tcd" ? TCD_REFINER : refineModelLabels[model] || model);
+const isHot = (value, limit) => value != null && value > limit;
+
+async function loadTraces() {
+  const res = await api("GET", "/api/admin/refine-traces");
+  traceList = res.traces || [];
+  if (res.thresholds) traceThresholds = res.thresholds;
+  $("trace-th-step").textContent = String(traceThresholds.step);
+  $("trace-th-drift").textContent = String(traceThresholds.drift);
+  renderTraces();
+}
+
+/** A live update from the admin socket: the trace (new or with one more step). */
+function onTrace(trace) {
+  const known = traceList.findIndex((item) => item.id === trace.id);
+  if (known >= 0) traceList[known] = trace;
+  else traceList = [trace, ...traceList].slice(0, TRACE_KEEP);
+  renderTraces();
+}
+
+function traceTime(trace) {
+  const date = new Date(trace.created_at);
+  return Number.isNaN(date.getTime()) ? trace.created_at
+    : date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
+}
+
+function renderTraces() {
+  if (tracePick && !traceList.some((trace) => trace.id === tracePick)) tracePick = ""; // dropped
+  const latest = traceList[0];
+  const badge = $("trace-badge");
+  badge.hidden = !latest || !latest.jumps;
+  if (latest) badge.textContent = latest.jumps === 1 ? "1 jump" : `${latest.jumps} jumps`;
+
+  const select = $("trace-pick");
+  if (document.activeElement !== select) {
+    select.replaceChildren(
+      el("option", { value: "" }, "Latest (live)"),
+      ...traceList.map((trace) => el("option", { value: trace.id },
+        `${traceTime(trace)}` + (trace.jumps ? ` · ${trace.jumps} jump${trace.jumps === 1 ? "" : "s"}` : "")
+        + ` · ${trace.steps.length - 1} steps · ${trace.model}`)));
+    select.value = tracePick;
+  }
+
+  const trace = shownTrace();
+  $("trace-empty").hidden = !!trace;
+  $("trace-save").disabled = !trace;
+  $("trace-summary").hidden = !trace;
+  const saved = $("trace-saved");
+  saved.hidden = !(trace && trace.saved_as);
+  if (trace && trace.saved_as) saved.textContent = `Saved in data/${trace.saved_as}`;
+  renderStrip(trace);
+  if (!trace) return;
+  const status = trace.error ? `stopped by an error: ${trace.error}`
+    : trace.stopped ? "stopped by a new stroke" : trace.done ? "done" : "refining…";
+  $("trace-summary").textContent = [
+    traceTime(trace), modelLabel(trace.model),
+    `${trace.steps.length - 1} step${trace.steps.length === 2 ? "" : "s"} (refine ${trace.refine_steps})`,
+    `${trace.width}×${trace.height}` + (trace.upscale === "x2" ? " (upscaled ×2)" : ""),
+    trace.max_step != null ? `max change ${trace.max_step}` : null,
+    trace.max_drift != null ? `max drift ${trace.max_drift}` : null, status,
+  ].filter(Boolean).join(" · ");
+  if (traceBig && traceBig.id === trace.id) showTraceStep(trace, traceBig.index);
+}
+
+/** The strip of steps; tiles of the trace already shown are kept, so a live update only
+ * adds the new step (no reloading pictures, no jumping scroll position). */
+function renderStrip(trace) {
+  const strip = $("trace-strip");
+  if (!trace) { strip.replaceChildren(); delete strip.dataset.trace; return; }
+  const fresh = strip.dataset.trace !== trace.id;
+  if (fresh) {
+    strip.replaceChildren();
+    strip.scrollLeft = 0;
+    strip.dataset.trace = trace.id;
+  }
+  let added = false;
+  trace.steps.forEach((step, index) => {
+    let tile = strip.children[index];
+    if (!tile) {
+      tile = el("button", { type: "button", className: "trace-step" });
+      tile.setAttribute("role", "listitem");
+      const picture = el("img", { src: stepUrl(trace.id, step.index), alt: "", loading: "lazy" });
+      picture.style.aspectRatio = `${trace.width} / ${trace.height}`;
+      tile.append(picture, el("span", { className: "trace-cap" }));
+      tile.addEventListener("click", () => showTraceStep(shownTrace(), index));
+      strip.append(tile);
+      added = true;
+    }
+    tile.classList.toggle("jump", step.jump);
+    tile.setAttribute("aria-label", stepText(step));
+    tile.querySelector(".trace-cap").replaceChildren(...stepCaption(step));
+  });
+  // While following a live refinement, keep its newest step in view.
+  if (added && !fresh && !tracePick) strip.scrollTo({ left: strip.scrollWidth, behavior: "smooth" });
+}
+
+function stepTitle(step) {
+  return step.index === 0 ? "Brush up" : `Step ${step.index}`;
+}
+
+function stepText(step) {
+  if (step.index === 0) return "Brush up: the picture when the brush lifted";
+  return `${stepTitle(step)}: change ${step.step}, drift ${step.drift}, ${Math.round(step.ms)} ms`;
+}
+
+function stepCaption(step) {
+  const title = el("b", { textContent: stepTitle(step) });
+  if (step.index === 0) return [title, el("small", { textContent: "on screen" }), el("small", { textContent: "0 ms" })];
+  const scores = el("small", {},
+    el("span", { className: isHot(step.step, traceThresholds.step) ? "hot" : "", textContent: `Δ ${step.step}` }),
+    " · ",
+    el("span", { className: isHot(step.drift, traceThresholds.drift) ? "hot" : "", textContent: `drift ${step.drift}` }));
+  return [title, scores, el("small", { textContent: `${Math.round(step.ms)} ms` })];
+}
+
+function showTraceStep(trace, index) {
+  if (!trace || !trace.steps[index]) return;
+  const step = trace.steps[index];
+  traceBig = { id: trace.id, index };
+  $("trace-sheet-h").textContent = `${stepTitle(step)} of ${trace.steps.length - 1}`;
+  const big = $("trace-big");
+  const url = stepUrl(trace.id, step.index);
+  if (big.getAttribute("src") !== url) big.src = url;
+  big.alt = stepText(step);
+  $("trace-big-meta").textContent = `${stepText(step)} · ${step.width}×${step.height}`;
+  $("trace-prev").disabled = index === 0;
+  $("trace-next").disabled = index >= trace.steps.length - 1;
+  $("trace-sheet").hidden = false;
+}
+
+function closeTraceStep() {
+  traceBig = null;
+  $("trace-sheet").hidden = true;
+}
+
+$("trace-details").addEventListener("toggle", () => {
+  if ($("trace-details").open) attempt(loadTraces);
+});
+$("trace-info").addEventListener("click", () => {
+  const help = $("trace-help");
+  help.hidden = !help.hidden;
+  $("trace-info").setAttribute("aria-expanded", String(!help.hidden));
+});
+$("trace-pick").addEventListener("change", (event) => {
+  tracePick = event.target.value;
+  event.target.blur();
+  renderTraces();
+});
+$("trace-save").addEventListener("click", async () => {
+  const trace = shownTrace();
+  if (!trace) return;
+  const button = $("trace-save");
+  button.disabled = true;
+  const res = await attempt(() => api("POST", `${tracePath(trace.id)}/save`));
+  button.disabled = false;
+  if (!res) return;
+  trace.saved_as = res.folder;
+  toast(`Saved as ${res.name}`);
+  renderTraces();
+});
+$("trace-close").addEventListener("click", closeTraceStep);
+$("trace-sheet").addEventListener("click", (event) => { if (event.target === event.currentTarget) closeTraceStep(); });
+$("trace-prev").addEventListener("click", () => traceBig && showTraceStep(shownTrace(), traceBig.index - 1));
+$("trace-next").addEventListener("click", () => traceBig && showTraceStep(shownTrace(), traceBig.index + 1));
+document.addEventListener("keydown", (event) => {
+  if (!traceBig) return;
+  if (event.key === "Escape") closeTraceStep();
+  else if (event.key === "ArrowLeft") $("trace-prev").click();
+  else if (event.key === "ArrowRight") $("trace-next").click();
+});
+
 // ----- Live view over /ws/admin -----------------------------------------------------
 
 function openSocket() {
@@ -858,6 +1046,8 @@ function onJson(text) {
   try { msg = JSON.parse(text); } catch { return; }
   if (msg.t === "params") {
     applyParams(msg); // changed on another phone, or reverted after an apply error
+  } else if (msg.t === "refine_trace") {
+    if (msg.trace) onTrace(msg.trace);
   } else if (msg.t === "gallery") {
     attempt(() => loadGallery()); // the kid saved, or another phone changed something
   } else if (msg.t === "status") {

@@ -21,6 +21,7 @@ from . import imaging, offline, refine
 from .config import canvas_dims
 from .mailbox import Mailbox
 from .params import GenParams, defaults_from_config
+from .refine_trace import RefineTrace, RefineTraces
 
 log = logging.getLogger("dreamer.worker")
 
@@ -64,13 +65,33 @@ def _is_fatal(msg: str) -> bool:
     return any(marker.lower() in msg.lower() for marker in FATAL_CUDA_MARKERS)
 
 
+def frame_inputs(config: Any, sketch: Image.Image, background: str | None,
+                 params: GenParams) -> tuple[Image.Image, Image.Image | None]:
+    """(init image, line map) for a drawing, as the backend gets them (also used by
+    tools/replay_batch.py, so a replayed batch gets the very same inputs)."""
+    line_map = None
+    # Each picture model has its own ControlNet (None / empty: it runs without one).
+    model = config.model
+    controlnet = model.tcd_controlnet if params.picture_model == "tcd" else model.controlnet
+    if controlnet and params.controlnet_enabled:
+        line_map = imaging.make_line_map(sketch, params.line_polarity,
+                                         params.line_threshold, params.line_dilate)
+    if line_map is not None:
+        init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
+                                       params.line_threshold, background)
+    else:  # without a line map the strokes are the only structure, so keep them
+        init = imaging.compose(sketch, background)
+    return init, line_map
+
+
 class GpuWorker(threading.Thread):
     """Daemon thread running warmup, then the frame loop until ``stop()``.
 
     ``backend`` may be None when ``backend_factory`` is given: the backend is then
     built on this thread, so model loading also happens on the GPU thread.
     ``on_result(seq, jpeg_bytes, owner)`` (owner = ``FrameJob.owner``) and
-    ``on_status(state, msg)`` must be thread-safe.
+    ``on_status(state, msg)`` must be thread-safe. Every refinement is recorded in
+    ``traces`` (server/refine_trace.py); ``on_trace(meta)`` (thread-safe) hears of each step.
     """
 
     def __init__(self, backend: Any, mailbox: Mailbox,
@@ -80,7 +101,9 @@ class GpuWorker(threading.Thread):
                  backend_factory: Callable[[], Any] | None = None,
                  params: GenParams | None = None,
                  on_params_error: Callable[[GenParams], None] | None = None,
-                 on_fatal: Callable[[str], None] | None = None) -> None:
+                 on_fatal: Callable[[str], None] | None = None,
+                 traces: RefineTraces | None = None,
+                 on_trace: Callable[[dict[str, Any]], None] | None = None) -> None:
         super().__init__(name="gpu-worker", daemon=True)
         # ``on_fatal(msg)`` is called once when the GPU itself has crashed (see _is_fatal):
         # nothing in this process can recover then, so the app restarts the process.
@@ -122,6 +145,7 @@ class GpuWorker(threading.Thread):
         # (refinement models keep its broad terms), and the upscaler (made on first use).
         self._refine_plan: bool = False
         self._shown: Image.Image | None = None
+        self._shown_jpeg: bytes | None = None  # _shown as it was sent (step 0 of a trace)
         self._upscaler: Any = None
         # Set by reset() (any thread), consumed on this thread: forget the drawing.
         self._reset_event = threading.Event()
@@ -131,6 +155,9 @@ class GpuWorker(threading.Thread):
         self._dims = canvas_dims(config)["landscape"]
         # The picture model (params.picture_model) the current backend was built for.
         self._backend_kind: str | None = None
+        # Refinement traces for the admin page's "Refinement steps" card.
+        self.traces = traces if traces is not None else RefineTraces()
+        self.on_trace = on_trace
 
     # ----- public API (any thread) ---------------------------------------------------
 
@@ -224,7 +251,7 @@ class GpuWorker(threading.Thread):
         if self._reset_event.is_set():
             self._reset_event.clear()
             self._settle_job, self._settle_left, self._refine_plan = None, 0, False
-            self._needs_prime, self._shown = True, None
+            self._needs_prime, self._shown, self._shown_jpeg = True, None, None
 
     def _set_state(self, state: str, msg: str = "") -> None:
         self._state = state
@@ -322,7 +349,7 @@ class GpuWorker(threading.Thread):
         self._close_backend()
         self._params = params
         self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
-        self._shown = None
+        self._shown = self._shown_jpeg = None
         if self._start_backend():
             return True
         reason = self._switch_failed_message(params.picture_model, self._start_error)
@@ -450,19 +477,7 @@ class GpuWorker(threading.Thread):
     def _frame_inputs(self, sketch: Image.Image, job: FrameJob,
                       params: GenParams) -> tuple[Image.Image, Image.Image | None]:
         """(init image, line map) for a drawing, as the backend gets them."""
-        line_map = None
-        # Each picture model has its own ControlNet (None / empty: it runs without one).
-        model = self.config.model
-        controlnet = model.tcd_controlnet if params.picture_model == "tcd" else model.controlnet
-        if controlnet and params.controlnet_enabled:
-            line_map = imaging.make_line_map(sketch, params.line_polarity,
-                                             params.line_threshold, params.line_dilate)
-        if line_map is not None:
-            init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
-                                           params.line_threshold, job.background)
-        else:  # without a line map the strokes are the only structure, so keep them
-            init = imaging.compose(sketch, job.background)
-        return init, line_map
+        return frame_inputs(self.config, sketch, job.background, params)
 
     def _refine_frame(self, job: FrameJob) -> None:
         """Refine the drawing after it paused with params.refine_model (server/refine.py),
@@ -471,38 +486,93 @@ class GpuWorker(threading.Thread):
         params = self._params
         all_dims = canvas_dims(self.config, params.resolution)
         dims = all_dims.get(job.orientation or "landscape", all_dims["landscape"])
+        trace = None
         try:
             sketch = imaging.decode_sketch(job.png_bytes, dims, layered=job.background is not None)
             if imaging.is_blank(sketch):
                 return
             init, line_map = self._frame_inputs(sketch, job, params)
             first = self._shown if self._shown is not None else init
+            first_jpeg = self._shown_jpeg if self._shown is not None else None
             self._needs_prime = True  # the stream now runs refinement steps
             refine_own = getattr(self.backend, "refine_own", None)
             if refine_own is not None:  # a picture model with its own refinement (TCD)
                 upscales_itself = False
+                trace = self._begin_trace(job, params, dims, "tcd", False, first, first_jpeg)
                 steps = refine_own(init, line_map, params.refine_steps)
             else:
                 upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
                 if upscales_itself:
                     self._ensure_upscaler()
+                trace = self._begin_trace(job, params, dims, params.refine_model, upscales_itself,
+                                          first, first_jpeg)
                 steps = refine.run(params.refine_model, self.backend, first, init, line_map,
                                    tuple(params.t_index_list), params.refine_steps, self._upscaler)
+            stopped = False
             try:
                 for picture in steps:
                     if params.upscale == "x2" and not upscales_itself:
                         picture = self._upscale(picture)
-                    self.on_result(job.seq, imaging.encode_jpeg(picture, params.jpeg_quality), job.owner)
+                    jpeg = imaging.encode_jpeg(picture, params.jpeg_quality)
+                    self.on_result(job.seq, jpeg, job.owner)
+                    self._trace_step(trace, picture, jpeg)
                     if (self.mailbox.pending or self._stop_event.is_set()
                             or self._reset_event.is_set()):
+                        stopped = True
                         break
             finally:
                 steps.close()
+            self._finish_trace(trace, stopped)
         except Exception as exc:
             log.exception("refining seq=%d failed", job.seq)
+            self._finish_trace(trace, error=str(exc) or type(exc).__name__)
             self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
             self._record_failure(str(exc) or type(exc).__name__)
             self._maybe_rebuild()
+
+    # ----- refinement traces (recording must never break refining) ----------------------
+
+    def _begin_trace(self, job: FrameJob, params: GenParams, dims: tuple[int, int], model: str,
+                     upscales_itself: bool, first: Image.Image,
+                     first_jpeg: bytes | None) -> RefineTrace | None:
+        """Start a trace with step 0: the picture on screen when the drawing paused."""
+        try:
+            if first_jpeg is None:
+                first_jpeg = imaging.encode_jpeg(first, params.jpeg_quality)
+            trace = RefineTrace(job.seq, model, job.png_bytes, job.prompt, job.background,
+                                job.orientation, dims, self.backend_name, params.to_dict(),
+                                upscales_itself)
+            self.traces.begin(trace, first, first_jpeg)
+        except Exception:
+            log.exception("could not start a refinement trace")
+            return None
+        self._notify_trace(trace)
+        return trace
+
+    def _trace_step(self, trace: RefineTrace | None, picture: Image.Image, jpeg: bytes) -> None:
+        if trace is None:
+            return
+        try:
+            self.traces.add_step(trace, picture, jpeg)
+        except Exception:
+            log.exception("could not record a refinement step")
+            return
+        self._notify_trace(trace)
+
+    def _finish_trace(self, trace: RefineTrace | None, stopped: bool = False,
+                      error: str | None = None) -> None:
+        if trace is None or trace.done:
+            return
+        self.traces.finish(trace, stopped, error)
+        self._notify_trace(trace)
+
+    def _notify_trace(self, trace: RefineTrace) -> None:
+        if self.on_trace is None:
+            return
+        try:
+            self.on_trace(self.traces.meta(trace))
+        except Exception:
+            log.exception("on_trace callback failed")
 
     def _ensure_upscaler(self) -> Any:
         """The upscaler (its weights load on first use; warns once if they are missing)."""
@@ -560,11 +630,13 @@ class GpuWorker(threading.Thread):
                 for _ in range(runs):
                     picture = self.backend.generate(init, line_map)
                 self._needs_prime = False
-                self._shown = picture
+                self._shown, self._shown_jpeg = picture, None
                 if not settling:
                     self._settle_job, self._settle_left = job, latency
                     self._refine_plan = self._plan_refinement(params)
             jpeg = imaging.encode_jpeg(picture, params.jpeg_quality)
+            if used_backend:
+                self._shown_jpeg = jpeg
         except Exception as exc:
             log.exception("frame seq=%d failed", job.seq)
             self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
