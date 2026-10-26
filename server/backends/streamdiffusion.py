@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from collections.abc import Hashable, Iterator
 from typing import Any
 
@@ -22,6 +23,10 @@ from .base import GenParamsLike
 from .common import DEFAULT_SEED, model_attr, previous_or_black
 
 log = logging.getLogger("dreamer.backend.streamdiffusion")
+# The fork hands diffusers' image processor tensors that are already in [-1, 1]; diffusers
+# handles that correctly but warns on every frame, which floods the console and the log.
+warnings.filterwarnings("ignore", message=r"Passing `image` as torch tensor with value range in \[-1,1\]",
+                        category=FutureWarning)
 
 # Used for prepare() before the first real prompt arrives from the worker.
 DEFAULT_PROMPT = "a colorful illustration, for children, friendly, bright colors, wholesome"

@@ -251,6 +251,10 @@ export class Toolbar extends EventTarget {
       if (s.eraser) {
         b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 19h11M5.5 15.5l8-8a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 19H8.5l-3-3a.7.7 0 0 1 0-.5zM9.5 11.5l5 5"/></svg>';
       }
+      // Pick on pointerdown, not click: a child can draw with one finger and tap colours with
+      // another, and iPad Safari sends no click for a tap while another finger is down.
+      // Click still covers the keyboard (picking twice is harmless).
+      b.addEventListener("pointerdown", () => this._pickColor(s.color, b, s.eraser));
       b.addEventListener("click", () => this._pickColor(s.color, b, s.eraser));
       box.append(b);
     }
