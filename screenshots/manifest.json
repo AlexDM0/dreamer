@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-25T22:23:28+0100",
+  "generated": "2026-10-26T08:28:38+0100",
   "generator": "tools/make_showcase.py",
   "note": "Real pictures made on the RTX 3080 PC (StreamDiffusion SD-Turbo + scribble ControlNet). UI shots are 2x device pixel ratio.",
   "files": [
@@ -17,7 +17,7 @@
       "orientation": "landscape",
       "width": 2560,
       "height": 1800,
-      "bytes": 758276
+      "bytes": 757750
     },
     {
       "file": "desktop-help-top.png",
@@ -32,7 +32,7 @@
       "orientation": "landscape",
       "width": 2560,
       "height": 1800,
-      "bytes": 673467
+      "bytes": 939112
     },
     {
       "file": "examples/castle-picture.jpg",
@@ -212,7 +212,7 @@
       "orientation": "portrait",
       "width": 896,
       "height": 1280,
-      "bytes": 116668
+      "bytes": 121372
     },
     {
       "file": "examples/meadow-sketch.png",
@@ -232,7 +232,7 @@
       "orientation": "portrait",
       "width": 448,
       "height": 640,
-      "bytes": 48138
+      "bytes": 53370
     },
     {
       "file": "examples/rocket-picture.jpg",
@@ -289,7 +289,7 @@
       "artwork": "castle",
       "width": 2360,
       "height": 1640,
-      "bytes": 346674
+      "bytes": 317389
     },
     {
       "file": "ipad-landscape-castle-split.png",
@@ -309,7 +309,7 @@
       "paper": "#c9b6f2",
       "width": 2360,
       "height": 1640,
-      "bytes": 933635
+      "bytes": 905077
     },
     {
       "file": "ipad-landscape-cat-keep-drawing.jpg",
@@ -326,7 +326,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 414925
+      "bytes": 384693
     },
     {
       "file": "ipad-landscape-cat-sketch.png",
@@ -343,7 +343,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 341736
+      "bytes": 307539
     },
     {
       "file": "ipad-landscape-cat-split-light.jpg",
@@ -360,7 +360,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 433282
+      "bytes": 402456
     },
     {
       "file": "ipad-landscape-cat-split.jpg",
@@ -380,7 +380,7 @@
       "paper": "#1e2a5a",
       "width": 2360,
       "height": 1640,
-      "bytes": 999549
+      "bytes": 370686
     },
     {
       "file": "ipad-landscape-dinosaur-minimised.jpg",
@@ -416,7 +416,7 @@
       "paper": "#ffffff",
       "width": 2360,
       "height": 1640,
-      "bytes": 469393
+      "bytes": 437124
     },
     {
       "file": "ipad-landscape-dinosaur-sketch.png",
@@ -433,7 +433,7 @@
       "artwork": "dinosaur",
       "width": 2360,
       "height": 1640,
-      "bytes": 337359
+      "bytes": 304159
     },
     {
       "file": "ipad-landscape-gallery-detail-light.jpg",
@@ -450,7 +450,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 326047
+      "bytes": 326057
     },
     {
       "file": "ipad-landscape-gallery-detail.png",
@@ -467,7 +467,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 325359
+      "bytes": 1003505
     },
     {
       "file": "ipad-landscape-gallery-light.jpg",
@@ -483,7 +483,7 @@
       "orientation": "landscape",
       "width": 2360,
       "height": 1640,
-      "bytes": 342209
+      "bytes": 342847
     },
     {
       "file": "ipad-landscape-gallery.jpg",
@@ -498,7 +498,7 @@
       "orientation": "landscape",
       "width": 2360,
       "height": 1640,
-      "bytes": 352714
+      "bytes": 353428
     },
     {
       "file": "ipad-landscape-house-picture.jpg",
@@ -518,7 +518,7 @@
       "paper": "#000000",
       "width": 2360,
       "height": 1640,
-      "bytes": 419669
+      "bytes": 386878
     },
     {
       "file": "ipad-landscape-house-saving.jpg",
@@ -535,7 +535,7 @@
       "artwork": "house",
       "width": 2360,
       "height": 1640,
-      "bytes": 465049
+      "bytes": 432148
     },
     {
       "file": "ipad-landscape-house-sketch.png",
@@ -552,7 +552,7 @@
       "artwork": "house",
       "width": 2360,
       "height": 1640,
-      "bytes": 341442
+      "bytes": 306191
     },
     {
       "file": "ipad-landscape-paper-picker.png",
@@ -568,7 +568,7 @@
       "orientation": "landscape",
       "width": 2360,
       "height": 1640,
-      "bytes": 369155
+      "bytes": 313010
     },
     {
       "file": "ipad-landscape-rocket-live-split.png",
@@ -586,7 +586,7 @@
       "artwork": "rocket",
       "width": 2360,
       "height": 1640,
-      "bytes": 527857
+      "bytes": 497696
     },
     {
       "file": "ipad-landscape-rocket-sketch.png",
@@ -603,7 +603,7 @@
       "artwork": "rocket",
       "width": 2360,
       "height": 1640,
-      "bytes": 403793
+      "bytes": 371848
     },
     {
       "file": "ipad-landscape-rocket-split.png",
@@ -623,7 +623,7 @@
       "paper": "#000000",
       "width": 2360,
       "height": 1640,
-      "bytes": 366353
+      "bytes": 1007666
     },
     {
       "file": "ipad-landscape-start.png",
@@ -640,7 +640,7 @@
       "orientation": "landscape",
       "width": 2360,
       "height": 1640,
-      "bytes": 231357
+      "bytes": 197595
     },
     {
       "file": "ipad-portrait-meadow-picture.jpg",
@@ -660,7 +660,7 @@
       "paper": "#8fd3ff",
       "width": 1640,
       "height": 2360,
-      "bytes": 467227
+      "bytes": 455825
     },
     {
       "file": "ipad-portrait-meadow-sketch.png",
@@ -677,7 +677,7 @@
       "artwork": "meadow",
       "width": 1640,
       "height": 2360,
-      "bytes": 364141
+      "bytes": 344320
     },
     {
       "file": "ipad-portrait-meadow-split.jpg",
@@ -697,7 +697,7 @@
       "paper": "#8fd3ff",
       "width": 1640,
       "height": 2360,
-      "bytes": 464768
+      "bytes": 430010
     },
     {
       "file": "phone-admin-artwork-dark.png",
@@ -714,7 +714,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 373208
+      "bytes": 383312
     },
     {
       "file": "phone-admin-artwork-light.png",
@@ -731,7 +731,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 379812
+      "bytes": 389694
     },
     {
       "file": "phone-admin-gallery-dark.png",
@@ -747,7 +747,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 432844
+      "bytes": 432872
     },
     {
       "file": "phone-admin-gallery-light.png",
@@ -763,7 +763,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 429499
+      "bytes": 429611
     },
     {
       "file": "phone-admin-login-dark.png",
@@ -813,7 +813,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 172252
+      "bytes": 172191
     },
     {
       "file": "phone-admin-memory-meter-light.png",
@@ -831,7 +831,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 166057
+      "bytes": 166149
     },
     {
       "file": "phone-admin-now-dark.png",
@@ -849,7 +849,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 397902
+      "bytes": 397804
     },
     {
       "file": "phone-admin-now-light.png",
@@ -867,7 +867,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 394071
+      "bytes": 394725
     },
     {
       "file": "phone-admin-picture-controls-dark.png",
@@ -883,7 +883,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 166699
+      "bytes": 180090
     },
     {
       "file": "phone-admin-picture-controls-light.png",
@@ -899,7 +899,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 162860
+      "bytes": 175845
     },
     {
       "file": "phone-help-refine.png",
@@ -915,7 +915,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 494669
+      "bytes": 494763
     },
     {
       "file": "phone-help-top.png",
@@ -930,7 +930,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 259966
+      "bytes": 268951
     }
   ]
 }
