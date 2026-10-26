@@ -42,6 +42,7 @@
     figure.is-default { border-color: var(--accent); }
     figure .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--border); }
     figure img { width: 100%; display: block; aspect-ratio: 10 / 7; object-fit: cover; }
+    img.wide { width: 100%; height: auto; display: block; border-radius: 12px; margin: 12px 0; }
     figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2);
                  padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
     figcaption b { font-weight: var(--weight-semibold); white-space: nowrap; }
@@ -71,7 +72,7 @@
     <h1>What the picture controls do</h1>
   </header>
   <nav class="toc" aria-label="Controls">
-    <a href="#creativity">Creativity</a><a href="#steps">Draw reaction</a><a href="#refine">Refine</a>
+    <a href="#picture-model">Picture model</a><a href="#creativity">Creativity</a><a href="#steps">Draw reaction</a><a href="#refine">Refine</a>
     <a href="#upscale">AI upscale</a><a href="#resolution">Resolution</a><a href="#lines">Follow the lines</a>
     <a href="#seed">Surprise number</a><a href="#safety">Safety filter</a><a href="#line_threshold">Line sensitivity</a>
     <a href="#line_dilate">Line thickening</a><a href="#line_polarity">Line map</a><a href="#init_mode">Starting image</a>
@@ -87,6 +88,21 @@
         <p id="setup" class="note"></p>
       </div>
     </div>
+
+    <section class="control" id="picture-model">
+      <h2>Picture model</h2>
+      <p class="lead">Which AI makes the pictures. <b>SD-Turbo</b> (the default) is made for 1 to 4 steps: it
+        answers every line almost instantly and keeps the colours your child drew. <b>SD 1.5 + TCD</b> is an
+        experiment: a model made for many steps, so each extra step adds detail to the same picture. It is
+        slower (about 0.35 s per picture with 4 steps), its pictures look cleaner and more like an
+        illustration, and it does not keep the stroke colours.</p>
+      <img class="wide" src="/static/help/picture-model-tcd.png" alt="A drawn cat, then SD 1.5 + TCD pictures of it after 2, 4, 6 and 8 steps: the same cat and fish, getting crisper" loading="lazy">
+      <p class="note">Above: SD 1.5 + TCD at 2, 4, 6 and 8 steps from the same drawing. With this model the
+        "Drawing steps" slider sets the steps while drawing, and "Refine when they stop" re-makes the same
+        picture with 6, 8, 12, 16 and 20 steps (up to the number you set). The creativity, draw reaction and
+        refinement model controls only apply to SD-Turbo. Switching takes 10 to 30 seconds, because only one
+        model fits in the graphics memory at a time; SD 1.5 + TCD uses about 3.5 GB.</p>
+    </section>
 
     <section class="control" id="creativity">
       <h2>Creativity</h2>

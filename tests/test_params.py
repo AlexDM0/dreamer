@@ -131,3 +131,23 @@ def test_init_mode_and_blur_validate():
     assert GenParams().init_mode == "colors"
     with pytest.raises(ValueError):
         apply_changes(GenParams(), {"init_mode": "crayon"})
+
+
+def test_picture_model_and_tcd_steps_validated():
+    from server.params import GenParams, apply_changes
+
+    changed = apply_changes(GenParams(), {"picture_model": "tcd", "tcd_steps": 99})
+    assert changed.picture_model == "tcd" and changed.tcd_steps == 8
+    import pytest
+
+    with pytest.raises(ValueError):
+        apply_changes(GenParams(), {"picture_model": "sdxl"})
+
+
+def test_make_backend_picks_tcd_for_the_real_backend_only():
+    from server.backends import MockBackend, make_backend
+    from server.backends.tcd import TcdBackend
+    from server.config import Config
+
+    assert isinstance(make_backend(Config(backend="mock"), "tcd"), MockBackend)
+    assert isinstance(make_backend(Config(backend="streamdiffusion"), "tcd"), TcdBackend)

@@ -285,3 +285,54 @@ def test_new_stroke_stops_the_refinement_path():
         assert stopped_at < 20  # the first path was cut short, not run to the end
     finally:
         worker.stop()
+
+
+class OwnRefineBackend(SpyBackend):
+    """A picture model with its own refinement (like SD 1.5 + TCD)."""
+
+    def __init__(self, kind="turbo"):
+        super().__init__()
+        self.kind, self.closed, self.refine_calls = kind, False, []
+
+    def refine_own(self, init_image, line_map, total_steps):
+        self.refine_calls.append(total_steps)
+        for _ in range(2):
+            yield self.generate(init_image, line_map)
+
+    def close(self):
+        self.closed = True
+
+
+def test_picture_model_switch_rebuilds_the_backend():
+    built = []
+
+    def factory(kind="turbo"):
+        built.append(OwnRefineBackend(kind))
+        return built[-1]
+
+    cfg = Config(backend="mock", size=64)
+    worker, rec = _start(None, cfg, backend_factory=factory,
+                         params=replace(defaults_from_config(cfg), refine_steps=0))
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        rec.wait(1)
+        worker.set_params(replace(worker.params, picture_model="tcd"))
+        worker.mailbox.put(FrameJob(2, sketch_png(size=64), "p"))
+        rec.wait(2)
+        assert [backend.kind for backend in built] == ["turbo", "tcd"]
+        assert built[0].closed and worker.backend is built[1]
+        assert worker.params.picture_model == "tcd"
+    finally:
+        worker.stop()
+
+
+def test_backend_with_own_refinement_refines_on_pause():
+    backend = OwnRefineBackend()
+    cfg = Config(backend="mock", size=64)
+    worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=8))
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        rec.wait(3)  # the drawing picture, then the backend's two refined pictures
+        assert backend.refine_calls == [8]
+    finally:
+        worker.stop()

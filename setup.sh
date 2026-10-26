@@ -169,6 +169,11 @@ if [ "$MOCK" = 0 ]; then
     run "Installing diffusers-ipadapter (imported by StreamDiffusion's TensorRT code)" \
         "$VENV_PY" -m pip install "$DIFFUSERS_IPADAPTER"
 
+    # peft loads the TCD LoRA for the "SD 1.5 + TCD" picture model; --no-deps keeps the
+    # fork's torch/transformers pins untouched.
+    run "Installing peft (LoRA loading for the SD 1.5 + TCD picture model)" \
+        "$VENV_PY" -m pip install --no-deps "peft==0.17.1"
+
     run "Installing TensorRT (streamdiffusion.tools.install-tensorrt)" \
         "$VENV_PY" -m streamdiffusion.tools.install-tensorrt
 

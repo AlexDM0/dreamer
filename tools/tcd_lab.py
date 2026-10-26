@@ -64,6 +64,8 @@ def main() -> int:
     parser.add_argument("--strength", type=float, default=0.88, help="img2img strength (t_index 6 of 50)")
     parser.add_argument("--controlnet-scale", type=float, default=0.55)
     parser.add_argument("--drawings", default=",".join(DRAWINGS))
+    parser.add_argument("--init-mode", default=None, help="start image: colors | sketch | blank")
+    parser.add_argument("--init-blur", type=int, default=None)
     parser.add_argument("--tag", default="")
     args = parser.parse_args()
     step_counts = [int(value) for value in args.steps.split(",")]
@@ -71,6 +73,8 @@ def main() -> int:
     config = load_config(None)
     width, height = canvas_dims(config)["landscape"]
     defaults = defaults_from_config(config)
+    defaults = dataclasses.replace(defaults, init_mode=args.init_mode or defaults.init_mode,
+                                   init_blur=defaults.init_blur if args.init_blur is None else args.init_blur)
     topics = {topic: fragment for topic, _, _, fragment in PRESET_TOPICS}
     styles = {style: fragment for style, _, _, fragment in PRESET_STYLES}
     pipeline = load_pipeline()

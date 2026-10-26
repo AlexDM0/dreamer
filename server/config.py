@@ -52,6 +52,13 @@ class ModelConfig:
     engine_dir: str = "engines"
     safety_checker: bool = True
     safety_threshold: float = 0.5
+    # The "SD 1.5 + TCD" picture model (switchable live on /admin; server/backends/tcd.py).
+    tcd_base: str = "stable-diffusion-v1-5/stable-diffusion-v1-5"
+    tcd_lora: str = "h1t/TCD-SD15-LoRA"
+    tcd_lora_file: str = "pytorch_lora_weights.safetensors"
+    tcd_controlnet: str = "lllyasviel/control_v11p_sd15_scribble"
+    tcd_strength: float = 1.0  # 1.0 starts from noise (sharp at few steps, ignores stroke colours)
+    tcd_gamma: float = 0.3     # fresh noise per step (TCD's eta)
 
 
 @dataclass

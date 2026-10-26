@@ -240,6 +240,11 @@ class StreamDiffusionBackend:
         self._width, self._height = int(width), int(height)
         if self._wrapper is None:
             return  # warmup() builds it at the new size
+        self.close()
+        self.warmup()
+
+    def close(self) -> None:
+        """Drop the pipeline and free its GPU memory (resize, or switching picture model)."""
         old, self._wrapper = self._wrapper, None
         del old
         import gc
@@ -251,7 +256,6 @@ class StreamDiffusionBackend:
             torch = None
         if torch is not None and torch.cuda.is_available():
             torch.cuda.empty_cache()
-        self.warmup()
 
     # -- per-frame controls ----------------------------------------------------------
 

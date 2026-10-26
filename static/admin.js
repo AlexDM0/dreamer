@@ -238,6 +238,8 @@ const PARAM_VIEWS = [
   ["p-refine", "o-refine", (p) => p.refine_steps, (v) => (Number(v) ? `${v} steps` : "off")],
   ["p-upscale", null, (p) => p.upscale, String],
   ["p-refine-model", null, (p) => p.refine_model, String],
+  ["p-picture-model", null, (p) => p.picture_model, String],
+  ["p-tcd-steps", "o-tcd-steps", (p) => p.tcd_steps, String],
 ];
 
 // ----- Graphics memory estimate -----------------------------------------------------
@@ -369,6 +371,10 @@ function applyParams(res) {
     if (document.activeElement !== input && !(id in pendingInputs)) input.value = value;
     if (out) $(out).textContent = fmt(input.value);
   }
+  // Controls that only apply to one picture model.
+  for (const ctl of document.querySelectorAll("#params-form [data-model]")) {
+    ctl.hidden = ctl.dataset.model !== params.picture_model;
+  }
   $("p-cn-on").checked = params.controlnet_enabled;
   $("p-cn-scale").disabled = !params.controlnet_enabled;
   $("p-init-blur").disabled = params.init_mode !== "colors";
@@ -426,6 +432,9 @@ onParamInput("p-refine", "o-refine", (v) => (Number(v) ? `${v} steps` : "off"),
 $("p-upscale").addEventListener("change", (e) => queueParams({ upscale: e.target.value }, "p-upscale"));
 $("p-refine-model").addEventListener("change",
   (e) => queueParams({ refine_model: e.target.value }, "p-refine-model"));
+$("p-picture-model").addEventListener("change",
+  (e) => queueParams({ picture_model: e.target.value }, "p-picture-model"));
+onParamInput("p-tcd-steps", "o-tcd-steps", String, (v) => ({ tcd_steps: Number(v) }));
 $("p-resolution").addEventListener("change",
   (e) => queueParams({ resolution: Number(e.target.value) }, "p-resolution"));
 $("p-cn-on").addEventListener("change", (e) => {

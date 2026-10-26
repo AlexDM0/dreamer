@@ -115,6 +115,8 @@ class GpuWorker(threading.Thread):
         self._upscaler: Any = None
         # Picture size the backend is set up for (backends start in landscape).
         self._dims = canvas_dims(config)["landscape"]
+        # The picture model (params.picture_model) the current backend was built for.
+        self._backend_kind: str | None = None
 
     # ----- public API (any thread) ---------------------------------------------------
 
@@ -207,7 +209,10 @@ class GpuWorker(threading.Thread):
         self._set_state("busy", "warming up")
         try:
             if self.backend is None:
-                self.backend = self.backend_factory()
+                kind = self._params.picture_model
+                # Factories without the argument (tests) only make the default model.
+                self.backend = self.backend_factory() if kind == "turbo" else self.backend_factory(kind)
+                self._backend_kind = kind
             started = time.perf_counter()
             self.backend.warmup()
             log.info("backend %s ready in %.1fs", self.backend_name, time.perf_counter() - started)
@@ -235,9 +240,43 @@ class GpuWorker(threading.Thread):
         if params is not None and params != self._params:
             self._apply_params(params, revert_to=self._params)
 
+    def _switch_picture_model(self, params: GenParams, revert_to: GenParams) -> bool:
+        """Unload the backend and build the one for ``params.picture_model`` (both do not
+        fit in GPU memory together). If it fails to start, go back to ``revert_to``'s."""
+        log.info("switching picture model %s -> %s", self._backend_kind, params.picture_model)
+        self._set_state("busy", "switching picture model")
+        self._close_backend()
+        self._params = params
+        self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
+        self._shown = None
+        if self._start_backend():
+            return True
+        self._close_backend()
+        self._params = revert_to
+        self._start_backend()
+        if self.on_params_error is not None:
+            try:
+                self.on_params_error(revert_to)
+            except Exception:
+                log.exception("on_params_error callback failed")
+        return False
+
+    def _close_backend(self) -> None:
+        backend, self.backend = self.backend, None
+        close = getattr(backend, "close", None)
+        if close is not None:
+            try:
+                close()
+            except Exception:
+                log.exception("closing the backend failed")
+        self._last_prompt = None
+
     def _apply_params(self, params: GenParams, revert_to: GenParams) -> bool:
         """Push ``params`` into the backend. On failure the backend keeps its previous
         params (Backend contract), we report the error and tell the app to revert."""
+        if (params.picture_model != self._backend_kind and self.backend_factory is not None
+                and self._backend_kind is not None):
+            return self._switch_picture_model(params, revert_to)
         try:
             self.backend.set_params(params)
         except Exception as exc:
@@ -317,7 +356,10 @@ class GpuWorker(threading.Thread):
 
     def _plan_refinement(self, params: GenParams) -> bool:
         """Whether to refine once drawing pauses (on, and a backend that can)."""
-        return getattr(self.backend, "refine_steps", None) is not None and params.refine_steps > 0
+        backend = self.backend
+        can_refine = (getattr(backend, "refine_steps", None) is not None
+                      or getattr(backend, "refine_own", None) is not None)
+        return can_refine and params.refine_steps > 0
 
     def _frame_inputs(self, sketch: Image.Image, job: FrameJob,
                       params: GenParams) -> tuple[Image.Image, Image.Image | None]:
@@ -347,11 +389,16 @@ class GpuWorker(threading.Thread):
             init, line_map = self._frame_inputs(sketch, job, params)
             first = self._shown if self._shown is not None else init
             self._needs_prime = True  # the stream now runs refinement steps
-            upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
-            if upscales_itself and self._upscaler is None:
-                self._upscale(first)  # loads the upscaler (and warns once if it is missing)
-            steps = refine.run(params.refine_model, self.backend, first, init, line_map,
-                               tuple(params.t_index_list), params.refine_steps, self._upscaler)
+            refine_own = getattr(self.backend, "refine_own", None)
+            if refine_own is not None:  # a picture model with its own refinement (TCD)
+                upscales_itself = False
+                steps = refine_own(init, line_map, params.refine_steps)
+            else:
+                upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
+                if upscales_itself and self._upscaler is None:
+                    self._upscale(first)  # loads the upscaler (and warns once if it is missing)
+                steps = refine.run(params.refine_model, self.backend, first, init, line_map,
+                                   tuple(params.t_index_list), params.refine_steps, self._upscaler)
             try:
                 for picture in steps:
                     if params.upscale == "x2" and not upscales_itself:

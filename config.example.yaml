@@ -33,3 +33,10 @@ model:
   engine_dir: engines            # TensorRT engines are built here on first run
   safety_checker: true
   safety_threshold: 0.5
+  # "SD 1.5 + TCD" picture model, switchable on /admin (Picture model). First use downloads
+  # about 4 GB once (SD 1.5, the TCD LoRA, the SD 1.5 scribble ControlNet).
+  tcd_base: stable-diffusion-v1-5/stable-diffusion-v1-5
+  tcd_lora: h1t/TCD-SD15-LoRA
+  tcd_controlnet: lllyasviel/control_v11p_sd15_scribble
+  tcd_strength: 1.0   # 1.0 starts from noise: sharp at few steps, ignores the stroke colours
+  tcd_gamma: 0.3      # fresh noise per step (TCD's eta)

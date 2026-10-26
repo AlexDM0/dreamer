@@ -205,6 +205,11 @@ if (-not $Mock) {
     Invoke-Native "Installing diffusers-ipadapter (imported by StreamDiffusion's TensorRT code)" $VenvPython @(
         "-m", "pip", "install", $DiffusersIpAdapter)
 
+    # peft loads the TCD LoRA for the "SD 1.5 + TCD" picture model; --no-deps keeps the
+    # fork's torch/transformers pins untouched.
+    Invoke-Native "Installing peft (LoRA loading for the SD 1.5 + TCD picture model)" $VenvPython @(
+        "-m", "pip", "install", "--no-deps", "peft==0.17.1")
+
     Invoke-Native "Installing TensorRT (streamdiffusion.tools.install-tensorrt)" $VenvPython @(
         "-m", "streamdiffusion.tools.install-tensorrt")
 

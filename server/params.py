@@ -25,6 +25,9 @@ INIT_MODES = ("colors", "sketch", "blank")
 UPSCALERS = ("off", "x2")
 RESOLUTIONS = (512, 640, 768, 896, 1024)  # long sides offered on the admin page
 REFINE_MAX_STEPS = 20
+# Picture models: SD-Turbo (TensorRT, server/backends/streamdiffusion.py) or SD 1.5 + TCD
+# (server/backends/tcd.py). Switching unloads one and loads the other.
+PICTURE_MODELS = ("turbo", "tcd")
 # Refinement models (server/refine.py); listed here so params stay importable without it.
 REFINE_MODELS = ("path", "path_locked", "sdedit", "anchored", "anchored_edges",
                  "hires_tiles", "anchored_hires")
@@ -45,6 +48,8 @@ LIMITS: dict[str, dict[str, Any]] = {
     "refine_steps": {"min": 0, "max": REFINE_MAX_STEPS, "step": 1},
     "upscale": {"options": list(UPSCALERS)},
     "refine_model": {"options": list(REFINE_MODELS)},
+    "picture_model": {"options": list(PICTURE_MODELS)},
+    "tcd_steps": {"min": 1, "max": 8, "step": 1},
     # Long side; a multiple of 64 (UNet). The TensorRT engines handle 384..1024.
     "resolution": {"min": 64, "max": 1024, "step": 64, "options": list(RESOLUTIONS)},
 }
@@ -71,6 +76,9 @@ class GenParams:
     upscale: str = "off"
     # Long side of pictures in pixels (the short side follows the iPad's shape).
     resolution: int = 640
+    picture_model: str = "turbo"
+    # Steps per picture while drawing with the TCD picture model.
+    tcd_steps: int = 4
 
     def to_dict(self) -> dict[str, Any]:
         out = asdict(self)
@@ -136,7 +144,7 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
         if name == "t_index_list":
             out[name] = _t_index_list(value)
         elif name in ("seed", "line_threshold", "line_dilate", "init_blur", "jpeg_quality",
-                      "refine_steps"):
+                      "refine_steps", "tcd_steps"):
             out[name] = int(_clamp(_as_int(value, name), name))
         elif name in ("controlnet_scale", "safety_threshold"):
             out[name] = round(_clamp(_as_float(value, name), name), 4)
@@ -153,6 +161,10 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
         elif name == "refine_model":
             if value not in REFINE_MODELS:
                 raise ValueError(f"refine_model must be one of {REFINE_MODELS}")
+            out[name] = value
+        elif name == "picture_model":
+            if value not in PICTURE_MODELS:
+                raise ValueError(f"picture_model must be one of {PICTURE_MODELS}")
             out[name] = value
         elif name == "upscale":
             if value not in UPSCALERS:
