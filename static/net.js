@@ -24,6 +24,7 @@ const HEADER = 5;
 const INFLIGHT_TIMEOUT_MS = 2000;
 const PING_MS = 10000;
 const DEAD_MS = 25000;       // no traffic for this long -> assume the socket is dead
+const CONNECT_TIMEOUT_MS = 5000; // give up on a connection attempt that hangs (iPad waking)
 const BACKOFF_MIN_MS = 500;
 const BACKOFF_MAX_MS = 5000;
 const CLOSE_REPLACED = 4000; // server close code: a newer kid socket took over
@@ -49,6 +50,7 @@ export class Net extends EventTarget {
     this._sending = false;     // encoding a PNG right now
     this._backoff = BACKOFF_MIN_MS;
     this._retryTimer = null;
+    this._connectTimer = null;
     this._pingTimer = null;
     this._lastRx = 0;
     this._stopped = false;
@@ -156,8 +158,19 @@ export class Net extends EventTarget {
     }
     ws.binaryType = "arraybuffer";
     this.ws = ws;
+    clearTimeout(this._connectTimer);
+    this._connectTimer = setTimeout(() => {
+      if (this.ws !== ws || ws.readyState !== WebSocket.CONNECTING) return;
+      // Hung: drop it (its late events are ignored, see this.ws checks) and try again.
+      try { ws.close(); } catch { /* still connecting */ }
+      this._teardown();
+      this._setState("off");
+      this._scheduleRetry();
+    }, CONNECT_TIMEOUT_MS);
 
     ws.onopen = () => {
+      if (this.ws !== ws) { ws.close(); return; } // given up on already
+      clearTimeout(this._connectTimer);
       this._backoff = BACKOFF_MIN_MS;
       this._lastRx = Date.now();
       this._setState("open");
@@ -166,6 +179,7 @@ export class Net extends EventTarget {
       this._pingTimer = setInterval(() => this._ping(), PING_MS);
     };
     ws.onmessage = (ev) => {
+      if (this.ws !== ws) return;
       this._lastRx = Date.now();
       if (typeof ev.data === "string") this._onText(ev.data);
       else this._onBinary(ev.data);
@@ -197,6 +211,7 @@ export class Net extends EventTarget {
   }
 
   _teardown() {
+    clearTimeout(this._connectTimer);
     clearInterval(this._pingTimer);
     this._pingTimer = null;
     this._clearInflight();

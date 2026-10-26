@@ -2,11 +2,12 @@
 // Plain ES module, no dependencies. Every API call goes through api(), which sends the
 // user back to the PIN pad on a 401 (expired or missing cookie).
 
+import { PIN_MAX, renderPinDots, shakePinDots } from "./pin.js";
+
 const $ = (id) => document.getElementById(id);
 
 const PICTURE = 0x02;          // protocol.py: server->client JPEG frame
 const HEADER_BYTES = 5;        // type (1) + seq (uint32 BE)
-const PIN_MAX = 12;
 const KIND_LABEL = { preset: "Built-in", custom: "Custom", image: "Picture" };
 
 let state = null;              // last GET /api/admin/state
@@ -90,14 +91,7 @@ function showLogin(msg = "") {
 }
 
 function renderPin() {
-  const dots = $("pin-dots");
-  const n = Math.max(4, pin.length);
-  dots.replaceChildren(...Array.from({ length: n }, (_, i) => {
-    const s = document.createElement("span");
-    if (i < pin.length) s.className = "on";
-    return s;
-  }));
-  dots.setAttribute("aria-label", `${pin.length} digits entered`);
+  renderPinDots($("pin-dots"), pin.length);
 }
 
 function pressKey(k) {
@@ -120,10 +114,7 @@ async function submitPin() {
     pin = "";
     renderPin();
     $("pin-msg").textContent = err.message;
-    const dots = $("pin-dots");
-    dots.classList.remove("shake");
-    void dots.offsetWidth; // restart the CSS animation
-    dots.classList.add("shake");
+    shakePinDots($("pin-dots"));
   } finally {
     loggingIn = false;
   }
@@ -347,7 +338,7 @@ async function loadParams() {
 /** Show params from the server, without yanking a control the parent is touching. */
 let lastLimits = null;
 
-function applyParams(res) {
+function applyParams(res, force = false) {
   if (!res || !res.params) return;
   params = res.params;
   if (res.refine_models) {
@@ -368,7 +359,7 @@ function applyParams(res) {
   for (const [id, out, read, fmt] of PARAM_VIEWS) {
     const input = $(id);
     const value = read(params);
-    if (document.activeElement !== input && !(id in pendingInputs)) input.value = value;
+    if (force || (document.activeElement !== input && !(id in pendingInputs))) input.value = value;
     if (out) $(out).textContent = fmt(input.value);
   }
   // Controls that only apply to one picture model.
@@ -453,8 +444,10 @@ $("p-seed-new").addEventListener("click", () => {
 $("params-reset").addEventListener("click", async () => {
   clearTimeout(paramsTimer);
   pendingParams = {};
+  for (const k of Object.keys(pendingInputs)) delete pendingInputs[k];
   const res = await attempt(() => api("POST", "/api/admin/params/reset"), "Back to defaults");
-  if (res) applyParams(res);
+  // Every control shows the defaults, also a slider that still has focus (iOS keeps it).
+  if (res) applyParams(res, true);
 });
 
 // ----- Lists (styles + topics) ------------------------------------------------------

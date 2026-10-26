@@ -223,6 +223,53 @@ async function main() {
     check((await inkOn(kid, "#picture")) === 0, "clear results in a blank picture");
     await shot(kid, "04-kid-cleared");
 
+    // ----- pinch and palm (synthetic pointer events: finger strokes, pinch, pen + palm)
+    const gestures = await kid.evaluate(() => {
+      const { canvas, toolbar } = window.dreamer;
+      const el = document.querySelector("#sketch");
+      const r = el.getBoundingClientRect();
+      const at = (fx, fy) => ({ clientX: r.left + r.width * fx, clientY: r.top + r.height * fy });
+      const fire = (type, pointerId, pointerType, fx, fy) => el.dispatchEvent(new PointerEvent(type,
+        { pointerId, pointerType, isPrimary: false, button: 0, bubbles: true, cancelable: true, ...at(fx, fy) }));
+      const seen = { strokeend: 0, strokecancel: 0, pinchstart: 0 };
+      for (const name of Object.keys(seen)) canvas.addEventListener(name, () => { seen[name] += 1; });
+      const width0 = toolbar.width;
+      // One finger starts drawing, a second one joins: the stroke is taken back, it pinches.
+      fire("pointerdown", 11, "touch", 0.4, 0.5);
+      fire("pointermove", 11, "touch", 0.45, 0.5);
+      fire("pointerdown", 12, "touch", 0.6, 0.5);
+      fire("pointermove", 11, "touch", 0.2, 0.5);
+      fire("pointermove", 12, "touch", 0.8, 0.5);
+      fire("pointerup", 11, "touch", 0.2, 0.5);
+      fire("pointerup", 12, "touch", 0.8, 0.5);
+      const afterPinch = { ...seen, blank: canvas.isBlank(), grew: toolbar.width > width0 };
+      // The pencil is down and the palm lands with two touches: no pinch, no finger ink.
+      const width1 = toolbar.width;
+      fire("pointerdown", 21, "pen", 0.3, 0.3);
+      fire("pointerdown", 22, "touch", 0.7, 0.7);
+      fire("pointerdown", 23, "touch", 0.8, 0.8);
+      fire("pointermove", 23, "touch", 0.95, 0.95);
+      fire("pointerup", 22, "touch", 0.7, 0.7);
+      fire("pointerup", 23, "touch", 0.95, 0.95);
+      fire("pointerup", 21, "pen", 0.3, 0.3);
+      // Right after the pencil lifts, the resting hand still does nothing.
+      fire("pointerdown", 24, "touch", 0.7, 0.7);
+      fire("pointerdown", 25, "touch", 0.8, 0.8);
+      fire("pointermove", 25, "touch", 0.95, 0.95);
+      fire("pointerup", 24, "touch", 0.7, 0.7);
+      fire("pointerup", 25, "touch", 0.95, 0.95);
+      return { afterPinch, palmPinches: seen.pinchstart - afterPinch.pinchstart,
+               widthKept: toolbar.width === width1 };
+    });
+    check(gestures.afterPinch.blank && gestures.afterPinch.strokecancel === 1
+          && gestures.afterPinch.strokeend === 0, "a second finger takes the stroke back (not an unsaved stroke)");
+    check(gestures.afterPinch.pinchstart === 1 && gestures.afterPinch.grew, "spreading two fingers makes the brush bigger");
+    check(gestures.palmPinches === 0 && gestures.widthKept, "a palm next to the pencil never pinches");
+    await kid.evaluate(() => { window.dreamer.canvas.clear(); });
+    check(await kid.evaluate(() => getComputedStyle(document.body).userSelect === "none"
+          && getComputedStyle(document.querySelector("#hint-text")).userSelect === "none"),
+          "kid page text cannot be selected");
+
     // Draw something so the admin live view has a picture.
     await stroke(kid, [[0.25, 0.5], [0.5, 0.25], [0.75, 0.5], [0.5, 0.75], [0.25, 0.5]]);
 
@@ -238,6 +285,9 @@ async function main() {
     for (const k of [...PIN, "ok"]) await admin.tap(`#pin-pad [data-k="${k}"]`);
     await admin.waitForSelector("#admin:not([hidden])", { timeout: 10000 });
     check(true, "admin logs in with the PIN pad");
+    check(await admin.evaluate(() => getComputedStyle(document.body).userSelect === "none"
+          && [...document.querySelectorAll("input[type=text], textarea")].every((f) => getComputedStyle(f).userSelect === "text")),
+          "admin text cannot be selected, but its typing fields can");
     await admin.waitForSelector("#live-img:not([hidden])", { timeout: 10000 });
     check(true, "admin live view shows the kid's picture");
 

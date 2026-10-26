@@ -80,6 +80,8 @@
   --glass: rgb(255 255 255 / 0.84);     /* translucent bars and labels over pictures */
   --scrim: rgb(28 26 24 / 0.38);        /* behind dialogs and sheets */
   --canvas: var(--sand-0);              /* drawing paper and picture frames: always white */
+  --marker-edge: var(--sand-0);         /* outline of markers drawn over any paper colour */
+  --marker-halo: rgb(0 0 0 / 0.45);     /*   and the dark halo around it */
 
   --text: var(--sand-900);
   --text-muted: var(--sand-600);        /* secondary copy, labels (>= 4.5:1 on --bg) */

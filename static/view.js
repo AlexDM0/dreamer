@@ -10,6 +10,9 @@
 // whichever gives the bigger panes (class split-stacked). The drawing's background colour
 // is the panes' background (--drawing-bg), behind the transparent stroke layer.
 
+import { DEFAULT_BACKGROUND } from "./canvas.js";
+import { loadImage } from "./util.js";
+
 export const MODES = ["auto", "sketch", "picture", "split"];
 const STORE_KEY = "dreamer.viewMode";
 const GAP = 16; // px between panes in split mode; keep in sync with style.css --gap
@@ -41,7 +44,7 @@ export class View extends EventTarget {
     this.picture = picture;
     this.pctx = picture.getContext("2d");
     this.aspect = picture.width / picture.height;
-    this.background = "#000000";
+    this.background = DEFAULT_BACKGROUND;
     this._blankPicture();
     this.mode = "auto";
     this.userChose = false;   // a stored/explicit choice beats the server default
@@ -208,13 +211,4 @@ export class View extends EventTarget {
     if (this.wrap) this.layout();
     this.dispatchEvent(new CustomEvent("mode", { detail: { mode } }));
   }
-}
-
-function loadImage(blob) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => { URL.revokeObjectURL(img.src); reject(new Error("bad image")); };
-    img.src = URL.createObjectURL(blob);
-  });
 }
