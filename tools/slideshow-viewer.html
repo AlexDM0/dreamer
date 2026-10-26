@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dreamer refinement slideshows</title>
+<!-- Viewer for tools/make_slideshows.py output (copied there as index.html). Reads data.js. -->
+<style>
+  :root {
+    --bg: #f7f5f2; --surface: #ffffff; --text: #1c1b19; --muted: #6b675f; --border: #e3dfd8;
+    --accent: #5b4fe0; --warn-bg: #fde7e4; --warn-text: #a1281c; --cell: 132px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141311; --surface: #1d1c1a; --text: #f1eee9; --muted: #a29d94; --border: #33302c;
+            --accent: #9d94ff; --warn-bg: #4a1e19; --warn-text: #ffb4a8; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--border);
+           padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; }
+  header h1 { font-size: 17px; margin: 0 12px 0 0; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border);
+           background: var(--bg); color: var(--text); min-width: 150px; }
+  .note { font-size: 12px; color: var(--muted); max-width: 520px; }
+  main { padding: 16px; display: grid; gap: 28px; }
+  section h2 { font-size: 15px; margin: 0 0 8px; display: flex; gap: 12px; align-items: center; }
+  section h2 img { width: 120px; border-radius: 6px; border: 1px solid var(--border); }
+  section h2 small { color: var(--muted); font-weight: normal; }
+  .scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  table { border-collapse: collapse; }
+  th, td { padding: 4px; vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; text-align: left; white-space: nowrap; }
+  th.mode { position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 150px; max-width: 170px;
+            white-space: normal; }
+  td { width: var(--cell); }
+  td img { width: var(--cell); display: block; border-radius: 4px; cursor: zoom-in; background: var(--border); }
+  td .score { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  td.jump img { outline: 3px solid var(--warn-text); outline-offset: -3px; }
+  td.jump .score { color: var(--warn-text); font-weight: 600; }
+  td.none { color: var(--muted); font-size: 12px; text-align: center; padding-top: 30px; }
+  #zoom { position: fixed; inset: 0; background: rgb(0 0 0 / 0.85); display: none; place-items: center; z-index: 10;
+          cursor: zoom-out; }
+  #zoom.open { display: grid; }
+  #zoom img { max-width: 94vw; max-height: 86vh; image-rendering: auto; border-radius: 6px; }
+  #zoom p { color: #fff; margin: 8px 0 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dreamer refinement slideshows</h1>
+  <label>Topic <select id="topic"></select></label>
+  <label>Style <select id="style"></select></label>
+  <label>Start steps <select id="start"></select></label>
+  <p class="note" id="note"></p>
+</header>
+<main id="seeds"></main>
+<div id="zoom" role="dialog" aria-label="Enlarged picture"><div><img alt=""><p></p></div></div>
+<script src="data.js"></script>
+<script>
+const data = window.SLIDES;
+const $ = (id) => document.getElementById(id);
+const JUMP = 6; // same threshold as the admin page's Refinement steps card
+
+function fill(select, items, format) {
+  select.replaceChildren(...items.map((item) => new Option(format(item), item.id ?? item)));
+}
+fill($("topic"), data.topics, (item) => `${item.emoji} ${item.label}`.trim());
+fill($("style"), data.styles, (item) => `${item.emoji} ${item.label}`.trim());
+fill($("start"), data.starts, (start) => `${start} step${start === 1 ? "" : "s"}`);
+
+const saved = new URLSearchParams(location.hash.slice(1));
+for (const id of ["topic", "style", "start"]) if (saved.get(id)) $(id).value = saved.get(id);
+
+function cell(src, score, caption) {
+  const td = document.createElement("td");
+  if (!src) { td.className = "none"; td.textContent = "–"; return td; }
+  const img = document.createElement("img");
+  img.loading = "lazy";
+  img.src = src;
+  img.alt = caption;
+  img.addEventListener("click", () => {
+    $("zoom").querySelector("img").src = src;
+    $("zoom").querySelector("p").textContent = caption;
+    $("zoom").classList.add("open");
+  });
+  td.append(img);
+  if (score) {
+    const line = document.createElement("div");
+    line.className = "score";
+    line.textContent = `Δ ${score.step} · drift ${score.drift}`;
+    td.append(line);
+    if (score.step > JUMP || score.drift > JUMP) td.classList.add("jump");
+  }
+  return td;
+}
+
+function render() {
+  const topic = $("topic").value, style = $("style").value, start = Number($("start").value);
+  location.hash = new URLSearchParams({ topic, style, start }).toString();
+  $("note").textContent = `t_index ${JSON.stringify(data.t_index[start])} (creativity ${data.creativity}%), ` +
+    `then up to ${data.more_steps} more steps. Δ = change from the step before, drift = change from step 0 ` +
+    `(0-255 at 1/16 size); red: above ${JUMP}. "–": the model stops earlier. Updated ${data.updated}.`;
+  const sections = data.seeds.map((seed) => {
+    const key = `${seed.id}__${topic}__${style}__n${start}`;
+    const done = data.done[key] || {};
+    const folder = `img/${seed.id}/${topic}/${style}/n${start}`;
+    const section = document.createElement("section");
+    const title = document.createElement("h2");
+    const sketch = new Image();
+    sketch.src = `seeds/${seed.id}.png`;
+    sketch.alt = `${seed.label} sketch`;
+    const small = document.createElement("small");
+    small.textContent = seed.kind;
+    title.append(sketch, seed.label, small);
+    const table = document.createElement("table");
+    const head = table.insertRow();
+    head.append(Object.assign(document.createElement("th"), { textContent: "mode" }));
+    for (let step = 0; step <= data.more_steps; step++) {
+      head.append(Object.assign(document.createElement("th"), { textContent: step ? `+${step}` : "step 0" }));
+    }
+    for (const mode of data.modes) {
+      const family = mode.id === "tcd" ? "tcd" : "turbo";
+      const row = table.insertRow();
+      row.append(Object.assign(document.createElement("th"), { className: "mode", textContent: mode.label }));
+      const info = done[family] && done[family].modes[mode.id];
+      if (!info) {
+        const pending = document.createElement("td");
+        pending.className = "none";
+        pending.colSpan = data.more_steps + 1;
+        pending.textContent = "not generated yet";
+        row.append(pending);
+        continue;
+      }
+      const first = family === "tcd" ? `${folder}/tcd-00.jpg` : `${folder}/turbo-00.jpg`;
+      row.append(cell(first, null, `${seed.label} · ${mode.label} · step 0`));
+      for (let step = 1; step <= data.more_steps; step++) {
+        const src = step <= info.count ? `${folder}/${mode.id}-${String(step).padStart(2, "0")}.jpg` : null;
+        row.append(cell(src, info.scores[step - 1], `${seed.label} · ${mode.label} · +${step}`));
+      }
+    }
+    const scroll = document.createElement("div");
+    scroll.className = "scroll";
+    scroll.append(table);
+    section.append(title, scroll);
+    return section;
+  });
+  $("seeds").replaceChildren(...sections);
+}
+for (const id of ["topic", "style", "start"]) $(id).addEventListener("change", render);
+$("zoom").addEventListener("click", () => $("zoom").classList.remove("open"));
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") $("zoom").classList.remove("open"); });
+render();
+</script>
+</body>
+</html>
