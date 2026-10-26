@@ -25,6 +25,7 @@ CLOSE_REPLACED = 4000  # app-specific close code: a newer kid socket took over
 CLOSE_TIMEOUT = 2.0
 
 _CLOSE = object()  # sentinel queued to make the sender task close the socket
+_PICTURE = object()  # placeholder in the queue for the peer's newest picture
 
 
 class Peer:
@@ -34,6 +35,9 @@ class Peer:
         self.ws = ws
         self.label = label
         self._queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=PEER_QUEUE_SIZE)
+        # The newest picture and whether a _PICTURE slot for it is queued (send_picture).
+        self._latest_picture: bytes | None = None
+        self._picture_queued = False
         self._task = asyncio.create_task(self._pump(), name=f"peer-{label}")
         self.closing = False
 
@@ -43,14 +47,27 @@ class Peer:
     def send_bytes(self, data: bytes) -> None:
         self._enqueue(data)
 
+    def send_picture(self, frame: bytes) -> None:
+        """Queue a PICTURE frame, replacing one still waiting: a client that falls behind
+        (a phone on weak Wi-Fi) gets the newest picture next, not a backlog of old ones."""
+        if self.closing:
+            return
+        self._latest_picture = frame
+        if not self._picture_queued:
+            self._picture_queued = True
+            self._enqueue(_PICTURE)
+
     def _enqueue(self, item: Any) -> None:
         if self.closing:
             return
         try:
             self._queue.put_nowait(item)
         except asyncio.QueueFull:
-            # The client is not keeping up; dropping is fine (pictures are latest-wins).
+            # The client is not keeping up: drop this message (pictures never pile up here,
+            # see send_picture).
             log.debug("%s: send queue full; dropping message", self.label)
+            if item is _PICTURE:
+                self._picture_queued = False
 
     def close_soon(self, code: int = 1000, farewell: dict[str, Any] | None = None) -> None:
         """Send everything already queued (then ``farewell``, if given) and close.
@@ -84,6 +101,11 @@ class Peer:
         try:
             while True:
                 item = await self._queue.get()
+                if item is _PICTURE:
+                    item, self._latest_picture = self._latest_picture, None
+                    self._picture_queued = False
+                    if item is None:
+                        continue
                 if isinstance(item, tuple) and item and item[0] is _CLOSE:
                     with contextlib.suppress(Exception):
                         await asyncio.wait_for(self.ws.close(code=item[1]), CLOSE_TIMEOUT)
@@ -224,9 +246,9 @@ class SessionManager:
         frame = protocol.pack_picture(seq, jpeg)
         self.last_picture = frame
         for peer in list(self.admins):
-            peer.send_bytes(frame)
+            peer.send_picture(frame)
         if self.kid is not None and (owner is None or owner is self.kid):
-            self.kid.send_bytes(frame)
+            self.kid.send_picture(frame)
 
     def broadcast_status(self, state: str, msg: str = "") -> None:
         self.last_status = protocol.status_msg(state, msg)

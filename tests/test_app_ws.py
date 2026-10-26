@@ -222,3 +222,34 @@ def test_admin_watcher_closes_when_its_login_expires(admin):
             assert (kind, value) == ("close", 1008)
         finally:
             auth._clock = real_clock
+
+
+def test_a_slow_client_gets_the_newest_picture_not_a_backlog():
+    import asyncio
+
+    from server.session import Peer
+
+    class SlowSocket:
+        def __init__(self):
+            self.sent, self.release = [], asyncio.Event()
+
+        async def send_bytes(self, data):
+            await self.release.wait()
+            self.sent.append(data)
+
+        async def send_text(self, text):
+            self.sent.append(text)
+
+    async def run():
+        ws = SlowSocket()
+        peer = Peer(ws, "admin")
+        peer.send_picture(b"first")
+        await asyncio.sleep(0)  # the sender picks up "first" and blocks on the socket
+        for i in range(50):
+            peer.send_picture(f"p{i}".encode())
+        ws.release.set()
+        await asyncio.sleep(0.05)
+        await peer.finish()
+        return ws.sent
+
+    assert asyncio.run(run()) == [b"first", b"p49"]

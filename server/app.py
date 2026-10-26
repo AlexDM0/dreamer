@@ -643,7 +643,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         peer.send_json(session.last_status)
         peer.send_json({"t": "stats", **worker_stats(), **session.current()})
         if session.last_picture is not None:
-            peer.send_bytes(session.last_picture)
+            peer.send_picture(session.last_picture)
         try:
             while True:  # read-only: drain and ignore anything the client sends
                 if (await ws.receive())["type"] == "websocket.disconnect":
