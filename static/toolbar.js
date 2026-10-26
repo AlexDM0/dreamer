@@ -315,6 +315,17 @@ export class Toolbar extends EventTarget {
     }
   }
 
+  /** Set the brush size from outside the slider (the pinch gesture); emits "width". */
+  setWidth(width) {
+    const range = this.$("#brush-size");
+    const value = Math.round(Math.min(Number(range.max), Math.max(Number(range.min), width)));
+    if (value === this.width) return;
+    range.value = String(value);
+    this.width = value;
+    this._updatePreview();
+    this._emit("width", { width: value });
+  }
+
   _updatePreview() {
     const dot = this.$("#brush-preview span");
     const d = Math.max(4, Math.min(44, this.width * this.scale));

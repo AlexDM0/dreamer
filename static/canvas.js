@@ -52,6 +52,10 @@ export class DrawingCanvas extends EventTarget {
     this._penDown = false;
     this._penUpAt = 0;
     this._touchSnapshot = null; // drawing before a touch stroke, undone if a pen takes over
+    // Pinch to resize the brush: fingers on the canvas (pointerId -> client point), and the
+    // pinch in progress ({distance} at its start), or null.
+    this._fingers = new Map();
+    this._pinch = null;
     this._bind();
     this._fitDisplay(true);
     if (typeof ResizeObserver === "function") {
@@ -279,7 +283,35 @@ export class DrawingCanvas extends EventTarget {
     };
   }
 
+  /** Distance between the first two fingers and their midpoint, in CSS pixels. */
+  _fingerSpan() {
+    const [first, second] = [...this._fingers.values()];
+    return { distance: Math.hypot(second.x - first.x, second.y - first.y),
+             x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+  }
+
+  /** A second finger came down: undo the stroke the first finger started and pinch. Emits
+   * "pinchstart", then "pinch" with {scale, x, y} (scale vs. the start), then "pinchend". */
+  _startPinch() {
+    if (this._active !== null && this._activeType === "touch") {
+      this._restoreTouchSnapshot();
+      this._endStroke(true); // the restored drawing goes out like a finished stroke
+    }
+    const span = this._fingerSpan();
+    this._pinch = { distance: Math.max(1, span.distance) };
+    this.dispatchEvent(new CustomEvent("pinchstart", { detail: { x: span.x, y: span.y } }));
+  }
+
   _down(e) {
+    if (e.pointerType === "touch" && !this._penDown) {
+      this._fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this._pinch) { e.preventDefault(); return; } // a third finger changes nothing
+      if (this._fingers.size === 2) {
+        e.preventDefault();
+        this._startPinch();
+        return;
+      }
+    }
     if (e.pointerType === "mouse" && e.button !== 0) return;
     if (e.pointerType === "pen") {
       this._penSeen = true;
@@ -294,8 +326,9 @@ export class DrawingCanvas extends EventTarget {
       return; // palm rejection: the hand rests on the glass while / just after writing
     }
     if (this._active !== null) return; // one stroke at a time; ignore extra fingers
-    // Once a pencil is in use, remember the drawing so a palm stroke can be undone.
-    this._touchSnapshot = e.pointerType === "touch" && this._penSeen
+    // Remember the drawing before a finger stroke, so it can be undone when a pencil takes
+    // over (palm) or a second finger turns it into a pinch.
+    this._touchSnapshot = e.pointerType === "touch"
       ? this.sctx.getImageData(0, 0, this.src.width, this.src.height) : null;
 
     e.preventDefault();
@@ -309,6 +342,16 @@ export class DrawingCanvas extends EventTarget {
   }
 
   _move(e) {
+    if (this._fingers.has(e.pointerId)) {
+      this._fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this._pinch && this._fingers.size >= 2) {
+        e.preventDefault();
+        const span = this._fingerSpan();
+        this.dispatchEvent(new CustomEvent("pinch", {
+          detail: { scale: span.distance / this._pinch.distance, x: span.x, y: span.y } }));
+        return;
+      }
+    }
     if (e.pointerId !== this._active) return;
     e.preventDefault();
     const events = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : [];
@@ -321,6 +364,14 @@ export class DrawingCanvas extends EventTarget {
   }
 
   _up(e) {
+    if (this._fingers.delete(e.pointerId) && this._pinch) {
+      // The pinch ends when the fingers lift; a finger left on the glass does not draw.
+      if (this._fingers.size === 0) {
+        this._pinch = null;
+        this.dispatchEvent(new Event("pinchend"));
+      }
+      return;
+    }
     if (e.pointerType === "pen") {
       this._penDown = false;
       this._penUpAt = Date.now();

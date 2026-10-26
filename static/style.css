@@ -1256,3 +1256,13 @@ button.brand:focus-visible { box-shadow: var(--focus-ring); }
   .offline { gap: var(--space-3); padding-left: var(--space-4); }
   .offline-text span { display: none; }
 }
+
+/* Pinch-to-resize feedback: the brush at its new size, centred between the fingers. */
+.pinch-ring {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}

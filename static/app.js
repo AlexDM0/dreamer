@@ -87,6 +87,29 @@ canvas.addEventListener("strokeend", () => {
   unsaved = true;
 });
 
+// Pinch on the canvas: spread two fingers for a bigger brush, pinch them for a smaller one.
+// A ring at the fingers shows the size on the drawing while pinching.
+const pinchRing = document.createElement("div");
+pinchRing.className = "pinch-ring";
+pinchRing.hidden = true;
+document.body.append(pinchRing);
+let pinchStartWidth = toolbar.width;
+const showPinchRing = (x, y) => {
+  const diameter = Math.max(6, toolbar.width * canvas.displayScale());
+  Object.assign(pinchRing.style, { left: `${x}px`, top: `${y}px`, width: `${diameter}px`, height: `${diameter}px`,
+                                   background: toolbar.eraser ? "transparent" : toolbar.color });
+  pinchRing.hidden = false;
+};
+canvas.addEventListener("pinchstart", (e) => {
+  pinchStartWidth = toolbar.width;
+  showPinchRing(e.detail.x, e.detail.y);
+});
+canvas.addEventListener("pinch", (e) => {
+  toolbar.setWidth(pinchStartWidth * e.detail.scale);
+  showPinchRing(e.detail.x, e.detail.y);
+});
+canvas.addEventListener("pinchend", () => { pinchRing.hidden = true; });
+
 // View -> toolbar
 view.addEventListener("mode", (e) => toolbar.setMode(e.detail.mode));
 view.addEventListener("layout", () => toolbar.setScale(canvas.displayScale()));
