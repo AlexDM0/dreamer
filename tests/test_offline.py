@@ -31,3 +31,19 @@ def test_changed_model_goes_online_again(config):
     offline.mark_ready(config)
     changed = dataclasses.replace(config, model=dataclasses.replace(config.model, controlnet="other/controlnet"))
     assert offline.apply(changed) is False
+
+
+def test_tcd_marker_is_kept_next_to_the_turbo_one(config):
+    assert not offline.tcd_ready(config)
+    offline.mark_ready(config, "tcd")
+    offline.mark_ready(config)  # a later SD-Turbo start must not forget TCD
+    assert offline.tcd_ready(config)
+    assert offline.apply(config) is True
+
+
+def test_old_marker_without_tcd_still_goes_offline(config):
+    import json
+    marker = offline._marker(config)
+    marker.parent.mkdir(parents=True)
+    marker.write_text(json.dumps(offline._models(config)))
+    assert offline.apply(config) is True and not offline.tcd_ready(config)

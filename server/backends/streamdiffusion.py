@@ -17,12 +17,9 @@ from typing import Any, Iterator
 from PIL import Image
 
 from ..config import canvas_dims
-from .base import GenParamsLike
+from .base import DEFAULT_SEED, GenParamsLike, model_attr as _model_attr
 
 log = logging.getLogger("dreamer.backend.streamdiffusion")
-
-# The wrapper's own default seed (StreamDiffusionWrapper(seed=2)).
-DEFAULT_SEED = 2
 
 # Used for prepare() before the first real prompt arrives from the worker.
 DEFAULT_PROMPT = "a colorful illustration, for children, friendly, bright colors, wholesome"
@@ -42,11 +39,6 @@ class _WarningCollector(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         self.messages.append(record.getMessage())
-
-
-def _model_attr(config: Any, name: str, default: Any) -> Any:
-    model = getattr(config, "model", None)
-    return getattr(model, name, default) if model is not None else default
 
 
 class StreamDiffusionBackend:
@@ -318,8 +310,7 @@ class StreamDiffusionBackend:
         return self._run(init_image, line_map)
 
     def refine_steps(self, init_image: Image.Image, line_map: Image.Image | None,
-                     t_index: list[int], first_shown: int,
-                     noise: str = "fresh") -> Iterator[Image.Image]:
+                     t_index: list[int], first_shown: int) -> Iterator[Image.Image]:
         """One denoising path over ``t_index``, run one step after another, yielding the
         picture after each step from step ``first_shown`` (1-based) on.
 
@@ -327,9 +318,8 @@ class StreamDiffusionBackend:
         LCM branch), opened up so every step's prediction can be shown: the picture keeps the
         same composition and each step changes less than the last, because the noise put back
         between steps shrinks along the path. With the same seed, the first steps are the
-        quick drawing picture: draw 1 step + 3 more here == a 4-step picture.
-        ``noise``: what is put back between steps: "fresh" random noise (the fork's way),
-        "fixed" (the same noise every step: converges instead of wandering).
+        quick drawing picture: draw 1 step + 3 more here == a 4-step picture. Fresh random
+        noise is put back between steps (the fork's way).
         """
         import torch
 
@@ -356,15 +346,15 @@ class StreamDiffusionBackend:
                 if idx < steps - 1:
                     sample = stream.alpha_prod_t_sqrt[idx + 1] * x_0_pred
                     if stream.do_add_noise:
-                        added = stream.init_noise[0:1] if noise == "fixed" else torch.randn_like(
-                            x_0_pred, device=stream.device, dtype=stream.dtype)
+                        added = torch.randn_like(x_0_pred, device=stream.device, dtype=stream.dtype)
                         sample = sample + stream.beta_prod_t_sqrt[idx + 1] * added
 
     def latent_ladder(self, first: Image.Image, line_map: Image.Image | None,
                       t_index: list[int], *, chain: bool, anchor_sigma: float | None,
                       gamma: float, anchor_weights: list[float] | None = None,
                       control_images: list[Image.Image | None] | None = None,
-                      anchor_image: Image.Image | None = None) -> Iterator[Image.Image]:
+                      anchor_image: Image.Image | None = None,
+                      checked: bool = True) -> Iterator[Image.Image]:
         """Refine ``first`` (the picture on screen) in single-step rungs at ``t_index`` (rising:
         less noise each rung), yielding the picture after every rung.
 
@@ -378,6 +368,8 @@ class StreamDiffusionBackend:
         - ``control_images``: per-rung ControlNet image (None keeps ``line_map``).
         - ``anchor_image``: pin the low frequencies to this picture instead of ``first`` (e.g.
           the upscaled first picture while refining a later rung's result).
+        - ``checked``: run each picture through the safety checker. Tiled refinement turns
+          this off and checks the finished picture instead (screen_picture()).
         """
         import torch
         from torch.nn import functional as F
@@ -421,7 +413,8 @@ class StreamDiffusionBackend:
             anchor_low = low_pass(anchor) if anchor_sigma else None
             eps = stream.init_noise[0:1]
             for idx, timestep in enumerate(stream.sub_timesteps_tensor):
-                if control_images is not None and control_images[idx] is not None:
+                if (control_images is not None and control_images[idx] is not None
+                        and self._controlnet_id is not None and self._controlnet_enabled):
                     self._wrapper.update_control_image(0, control_images[idx])
                 start = current if chain else (anchor if anchor_image is None else current)
                 noise = eps
@@ -437,7 +430,21 @@ class StreamDiffusionBackend:
                 current = x_0_pred
                 if model_pred is not None and model_pred.shape == eps.shape:
                     eps = model_pred  # the model's own noise estimate, for the next rung
-                yield self._checked_picture(stream.decode_image(x_0_pred))
+                image_tensor = stream.decode_image(x_0_pred)
+                if checked:
+                    yield self._checked_picture(image_tensor)
+                else:
+                    yield wrapper.postprocess_image(image_tensor, output_type="pil")
+
+    def screen_picture(self, picture: Image.Image, fallback: Image.Image) -> Image.Image:
+        """A finished picture through the live safety filter: ``fallback`` if flagged."""
+        wrapper = self._wrapper
+        if not wrapper.use_safety_checker or self._safety_checker() is None:
+            return picture
+        if _is_flagged(wrapper.safety_checker(self._checker_input(picture),
+                                              wrapper.safety_checker_threshold), self._safety_threshold):
+            return fallback
+        return picture
 
     def _checked_picture(self, image_tensor: Any) -> Image.Image:
         """Decoded tensor -> PIL, through the wrapper's safety checker like img2img()."""
@@ -494,8 +501,9 @@ class StreamDiffusionBackend:
     # -- admin upload screening ----------------------------------------------------
 
     def _safety_checker(self) -> Any:
-        """The wrapper's loaded safety checker, if it exposes one."""
-        if self._wrapper is None or not self._safety_on:
+        """The wrapper's loaded safety checker, if it exposes one. Uploads are screened with
+        it even while the live filter is switched off (that switch is for the pictures)."""
+        if self._wrapper is None:
             return None
         # wrapper.safety_checker is an NSFWDetectorEngine (TensorRT only), created when
         # use_safety_checker=True or its engine already exists.

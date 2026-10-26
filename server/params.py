@@ -14,14 +14,14 @@ from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
+from .imaging import INIT_MODES, POLARITIES
+
 log = logging.getLogger("dreamer.params")
 
 PARAMS_FILE = "params.json"
 SEED_MAX = 2**31 - 1
-T_INDEX_MAX = 49
+T_INDEX_MAX = 49  # last index of the 50-step LCM schedule (server/refine.py uses it too)
 T_INDEX_MAX_STEPS = 8
-POLARITIES = ("white_on_black", "black_on_white")
-INIT_MODES = ("colors", "sketch", "blank")
 UPSCALERS = ("off", "x2")
 RESOLUTIONS = (512, 640, 768, 896, 1024)  # long sides offered on the admin page
 REFINE_MAX_STEPS = 20
@@ -50,8 +50,9 @@ LIMITS: dict[str, dict[str, Any]] = {
     "refine_model": {"options": list(REFINE_MODELS)},
     "picture_model": {"options": list(PICTURE_MODELS)},
     "tcd_steps": {"min": 1, "max": 8, "step": 1},
-    # Long side; a multiple of 64 (UNet). The TensorRT engines handle 384..1024.
-    "resolution": {"min": 64, "max": 1024, "step": 64, "options": list(RESOLUTIONS)},
+    # Long side; a multiple of 64 (UNet). The TensorRT engines handle 384..1024 per side, and
+    # the short side is 0.7x the long one (config.canvas_dims): 512 is the smallest that fits.
+    "resolution": {"min": 512, "max": 1024, "step": 64, "options": list(RESOLUTIONS)},
 }
 
 
@@ -173,7 +174,8 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
         elif name == "resolution":
             side = _as_int(value, name)
             if side % 64 or not LIMITS[name]["min"] <= side <= LIMITS[name]["max"]:
-                raise ValueError("resolution must be a multiple of 64 from 64 to 1024")
+                raise ValueError(f"resolution must be a multiple of 64 from {LIMITS[name]['min']} "
+                                 f"to {LIMITS[name]['max']}")
             out[name] = side
     return replace(base, **out)
 
@@ -199,7 +201,9 @@ def defaults_from_config(config: Any) -> GenParams:
         jpeg_quality=int(_clamp(int(config.jpeg_quality), "jpeg_quality")),
         refine_steps=int(_clamp(int(getattr(model, "refine_steps", base.refine_steps)), "refine_steps")),
         upscale=getattr(model, "upscaler", "off") if getattr(model, "upscaler", "off") in UPSCALERS else "off",
-        resolution=int(config.size),
+        # config.size is validated in config.py (the GPU backend needs 512..1024; the mock
+        # backend in tests may use less); never above what the admin page can show.
+        resolution=min(int(config.size), LIMITS["resolution"]["max"]),
     )
 
 

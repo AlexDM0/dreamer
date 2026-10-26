@@ -96,7 +96,8 @@ def test_kid_cannot_inject_prompt_text(client):
         recv_until(ws, is_json("pong"))
         ws.send_bytes(sketch_frame(1))
         recv_until(ws, is_picture(1))
-    prompt = app.state.session.current_prompt()
+    cur = app.state.session.current()
+    prompt = app.state.styles.build_prompt(cur["topic"], cur["style"])
     assert "INJECTED" not in prompt and "crayon" in prompt
     assert app.state.styles.get("styles", "crayon")["prompt"] in prompt
 
@@ -177,3 +178,34 @@ async def _fill_then_replace(peer, n, code):
     for i in range(n):
         peer.send_json({"t": "filler", "i": i})
     peer.close_soon(code, farewell={"t": "replaced"})
+
+
+def test_a_slow_client_gets_the_newest_picture_not_a_backlog():
+    import asyncio
+
+    from server.session import Peer
+
+    class SlowSocket:
+        def __init__(self):
+            self.sent, self.release = [], asyncio.Event()
+
+        async def send_bytes(self, data):
+            await self.release.wait()
+            self.sent.append(data)
+
+        async def send_text(self, text):
+            self.sent.append(text)
+
+    async def run():
+        ws = SlowSocket()
+        peer = Peer(ws, "admin")
+        peer.send_picture(b"first")
+        await asyncio.sleep(0)  # the sender picks up "first" and blocks on the socket
+        for i in range(50):
+            peer.send_picture(f"p{i}".encode())
+        ws.release.set()
+        await asyncio.sleep(0.05)
+        await peer.finish()
+        return ws.sent
+
+    assert asyncio.run(run()) == [b"first", b"p49"]

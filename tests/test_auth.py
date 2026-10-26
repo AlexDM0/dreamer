@@ -171,3 +171,16 @@ def test_login_lockout_http(client):
 def test_forged_cookie_rejected(client):
     client.cookies.set("sg_admin", "9999999999.00")
     assert client.get("/api/admin/state").status_code == 401
+
+
+def test_global_lock_does_not_hold_a_client_that_logged_in_before(auth):
+    # The parent's phone logged in once; then a child taps wrong PINs on the iPad.
+    assert auth.check_pin("2468", "phone")
+    for i in range(GLOBAL_MAX_FAILURES):
+        try:
+            auth.check_pin("0000", f"ipad-{i}")
+        except LockedOut:
+            pass
+    with pytest.raises(LockedOut):
+        auth.check_pin("2468", "stranger")  # everyone else is held by the global budget
+    assert auth.check_pin("2468", "phone")  # the phone still gets in

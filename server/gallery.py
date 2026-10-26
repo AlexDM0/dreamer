@@ -645,6 +645,10 @@ class DraftAutosaver:
         self._get_frame = get_frame
         self._get_source = get_source
         self._saved: LastFrame | None = None   # frame the draft currently holds
+        # ...and which saved artwork it said it continues: Save after the last autosave
+        # changes that without a new frame, and the draft must record it (else the next
+        # Save after a reload makes a duplicate instead of updating the artwork).
+        self._saved_source: str | None = None
         # monotonic() counts from boot, so 0.0 would throttle the first write on a
         # freshly booted PC; -inf means "never written": the first write is immediate.
         self._last_write = float("-inf")
@@ -653,11 +657,6 @@ class DraftAutosaver:
         self.draft_id: str | None = drafts[0].id if drafts else None
         for extra in drafts[1:]:  # one draft per session; older ones are leftovers
             store.delete_draft(extra.id)
-
-    @property
-    def dirty(self) -> bool:
-        frame = self._get_frame()
-        return frame is not None and frame is not self._saved
 
     def touch(self) -> None:
         if self._task is None or self._task.done():
@@ -687,7 +686,8 @@ class DraftAutosaver:
     async def _write(self) -> None:
         async with self.lock:
             frame = self._get_frame()
-            if frame is None or frame is self._saved:
+            source = self._get_source()
+            if frame is None or (frame is self._saved and source == self._saved_source):
                 return
             self._last_write = time.monotonic()
             try:
@@ -695,14 +695,14 @@ class DraftAutosaver:
                 # empty canvas for a moment before it restores the draft. Only an explicit
                 # clear / new drawing drops it (discard()).
                 if not await asyncio.to_thread(is_blank_sketch, frame.sketch_png):
-                    await self._store(frame)
+                    await self._store(frame, source)
             except (OSError, ValueError, sqlite3.Error) as exc:
                 log.error("could not autosave the draft: %s", exc)
                 return  # not marked saved: the next frame or flush tries again
-            self._saved = frame
+            self._saved, self._saved_source = frame, source
 
-    async def _store(self, frame: LastFrame) -> None:
-        meta = frame.meta(self._get_source())
+    async def _store(self, frame: LastFrame, source: str | None) -> None:
+        meta = frame.meta(source)
         if self.draft_id is not None:
             try:
                 await asyncio.to_thread(self.store.update, self.draft_id,
@@ -726,7 +726,7 @@ class DraftAutosaver:
         """The canvas was cleared / a new drawing started: forget the draft."""
         self._cancel()
         async with self.lock:
-            self._saved = self._get_frame()
+            self._saved, self._saved_source = self._get_frame(), self._get_source()
             await self._drop()
 
     def current(self) -> Artwork | None:

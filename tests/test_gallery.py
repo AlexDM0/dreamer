@@ -266,3 +266,23 @@ def test_is_blank_sketch():
     assert g.is_blank_sketch(sketch_png(blank=True))
     assert not g.is_blank_sketch(sketch_png())
     assert g.is_blank_sketch(b"garbage")
+
+
+def test_draft_records_a_save_made_after_its_last_write(store):
+    """Draw, autosave, Save (now continuing artwork X), close: the draft must say it
+    continues X, or the next Save after a reload makes a duplicate."""
+    import asyncio
+
+    frame = g.LastFrame(1, sketch_png(), jpeg(), "p", "space", "crayon", {"seed": 2})
+    source = {"id": None}
+
+    async def run():
+        drafts = g.DraftAutosaver(store, lambda: frame, lambda: source["id"], interval=0)
+        await drafts.flush()
+        assert drafts.current().source_id is None
+        saved = store.save(sketch_png(), jpeg(), META)
+        source["id"] = saved.id  # Save happened; no new frame since
+        await drafts.flush()
+        assert drafts.current().source_id == saved.id
+
+    asyncio.run(run())

@@ -151,3 +151,28 @@ def test_make_backend_picks_tcd_for_the_real_backend_only():
 
     assert isinstance(make_backend(Config(backend="mock"), "tcd"), MockBackend)
     assert isinstance(make_backend(Config(backend="streamdiffusion"), "tcd"), TcdBackend)
+
+
+def test_resolution_below_what_the_engines_take_is_refused():
+    from server.params import GenParams, apply_changes
+    with pytest.raises(ValueError):
+        apply_changes(GenParams(), {"resolution": 384})  # short side 256: below the engines' 384
+    assert apply_changes(GenParams(), {"resolution": 512}).resolution == 512
+
+
+def test_saved_low_resolution_is_ignored(tmp_path):
+    import json
+    from server.params import GenParams, ParamsStore
+    (tmp_path / "params.json").write_text(json.dumps({"resolution": 64, "seed": 9}))
+    store = ParamsStore(tmp_path, GenParams())
+    assert store.get().resolution == GenParams().resolution and store.get().seed == 9
+
+
+def test_gpu_backend_needs_size_512(tmp_path):
+    from server.config import load_config
+    path = tmp_path / "config.yaml"
+    path.write_text('backend: streamdiffusion\nadmin_pin: "2468"\nsize: 448\n')
+    with pytest.raises(ValueError):
+        load_config(path)
+    path.write_text('backend: mock\nadmin_pin: "2468"\nsize: 256\n')
+    assert load_config(path).size == 256

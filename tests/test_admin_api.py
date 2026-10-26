@@ -62,7 +62,9 @@ def test_custom_style_appears_on_kid_socket(admin):
         ws.send_json({"t": "style", "id": style["id"]})
         ws.send_json({"t": "ping"})
         recv_until(ws, is_json("pong"))
-        prompt = admin.app.state.session.current_prompt()
+        session = admin.app.state.session
+        cur = session.current()
+        prompt = session.styles.build_prompt(cur["topic"], cur["style"])
         assert "rainbow colors" in prompt and prompt.endswith(SAFETY_TAIL)
     finally:
         ws.__exit__(None, None, None)

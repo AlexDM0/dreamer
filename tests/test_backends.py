@@ -226,6 +226,12 @@ def test_streamdiffusion_upload_screening(fake_sd):
     w.safety_checker = lambda img, threshold: ([img], [False])
     assert b.check_image_safe(Image.new("RGB", (8, 8)))
 
+    # Uploads are screened even while the live filter is off (that switch is for pictures).
+    w.safety_checker = lambda img, threshold: True
+    b._safety_on = False
+    assert not b.check_image_safe(Image.new("RGB", (8, 8)))
+    b._safety_on = True
+
     # A failing or unintelligible checker rejects (fail closed).
     w.safety_checker = lambda img, threshold: object()
     with pytest.raises(TypeError):

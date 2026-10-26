@@ -460,6 +460,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         draft of the old drawing, and only ``continuing_id`` being continued."""
         mailbox.clear()
         session.new_drawing(continuing_id)  # before any await: stale pictures are ignored
+        if runtime.worker is not None:
+            runtime.worker.forget_drawing()  # no more settling / refining the old drawing
         if runtime.drafts is not None:
             await runtime.drafts.discard()
 
@@ -488,6 +490,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     async def kid_restored(draft_id: Any) -> None:
         """The page put the draft back on its canvas: it continues what the draft continued."""
         mailbox.clear()
+        if runtime.worker is not None:
+            runtime.worker.forget_drawing()
         drafts = runtime.drafts
         draft = await asyncio.to_thread(drafts.current) if drafts is not None else None
         source = draft.source_id if draft is not None and draft.id == draft_id else None
@@ -606,7 +610,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         peer.send_json(session.last_status)
         peer.send_json({"t": "stats", **worker_stats(), **session.current()})
         if session.last_picture is not None:
-            peer.send_bytes(session.last_picture)
+            peer.send_picture(session.last_picture)
         try:
             while True:  # read-only: drain and ignore anything the client sends
                 if (await ws.receive())["type"] == "websocket.disconnect":
@@ -664,7 +668,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     @admin.post("/styles")
     async def add_style(body: NewStyleBody) -> dict[str, Any]:
         try:
-            item = styles.add_custom_style(body.label, body.emoji, body.prompt)
+            item = await asyncio.to_thread(styles.add_custom_style, body.label, body.emoji, body.prompt)
         except ValueError as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -675,7 +679,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     @admin.post("/topics")
     async def add_topic(body: NewStyleBody) -> dict[str, Any]:
         try:
-            item = styles.add_custom_topic(body.label, body.emoji, body.prompt)
+            item = await asyncio.to_thread(styles.add_custom_topic, body.label, body.emoji, body.prompt)
         except ValueError as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -688,8 +692,9 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         if kind not in KINDS:
             raise HTTPException(404, detail="not found")
         try:
-            item = styles.update_item(kind, item_id, hidden=body.hidden, label=body.label,
-                                      emoji=body.emoji, prompt=body.prompt)
+            item = await asyncio.to_thread(partial(styles.update_item, kind, item_id,
+                                                   hidden=body.hidden, label=body.label,
+                                                   emoji=body.emoji, prompt=body.prompt))
         except (KeyError, ValueError) as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -702,7 +707,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         if kind not in KINDS:
             raise HTTPException(404, detail="not found")
         try:
-            item = styles.delete_item(kind, item_id)
+            item = await asyncio.to_thread(styles.delete_item, kind, item_id)
         except (KeyError, ValueError) as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -718,7 +723,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     @admin.post("/order")
     async def set_order(body: OrderBody) -> dict[str, Any]:
         try:
-            styles.set_order(body.kind, body.ids)
+            await asyncio.to_thread(styles.set_order, body.kind, body.ids)
         except (KeyError, ValueError) as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -780,7 +785,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         try:
             (data_dir / STYLE_IMAGES_DIR).mkdir(parents=True, exist_ok=True)
             await asyncio.to_thread(img.save, data_dir / rel, "PNG")
-            item = styles.add_image_style(label, emoji or None, rel)
+            item = await asyncio.to_thread(styles.add_image_style, label, emoji or None, rel)
         except (ValueError, OSError) as exc:
             (data_dir / rel).unlink(missing_ok=True)  # no orphaned picture files
             raise save_failed(exc) if isinstance(exc, OSError) else _bad_request(exc)
