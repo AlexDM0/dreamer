@@ -83,6 +83,14 @@
           <div class="pane pane-picture"><canvas id="picture" width="640" height="448" aria-label="Your dream picture"></canvas></div>
           <div class="pane pane-sketch"><canvas id="sketch" width="640" height="448" aria-label="Drawing area"></canvas></div>
         </div>
+        <div class="offline" id="offline" role="status" aria-live="polite" hidden>
+          <svg class="offline-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+          <span class="offline-text">
+            <strong id="offline-title"></strong>
+            <span id="offline-sub"></span>
+          </span>
+          <button type="button" class="offline-btn" id="offline-retry" hidden>Try again</button>
+        </div>
         <div class="hint" id="hint" role="status" aria-live="polite" hidden>
           <span class="hint-text" id="hint-text"></span>
           <button type="button" class="hint-btn" id="hint-btn" hidden></button>

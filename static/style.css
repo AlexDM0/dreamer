@@ -876,6 +876,48 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 .hint.pop { animation: hint-in var(--dur-slow) var(--ease-spring); }
 @keyframes hint-in { from { transform: translate(-50%, 20px) scale(0.94); opacity: 0; } }
 
+/* Banner while pictures can't come back (server asleep, Wi-Fi off, model loading). */
+.offline {
+  position: absolute;
+  left: 50%;
+  top: var(--space-4);
+  z-index: 6;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 24px);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 64px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
+  border-radius: var(--radius-xl);
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  box-shadow: var(--shadow-3);
+  animation: hint-in var(--dur-slow) var(--ease-spring);
+}
+.offline[hidden] { display: none; }
+.offline-icon { flex: none; width: 32px; height: 32px; fill: var(--warning); }
+.offline[data-kind="busy"] .offline-icon { animation: pulse 1.4s var(--ease-in-out) infinite; }
+.offline-text { display: grid; gap: 2px; padding: var(--space-2) var(--space-2) var(--space-2) 0; }
+.offline-text strong { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: var(--leading-tight); }
+.offline-text span { font-size: var(--text-base); opacity: 0.85; }
+.offline-btn {
+  flex: none;
+  height: var(--touch-kid);
+  padding: 0 var(--space-5);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: var(--weight-semibold);
+}
+.offline-btn:active { background: var(--accent-pressed); }
+.offline-btn:disabled { opacity: 0.7; }
+.offline-btn[hidden] { display: none; }
+/* The old picture is stale while the server is gone. */
+.stage.offline-dim .pane-picture canvas { filter: grayscale(0.7) brightness(0.85); transition: filter var(--dur-slow); }
+
 /* ---------- Gallery ---------- */
 
 .gallery {
@@ -1171,4 +1213,9 @@ button.brand:focus-visible { box-shadow: var(--focus-ring); }
   width: 28px; height: 28px;
   fill: none; stroke: currentColor; stroke-width: var(--icon-stroke-bold);
   stroke-linecap: round; stroke-linejoin: round;
+}
+
+@media (max-width: 560px) {
+  .offline { gap: var(--space-3); padding-left: var(--space-4); }
+  .offline-text span { display: none; }
 }

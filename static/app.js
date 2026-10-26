@@ -97,7 +97,66 @@ let backendState = null; // last status from the server on this connection
 function showConn() {
   if (net.state === "open") toolbar.setConn(backendState || "connecting");
   else toolbar.setConn(net.state);
+  updateOffline();
 }
+
+// Banner over the drawing while pictures can't come back. Drawing keeps working; the
+// sketch is sent again when the server answers. Short blips (a reconnect, one busy
+// frame) don't show it.
+const OFFLINE_DELAY_MS = 2500;
+const BUSY_DELAY_MS = 1500;
+let offlineKind = null;  // what the banner shows now
+let offlinePending = null;
+let offlineTimer = 0;
+
+function offlineState() {
+  if (net.state === "replaced") return null; // its own dialog
+  if (!navigator.onLine) return "wifi";
+  if (net.state !== "open") return "server";
+  if (backendState === "busy") return "busy";
+  if (backendState === "error") return "error";
+  return null;
+}
+
+const OFFLINE_TEXT = {
+  wifi: ["The iPad is not on the Wi-Fi", "Keep drawing! Your picture comes back when the Wi-Fi does."],
+  server: ["The dream computer is asleep", "Keep drawing! Ask a grown-up to start Dreamer on the computer."],
+  busy: ["The dream computer is waking up…", "Keep drawing, your picture is on its way."],
+  error: ["The dream computer has a hiccup", "It keeps trying. Keep drawing!"],
+};
+
+function updateOffline() {
+  const kind = offlineState();
+  if (kind === offlinePending) return; // shown already, or its timer is running
+  clearTimeout(offlineTimer);
+  offlinePending = kind;
+  if (!kind) { setOffline(null); return; }
+  if (offlineKind) { setOffline(kind); return; } // already showing: switch at once
+  offlineTimer = setTimeout(() => setOffline(kind), kind === "busy" ? BUSY_DELAY_MS : OFFLINE_DELAY_MS);
+}
+
+function setOffline(kind) {
+  offlineKind = kind;
+  const el = $("#offline");
+  el.hidden = !kind;
+  $("#stage").classList.toggle("offline-dim", kind === "wifi" || kind === "server");
+  if (!kind) return;
+  const [title, sub] = OFFLINE_TEXT[kind];
+  $("#offline-title").textContent = title;
+  $("#offline-sub").textContent = sub;
+  el.dataset.kind = kind;
+  $("#offline-retry").hidden = kind !== "server" && kind !== "wifi";
+}
+
+$("#offline-retry").addEventListener("click", (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = "Trying…";
+  net.retryNow();
+  setTimeout(() => { btn.disabled = false; btn.textContent = "Try again"; }, 1500);
+});
+addEventListener("online", () => { net.retryNow(); updateOffline(); });
+addEventListener("offline", updateOffline);
 
 net.addEventListener("state", (e) => {
   $("#replaced").hidden = e.detail.state !== "replaced";
@@ -121,6 +180,7 @@ net.addEventListener("status", (e) => {
   }
   backendState = e.detail.state;
   if (net.state === "open") toolbar.setConn(backendState, e.detail.msg);
+  updateOffline();
 });
 net.addEventListener("ready", (e) => {
   const m = e.detail;
