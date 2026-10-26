@@ -26,7 +26,7 @@
       <div class="row tools">
         <button type="button" class="brand" id="parents" aria-label="Dreamer: parent controls" aria-haspopup="dialog">
           <img class="mark" src="/static/favicon.svg" alt="" width="52" height="52">
-          <span class="conn" id="conn" data-state="off" role="status" aria-label="Not connected" title="Not connected"></span>
+          <span class="conn" id="conn" data-state="off" role="status" aria-label="Not connected" title="Not connected"><span class="visually-hidden" id="conn-text">Not connected</span></span>
         </button>
 
         <div class="group swatches" id="swatches" role="radiogroup" aria-label="Colours"></div>
@@ -160,7 +160,7 @@
     </section>
 
     <div class="overlay" id="confirm" hidden>
-      <div class="card" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-sub">
+      <div class="card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-sub">
         <span class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.7 9.6a2.4 2.4 0 0 1 4.6.9c0 1.6-2.3 2-2.3 3.5M12 16.9h.01"/></svg></span>
         <p id="confirm-title">Start a new drawing?</p>
         <p class="sub" id="confirm-sub">This drawing is not saved yet.</p>
@@ -226,9 +226,9 @@
     </div>
 
     <div class="overlay" id="replaced" hidden>
-      <div class="card">
+      <div class="card" role="alertdialog" aria-modal="true" aria-labelledby="replaced-text">
         <img src="/static/favicon.svg" alt="" width="88" height="88">
-        <p>Someone else is drawing on another screen.</p>
+        <p id="replaced-text">Someone else is drawing on another screen.</p>
         <button type="button" class="btn big" id="take-over">Draw here</button>
       </div>
     </div>

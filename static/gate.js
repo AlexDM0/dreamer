@@ -4,6 +4,8 @@
 // from here lasts 15 minutes (the phone's admin page keeps its 30 days): the child's own
 // screen must never open the parent page by itself.
 
+import { hideDialog, showDialog } from "./dialog.js";
+
 const PIN_MAX = 12;
 
 export class ParentGate {
@@ -34,11 +36,11 @@ export class ParentGate {
     this.pin = "";
     this.$("#gate-msg").textContent = "";
     this._render();
-    this.overlay.hidden = false;
+    showDialog(this.overlay);
   }
 
   close() {
-    this.overlay.hidden = true;
+    hideDialog(this.overlay);
     this.pin = "";
   }
 

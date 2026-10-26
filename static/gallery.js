@@ -86,7 +86,10 @@ export class Gallery extends EventTarget {
     } catch {
       if (gen === this._gen) { this.failed = true; this._render(false); }
     } finally {
-      if (gen === this._gen) this.loading = false;
+      if (gen === this._gen) {
+        this.loading = false;
+        this.more.disabled = false; // in case this replaced a page load that disabled it
+      }
     }
   }
 
@@ -119,8 +122,10 @@ export class Gallery extends EventTarget {
     } catch {
       if (gen === this._gen) { this.failed = true; this._render(first); }
     } finally {
-      if (gen === this._gen) this.loading = false;
-      this.more.disabled = false;
+      if (gen === this._gen) {
+        this.loading = false;
+        this.more.disabled = false; // a newer load owns the button otherwise
+      }
     }
   }
 

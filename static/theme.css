@@ -6,6 +6,7 @@
      2. Semantic    - what a colour is for (--surface, --text, --accent, ...).
                       Pages use these and nothing else. Dark mode swaps this layer.
      3. Scales      - type, spacing, radii, elevation, motion, focus, touch.
+   Plus one shared base rule at the end: no text selection outside input fields.
 
    Theme switching: light by default; dark follows prefers-color-scheme unless the page
    pins a theme with <html data-theme="light|dark">. The kid page pins light (the drawing
@@ -124,6 +125,10 @@
 
   /* Fixed content colours (not themed): the rainbow on the "more colours" swatch. */
   --spectrum: conic-gradient(#ef4d5a, #ff9f1c, #ffd23f, #3ecf6e, #2fa8ff, #8b5cf6, #ff7eb6, #ef4d5a);
+  /* The brush-size ring drawn over the drawing (any paper colour): a light edge plus a
+     dark halo, so it shows on every paper. */
+  --pinch-ring-edge: var(--sand-0);
+  --pinch-ring-halo: rgb(0 0 0 / 0.45);
 
   /* ---------- 3. Scales --------------------------------------------------------- */
 
@@ -306,4 +311,21 @@
     --dur-slow: 1ms;
     --press-scale: 1;
   }
+}
+
+/* ---------- Base: no text selection or iOS callout outside input fields ----------- */
+/* Every page (kid, admin, help) loads this file. A long press on a picture, the drawing or
+   a label must not select text or open the iOS copy/save menu; real text fields still
+   take selection, caret placement and paste. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+img, canvas { -webkit-touch-callout: none; -webkit-user-drag: none; }
+input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"]),
+textarea, select, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
