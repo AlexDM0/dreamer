@@ -55,42 +55,42 @@
   "steps": [
    {
     "picture": "help/steps-1.jpg",
-    "ms": 51,
+    "ms": 52,
     "value": "1",
     "default": false,
     "mode": "together"
    },
    {
     "picture": "help/steps-2.jpg",
-    "ms": 73,
+    "ms": 74,
     "value": "2",
     "default": true,
     "mode": "together"
    },
    {
     "picture": "help/steps-4.jpg",
-    "ms": 117,
+    "ms": 119,
     "value": "4",
     "default": false,
     "mode": "together"
    },
    {
     "picture": "help/steps-5.jpg",
-    "ms": 174,
+    "ms": 176,
     "value": "5",
     "default": false,
     "mode": "one by one"
    },
    {
     "picture": "help/steps-6.jpg",
-    "ms": 205,
+    "ms": 208,
     "value": "6",
     "default": false,
     "mode": "one by one"
    },
    {
     "picture": "help/steps-8.jpg",
-    "ms": 267,
+    "ms": 270,
     "value": "8",
     "default": false,
     "mode": "one by one"
@@ -246,17 +246,17 @@
    },
    {
     "value": "step 3",
-    "after": 103,
+    "after": 106,
     "picture": "help/refine-3.jpg"
    },
    {
     "value": "step 5",
-    "after": 192,
+    "after": 196,
     "picture": "help/refine-5.jpg"
    },
    {
     "value": "step 7",
-    "after": 280,
+    "after": 287,
     "picture": "help/refine-7.jpg"
    }
   ],
@@ -269,7 +269,7 @@
    {
     "value": "AI 2\u00d7",
     "default": false,
-    "ms": 29,
+    "ms": 30,
     "picture": "help/upscale-x2.jpg"
    }
   ],
@@ -283,19 +283,19 @@
    {
     "value": "640\u00d7448",
     "default": true,
-    "ms": 73,
+    "ms": 74,
     "picture": "help/resolution-640.jpg"
    },
    {
     "value": "768\u00d7512",
     "default": false,
-    "ms": 95,
+    "ms": 96,
     "picture": "help/resolution-768.jpg"
    },
    {
     "value": "1024\u00d7704",
     "default": false,
-    "ms": 177,
+    "ms": 180,
     "picture": "help/resolution-1024.jpg"
    }
   ],
@@ -322,7 +322,7 @@
  },
  "drawing": "help/drawing.jpg",
  "gpu_memory_mb": [
-  7833,
+  7828,
   10240
  ]
 }

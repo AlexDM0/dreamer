@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-26T08:28:38+0100",
+  "generated": "2026-10-26T08:45:20+0100",
   "generator": "tools/make_showcase.py",
   "note": "Real pictures made on the RTX 3080 PC (StreamDiffusion SD-Turbo + scribble ControlNet). UI shots are 2x device pixel ratio.",
   "files": [
@@ -17,7 +17,7 @@
       "orientation": "landscape",
       "width": 2560,
       "height": 1800,
-      "bytes": 757750
+      "bytes": 759165
     },
     {
       "file": "desktop-help-top.png",
@@ -92,7 +92,7 @@
       "orientation": "landscape",
       "width": 1280,
       "height": 896,
-      "bytes": 118414
+      "bytes": 117443
     },
     {
       "file": "examples/cat-sketch.png",
@@ -112,7 +112,7 @@
       "orientation": "landscape",
       "width": 640,
       "height": 448,
-      "bytes": 35829
+      "bytes": 52708
     },
     {
       "file": "examples/dinosaur-picture.jpg",
@@ -172,7 +172,7 @@
       "orientation": "landscape",
       "width": 1280,
       "height": 896,
-      "bytes": 93956
+      "bytes": 94520
     },
     {
       "file": "examples/house-sketch.png",
@@ -192,7 +192,7 @@
       "orientation": "landscape",
       "width": 640,
       "height": 448,
-      "bytes": 37745
+      "bytes": 65063
     },
     {
       "file": "examples/meadow-picture.jpg",
@@ -212,7 +212,7 @@
       "orientation": "portrait",
       "width": 896,
       "height": 1280,
-      "bytes": 121372
+      "bytes": 121182
     },
     {
       "file": "examples/meadow-sketch.png",
@@ -232,7 +232,7 @@
       "orientation": "portrait",
       "width": 448,
       "height": 640,
-      "bytes": 53370
+      "bytes": 88773
     },
     {
       "file": "examples/rocket-picture.jpg",
@@ -326,7 +326,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 384693
+      "bytes": 383558
     },
     {
       "file": "ipad-landscape-cat-sketch.png",
@@ -360,7 +360,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 402456
+      "bytes": 401148
     },
     {
       "file": "ipad-landscape-cat-split.jpg",
@@ -380,7 +380,7 @@
       "paper": "#1e2a5a",
       "width": 2360,
       "height": 1640,
-      "bytes": 370686
+      "bytes": 370068
     },
     {
       "file": "ipad-landscape-dinosaur-minimised.jpg",
@@ -450,7 +450,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 326057
+      "bytes": 325266
     },
     {
       "file": "ipad-landscape-gallery-detail.png",
@@ -467,7 +467,7 @@
       "artwork": "cat",
       "width": 2360,
       "height": 1640,
-      "bytes": 1003505
+      "bytes": 1024501
     },
     {
       "file": "ipad-landscape-gallery-light.jpg",
@@ -483,7 +483,7 @@
       "orientation": "landscape",
       "width": 2360,
       "height": 1640,
-      "bytes": 342847
+      "bytes": 342175
     },
     {
       "file": "ipad-landscape-gallery.jpg",
@@ -498,7 +498,7 @@
       "orientation": "landscape",
       "width": 2360,
       "height": 1640,
-      "bytes": 353428
+      "bytes": 352628
     },
     {
       "file": "ipad-landscape-house-picture.jpg",
@@ -518,7 +518,7 @@
       "paper": "#000000",
       "width": 2360,
       "height": 1640,
-      "bytes": 386878
+      "bytes": 388573
     },
     {
       "file": "ipad-landscape-house-saving.jpg",
@@ -535,7 +535,7 @@
       "artwork": "house",
       "width": 2360,
       "height": 1640,
-      "bytes": 432148
+      "bytes": 431681
     },
     {
       "file": "ipad-landscape-house-sketch.png",
@@ -660,7 +660,7 @@
       "paper": "#8fd3ff",
       "width": 1640,
       "height": 2360,
-      "bytes": 455825
+      "bytes": 456750
     },
     {
       "file": "ipad-portrait-meadow-sketch.png",
@@ -697,7 +697,7 @@
       "paper": "#8fd3ff",
       "width": 1640,
       "height": 2360,
-      "bytes": 430010
+      "bytes": 432148
     },
     {
       "file": "phone-admin-artwork-dark.png",
@@ -714,7 +714,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 383312
+      "bytes": 400297
     },
     {
       "file": "phone-admin-artwork-light.png",
@@ -731,7 +731,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 389694
+      "bytes": 407789
     },
     {
       "file": "phone-admin-gallery-dark.png",
@@ -747,7 +747,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 432872
+      "bytes": 432335
     },
     {
       "file": "phone-admin-gallery-light.png",
@@ -763,7 +763,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 429611
+      "bytes": 429143
     },
     {
       "file": "phone-admin-login-dark.png",
@@ -849,7 +849,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 397804
+      "bytes": 395712
     },
     {
       "file": "phone-admin-now-light.png",
@@ -867,7 +867,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 394725
+      "bytes": 391890
     },
     {
       "file": "phone-admin-picture-controls-dark.png",
@@ -915,7 +915,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 494763
+      "bytes": 494834
     },
     {
       "file": "phone-help-top.png",
@@ -930,7 +930,7 @@
       "orientation": "portrait",
       "width": 780,
       "height": 1688,
-      "bytes": 268951
+      "bytes": 269138
     }
   ]
 }
