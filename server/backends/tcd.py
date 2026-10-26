@@ -20,12 +20,9 @@ from typing import Any, Iterator
 
 from PIL import Image
 
-from .. import offline
-from ..config import canvas_dims
-from .base import DEFAULT_SEED, model_attr as _model_attr
-
 log = logging.getLogger("dreamer.backend.tcd")
 
+DEFAULT_SEED = 2
 SAFETY_MODEL = "Freepik/nsfw_image_detector"
 # Refinement re-renders at these step counts (up to the refine budget), after the drawing's.
 REFINE_LADDER = (6, 8, 12, 16, 20)
@@ -40,6 +37,10 @@ class _OutputOnly:
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         result = self.processor(*args, **kwargs)
         return result[0] if isinstance(result, tuple) else result
+
+
+def _model_attr(config: Any, name: str, default: Any) -> Any:
+    return getattr(getattr(config, "model", None), name, default)
 
 
 class TcdBackend:
@@ -60,8 +61,6 @@ class TcdBackend:
         self._controlnet_scale = 0.55
         self._controlnet_on = True
         self._last_safe: Image.Image | None = None
-        self._warmup_size = canvas_dims(config)["landscape"]
-        self._config = config if hasattr(config, "model") else None
 
     @property
     def name(self) -> str:
@@ -74,9 +73,6 @@ class TcdBackend:
     # ----- lifecycle -------------------------------------------------------------------
 
     def warmup(self) -> None:
-        if self._config is not None and offline.is_offline() and not offline.tcd_ready(self._config):
-            # Dreamer went offline after SD-Turbo's first start; TCD was never downloaded.
-            offline.fetch_online(self._config, SAFETY_MODEL)
         import torch
         from diffusers import ControlNetModel, StableDiffusionControlNetImg2ImgPipeline, TCDScheduler
 
@@ -98,7 +94,7 @@ class TcdBackend:
         self._load_checker()
         if self._prompt_embeds is None:
             self.set_prompt("a colorful illustration")
-        self.generate(Image.new("RGB", self._warmup_size, "black"), None)  # first call compiles kernels
+        self.generate(Image.new("RGB", (640, 448), "black"), None)  # first call compiles kernels
         log.info("Dreamer: SD 1.5 + TCD ready")
 
     def _load_checker(self) -> None:
@@ -168,11 +164,9 @@ class TcdBackend:
         import torchvision.transforms.v2.functional as functional
 
         tensor = torch.from_numpy(np.array(image.convert("RGB"))).permute(2, 0, 1).to("cuda")
-        # The whole picture squeezed to 448x448, like the TensorRT backend's checker: a centre
-        # crop would leave the outer ~30% of a 640x448 picture unchecked.
-        tensor = functional.resize(tensor, [448, 448], antialias=True,
+        tensor = functional.resize(tensor, [448], antialias=True,
                                    interpolation=functional.InterpolationMode.BICUBIC)
-        tensor = tensor.float().div(255).clamp(0, 1)
+        tensor = functional.center_crop(tensor, [448, 448]).float().div(255).clamp(0, 1)
         tensor = functional.normalize(tensor, [0.4815, 0.4578, 0.4082], [0.2686, 0.2613, 0.2758])
         with torch.no_grad():
             logits = self._checker(pixel_values=tensor.unsqueeze(0).half()).logits

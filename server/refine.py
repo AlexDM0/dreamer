@@ -20,7 +20,15 @@ from typing import Any, Callable, Iterator
 import numpy as np
 from PIL import Image, ImageFilter
 
-from .params import T_INDEX_MAX
+T_INDEX_MAX = 49
+
+
+def _spread(first: int, steps: int) -> tuple[int, ...]:
+    """``steps`` t_index values from ``first`` to the last one, evenly spaced."""
+    steps = max(1, min(steps, T_INDEX_MAX - first + 1))
+    if steps == 1:
+        return (first,)
+    return tuple(round(first + i * (T_INDEX_MAX - first) / (steps - 1)) for i in range(steps))
 
 
 def continue_path(draw: tuple[int, ...], total_steps: int) -> tuple[int, ...] | None:
@@ -39,11 +47,20 @@ def continue_path(draw: tuple[int, ...], total_steps: int) -> tuple[int, ...] | 
 
 
 def _path(backend: Any, init: Image.Image, line_map: Image.Image | None,
-          draw: tuple[int, ...], total_steps: int) -> Iterator[Image.Image]:
+          draw: tuple[int, ...], total_steps: int, noise: str) -> Iterator[Image.Image]:
     path = continue_path(draw, total_steps)
     if path is None:
         return
-    yield from backend.refine_steps(init, line_map, list(path), len(draw) + 1)
+    yield from backend.refine_steps(init, line_map, list(path), len(draw) + 1, noise=noise)
+
+
+def _img2img(backend: Any, image: Image.Image, line_map: Image.Image | None,
+             t_index: tuple[int, ...]) -> Image.Image:
+    """One complete low-noise pass from ``image`` (steps one after another)."""
+    picture = None
+    for picture in backend.refine_steps(image, line_map, list(t_index), len(t_index)):
+        pass
+    return picture
 
 
 def lock_broad_terms(first: Image.Image, picture: Image.Image, radius: float) -> Image.Image:
@@ -126,10 +143,10 @@ def model_anchored_edges(backend, first, init, line_map, draw, total_steps):
                                      control_images=[control] * len(rungs))
 
 
-# Hires in tiles: upscale by TILE_SCALE, then single anchored low-noise steps over
-# overlapping tiles of the drawing's own size (the TensorRT engines are dynamic only up to
-# 1024 px, and a bigger pipeline would need a rebuild), feather-blended. Real detail at a
-# higher resolution while every tile keeps its own broad terms.
+# Hires in tiles: upscale 2x, then single anchored low-noise steps over overlapping tiles of the
+# drawing's own size (the TensorRT engines are dynamic only up to 1024 px, and a bigger
+# pipeline would need a rebuild), feather-blended. Real detail at twice the resolution while
+# every tile keeps its own broad terms.
 TILE_RUNGS = (40, 44, 47)
 TILE_SIGMA = 2.5
 TILE_SCALE = 1.5  # 960x672 from 640x448: 4 tiles (2x needs 9, ~600 ms per rung)
@@ -167,23 +184,13 @@ def _tiled_pass(backend: Any, picture: Image.Image, line_map: Image.Image | None
             tile_map = big_map.crop(box) if big_map is not None else None
             out = None
             # Broad terms pinned to the (upscaled) first picture, so drift cannot build up.
-            # Unchecked: the finished picture is screened as a whole (_screened), so a flagged
-            # tile cannot be patched with a tile from another part of the picture.
             for out in backend.latent_ladder(tile, tile_map, [rung], chain=True,
                                              anchor_sigma=TILE_SIGMA, gamma=ANCHOR_GAMMA,
-                                             anchor_image=anchor.crop(box), checked=False):
+                                             anchor_image=anchor.crop(box)):
                 pass
             total[y:y + tile_h, x:x + tile_w] += np.asarray(out, dtype=np.float32) * weight
             weights[y:y + tile_h, x:x + tile_w] += weight
     return Image.fromarray(np.clip(total / weights, 0, 255).astype(np.uint8))
-
-
-def _screened(backend: Any, picture: Image.Image, fallback: Image.Image) -> Image.Image:
-    """A tiled picture through the safety filter; ``fallback`` (scaled to fit) if flagged."""
-    screen = getattr(backend, "screen_picture", None)
-    if screen is None:
-        return picture
-    return screen(picture, fallback.resize(picture.size, Image.Resampling.LANCZOS))
 
 
 def model_hires_tiles(backend, first, init, line_map, draw, total_steps, upscaler=None):
@@ -197,7 +204,7 @@ def model_hires_tiles(backend, first, init, line_map, draw, total_steps, upscale
     picture = anchor
     for rung in _rungs(TILE_RUNGS, draw, total_steps):
         picture = _tiled_pass(backend, picture, line_map, rung, first.size, anchor)
-        yield _screened(backend, picture, first)
+        yield picture
 
 
 ANCHORED_HIRES_SPLIT = 3  # anchored rungs at the drawing's size before the bigger tiled rungs
@@ -221,19 +228,19 @@ def model_anchored_hires(backend, first, init, line_map, draw, total_steps, upsc
     anchor_big = anchor_big.resize(size, Image.Resampling.LANCZOS)
     for rung in TILE_RUNGS[-hires_rungs:] if hires_rungs < len(TILE_RUNGS) else TILE_RUNGS:
         big = _tiled_pass(backend, big, line_map, rung, first.size, anchor_big)
-        yield _screened(backend, big, first)
+        yield big
 
 
 # ---- the models -----------------------------------------------------------------------
 
 def model_path(backend, first, init, line_map, draw, total_steps):
     """Continue the drawing's own denoising path step by step (fresh noise each step)."""
-    yield from _path(backend, init, line_map, draw, total_steps)
+    yield from _path(backend, init, line_map, draw, total_steps, "fresh")
 
 
 def model_path_locked(backend, first, init, line_map, draw, total_steps):
     """The path, with the broad terms pinned to the first picture in pixel space."""
-    yield from _locked(_path(backend, init, line_map, draw, total_steps), first)
+    yield from _locked(_path(backend, init, line_map, draw, total_steps, "fresh"), first)
 
 
 # name -> (generator, label shown on the admin page, makes pictures bigger itself)

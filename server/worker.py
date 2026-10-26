@@ -7,12 +7,11 @@ queue so "latest frame wins" never drops them. The worker never touches sockets.
 from __future__ import annotations
 
 import concurrent.futures
-import contextlib
 import logging
 import queue
 import threading
 import time
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from PIL import Image
@@ -20,7 +19,7 @@ from PIL import Image
 from . import imaging, offline, refine
 from .config import canvas_dims
 from .mailbox import Mailbox
-from .params import GenParams, defaults_from_config
+from .params import T_INDEX_MAX, GenParams, defaults_from_config
 
 log = logging.getLogger("dreamer.worker")
 
@@ -31,6 +30,10 @@ TAKE_TIMEOUT = 0.5
 SETTLE_DELAY = 0.15
 FPS_EMA_ALPHA = 0.2
 FPS_IDLE_GAP = 2.0  # seconds
+
+
+# The step path refinement continues on (kept here for callers of the old name).
+refine_path = refine.continue_path
 
 
 @dataclass
@@ -103,17 +106,13 @@ class GpuWorker(threading.Thread):
         self._settle_job: FrameJob | None = None
         self._settle_left = 0
         self._needs_prime = True
-        # Whether to refine _settle_job once drawing pauses, the picture now on screen
-        # (refinement models keep its broad terms), and the upscaler (loaded on first use).
+        # Refinement once drawing pauses: the step lists still to run for _settle_job, and
+        # the upscaler (loaded on first use, if its weights exist).
+        # Whether to refine _settle_job once drawing pauses, and the picture now on screen
+        # (refinement models keep its broad terms).
         self._refine_plan: bool = False
         self._shown: Image.Image | None = None
         self._upscaler: Any = None
-        # The last sketch's decoded inputs, reused by its settle and refine frames:
-        # (job, params, dims, blank, init, line_map).
-        self._inputs: tuple | None = None
-        # Set from the event loop on Clear / New drawing: forget the old drawing's settle
-        # and refine work before the next frame.
-        self._forget = threading.Event()
         # Picture size the backend is set up for (backends start in landscape).
         self._dims = canvas_dims(config)["landscape"]
         # The picture model (params.picture_model) the current backend was built for.
@@ -154,10 +153,6 @@ class GpuWorker(threading.Thread):
         with self._params_lock:
             self._pending_params = params
 
-    def forget_drawing(self) -> None:
-        """The kid cleared or started a new drawing: stop settling / refining the old one."""
-        self._forget.set()
-
     def stop(self, timeout: float | None = 5.0) -> None:
         self._stop_event.set()
         if self.is_alive() and threading.current_thread() is not self:
@@ -187,10 +182,6 @@ class GpuWorker(threading.Thread):
             job = self.mailbox.take(timeout=timeout)
             if self._stop_event.is_set():
                 continue
-            if self._forget.is_set():
-                self._forget.clear()
-                self._settle_job, self._settle_left, self._refine_plan = None, 0, False
-                self._shown, self._inputs, self._needs_prime = None, None, True
             if job is None:
                 if self._settle_left and self._settle_job is not None:
                     self._settle_left -= 1
@@ -227,8 +218,6 @@ class GpuWorker(threading.Thread):
             log.info("backend %s ready in %.1fs", self.backend_name, time.perf_counter() - started)
             if self.backend_name == "streamdiffusion":
                 offline.mark_ready(self.config)  # the models are cached now
-            elif self.backend_name == "tcd":
-                offline.mark_ready(self.config, "tcd")
         except Exception as exc:
             log.exception("backend warmup failed")
             self._record_failure(f"warmup failed: {exc}")
@@ -240,42 +229,8 @@ class GpuWorker(threading.Thread):
         self._set_state("ready")
         # A fresh backend starts from config defaults: give it the current params.
         if self._params != self._defaults:
-            self._apply_startup_params(self._params)
+            self._apply_params(self._params, revert_to=self._defaults)
         return True
-
-    def _apply_startup_params(self, wanted: GenParams) -> None:
-        """Give a fresh backend the saved params. If the backend refuses them (e.g. the safety
-        filter is on in the saved params but off in config.yaml), keep every field it accepts
-        one by one instead of falling back to all defaults, and tell the app what is live."""
-        try:
-            self.backend.set_params(wanted)
-            self._params = wanted
-            return
-        except Exception:
-            log.exception("saved picture settings refused as a whole; trying them one by one")
-        applied = self._defaults
-        if self._backend_kind is not None:  # the model that is loaded, whatever was saved
-            applied = replace(applied, picture_model=self._backend_kind)
-        for f in fields(GenParams):
-            value = getattr(wanted, f.name)
-            if f.name == "picture_model" or value == getattr(applied, f.name):
-                continue
-            candidate = replace(applied, **{f.name: value})
-            try:
-                self.backend.set_params(candidate)
-                applied = candidate
-            except Exception as exc:
-                log.warning("saved setting %s=%r refused (%s); using %r", f.name, value, exc,
-                            getattr(applied, f.name))
-        self._params = applied
-        with contextlib.suppress(Exception):
-            self.backend.set_params(applied)  # the backend's state matches what we report
-        self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
-        if self.on_params_error is not None:
-            try:
-                self.on_params_error(applied)
-            except Exception:
-                log.exception("on_params_error callback failed")
 
     def _apply_pending_params(self) -> None:
         if self.backend is None:
@@ -349,7 +304,7 @@ class GpuWorker(threading.Thread):
         if self._failures < MAX_CONSECUTIVE_FAILURES or self.backend_factory is None:
             return
         log.warning("%d consecutive failures; rebuilding backend", self._failures)
-        self._close_backend()  # free its GPU memory first: failures are often out-of-memory
+        self.backend = None
         self._failures = 0
         if not self._start_backend():
             # Avoid a hot loop when the GPU is wedged; frames keep being dropped meanwhile.
@@ -406,28 +361,19 @@ class GpuWorker(threading.Thread):
                       or getattr(backend, "refine_own", None) is not None)
         return can_refine and params.refine_steps > 0
 
-    def _frame_inputs(self, job: FrameJob, params: GenParams, dims: tuple[int, int]
-                      ) -> tuple[bool, Image.Image | None, Image.Image | None]:
-        """(blank, init image, line map) for a sketch, as the backend gets them. Computed
-        once per sketch: its settle and refine frames reuse them. Raises ValueError for a
-        sketch that cannot be decoded."""
-        cached = self._inputs
-        if cached is not None and cached[0] is job and cached[1] is params and cached[2] == dims:
-            return cached[3], cached[4], cached[5]
-        sketch = imaging.decode_sketch(job.png_bytes, dims, layered=job.background is not None)
-        blank = imaging.is_blank(sketch)
-        init = line_map = None
-        if not blank:
-            if self.config.model.controlnet and params.controlnet_enabled:
-                line_map = imaging.make_line_map(sketch, params.line_polarity,
-                                                 params.line_threshold, params.line_dilate)
-                init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
-                                               params.line_threshold, job.background)
-            else:
-                # Without a line map the strokes are the only structure, so keep them.
-                init = imaging.compose(sketch, job.background)
-        self._inputs = (job, params, dims, blank, init, line_map)
-        return blank, init, line_map
+    def _frame_inputs(self, sketch: Image.Image, job: FrameJob,
+                      params: GenParams) -> tuple[Image.Image, Image.Image | None]:
+        """(init image, line map) for a drawing, as the backend gets them."""
+        line_map = None
+        if self.config.model.controlnet and params.controlnet_enabled:
+            line_map = imaging.make_line_map(sketch, params.line_polarity,
+                                             params.line_threshold, params.line_dilate)
+        # Without a line map the strokes are the only structure, so keep them.
+        init = imaging.compose(sketch, job.background)
+        if line_map is not None:
+            init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
+                                           params.line_threshold, job.background)
+        return init, line_map
 
     def _refine_frame(self, job: FrameJob) -> None:
         """Refine the drawing after it paused with params.refine_model (server/refine.py),
@@ -437,9 +383,10 @@ class GpuWorker(threading.Thread):
         all_dims = canvas_dims(self.config, params.resolution)
         dims = all_dims.get(job.orientation or "landscape", all_dims["landscape"])
         try:
-            blank, init, line_map = self._frame_inputs(job, params, dims)
-            if blank:
+            sketch = imaging.decode_sketch(job.png_bytes, dims, layered=job.background is not None)
+            if imaging.is_blank(sketch):
                 return
+            init, line_map = self._frame_inputs(sketch, job, params)
             first = self._shown if self._shown is not None else init
             self._needs_prime = True  # the stream now runs refinement steps
             refine_own = getattr(self.backend, "refine_own", None)
@@ -457,7 +404,7 @@ class GpuWorker(threading.Thread):
                     if params.upscale == "x2" and not upscales_itself:
                         picture = self._upscale(picture)
                     self.on_result(job.seq, imaging.encode_jpeg(picture, params.jpeg_quality), job.owner)
-                    if self.mailbox.pending or self._stop_event.is_set() or self._forget.is_set():
+                    if self.mailbox.pending or self._stop_event.is_set():
                         break
             finally:
                 steps.close()
@@ -490,15 +437,16 @@ class GpuWorker(threading.Thread):
         started = time.perf_counter()
         all_dims = canvas_dims(cfg, params.resolution)
         dims = all_dims.get(job.orientation or "landscape", all_dims["landscape"])
+        layered = job.background is not None
         try:
-            blank, init, line_map = self._frame_inputs(job, params, dims)
+            sketch = imaging.decode_sketch(job.png_bytes, dims, layered=layered)
         except ValueError as exc:
             # Bad client input, not a backend fault: skip without counting a failure.
             log.warning("dropping sketch seq=%d: %s", job.seq, exc)
             return
         used_backend = False
         try:
-            if blank:
+            if imaging.is_blank(sketch):
                 picture = Image.new("RGB", dims, job.background or "white")
                 # The pipeline still holds the old drawing: prime it before the next one.
                 self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
@@ -510,6 +458,7 @@ class GpuWorker(threading.Thread):
                 if job.prompt != self._last_prompt:
                     self.backend.set_prompt(job.prompt)
                     self._last_prompt = job.prompt
+                init, line_map = self._frame_inputs(sketch, job, params)
                 latency = self._latency()
                 runs = 1 + (latency if self._needs_prime else 0)
                 for _ in range(runs):

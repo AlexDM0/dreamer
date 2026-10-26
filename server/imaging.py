@@ -83,14 +83,6 @@ def compose(sketch: Image.Image, background: str | None) -> Image.Image:
     return Image.alpha_composite(ground, sketch).convert("RGB")
 
 
-def _channel_extremes(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Per-pixel (max, min) over the RGB channels of an HxWx3 uint8 array. Channel by
-    channel: ``arr.max(axis=2)`` walks the array with a 3-byte stride and is several
-    times slower on a 640x448 frame."""
-    red, green, blue = arr[..., 0], arr[..., 1], arr[..., 2]
-    return np.maximum(np.maximum(red, green), blue), np.minimum(np.minimum(red, green), blue)
-
-
 def _ink_mask(img: Image.Image, threshold: int) -> np.ndarray:
     """Boolean mask of drawn pixels: alpha above ``threshold`` in a stroke layer, else
     max channel distance from white above ``threshold``."""
@@ -98,21 +90,8 @@ def _ink_mask(img: Image.Image, threshold: int) -> np.ndarray:
         return np.asarray(img.getchannel("A"), dtype=np.uint8) > threshold
     arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
     # Max distance from white over channels == 255 - min channel value.
-    return (255 - _channel_extremes(arr)[1]) > threshold
-
-
-def _dilate(mask: np.ndarray, radius: int) -> np.ndarray:
-    """Grow True regions by ``radius`` pixels (square kernel, like MaxFilter(2r+1)), with
-    shifted ORs: pixel-identical to Pillow's MaxFilter and ~30x faster at 640x448."""
-    out = mask.copy()
-    height, width = mask.shape
-    for dy in range(-radius, radius + 1):
-        for dx in range(-radius, radius + 1):
-            if dy == 0 and dx == 0:
-                continue
-            out[max(0, dy):height + min(0, dy), max(0, dx):width + min(0, dx)] |= \
-                mask[max(0, -dy):height + min(0, -dy), max(0, -dx):width + min(0, -dx)]
-    return out
+    distance = 255 - arr.min(axis=2)
+    return distance > threshold
 
 
 def make_line_map(
@@ -128,12 +107,13 @@ def make_line_map(
     """
     if polarity not in POLARITIES:
         raise ValueError(f"unknown line polarity: {polarity!r}")
-    ink = _ink_mask(sketch, threshold)
+    mask = Image.fromarray(_ink_mask(sketch, threshold).astype(np.uint8) * 255, mode="L")
     if dilate > 0:
-        ink = _dilate(ink, int(dilate))
+        # MaxFilter with kernel 2r+1 grows white regions by r pixels.
+        mask = mask.filter(ImageFilter.MaxFilter(2 * int(dilate) + 1))
     if polarity == "black_on_white":
-        ink = ~ink
-    return Image.fromarray(ink.astype(np.uint8) * 255, mode="L").convert("RGB")
+        mask = Image.eval(mask, lambda v: 255 - v)
+    return mask.convert("RGB")
 
 
 def make_init_image(
@@ -164,31 +144,20 @@ def make_init_image(
     if mode == "blank":
         return ground
     arr = np.asarray(rgb, dtype=np.uint8)
-    high, low = _channel_extremes(arr)
-    weight = ink & ((high - low) >= COLOR_CHROMA)  # uint8: high >= low, no wrap-around
+    chroma = arr.max(axis=2).astype(np.int16) - arr.min(axis=2)
+    weight = ink & (chroma >= COLOR_CHROMA)
     if not weight.any():
         return ground
-    # The colour clouds are soft, so blur at a quarter of the size (up to; the radius stays
-    # at least 4 px there) and scale back up: same look (mean difference under 1/255), a
-    # fraction of the time of two full-size wide Gaussian blurs.
     radius = max(1, int(blur))
-    factor = max(1, min(4, radius // 4))
-    small = (max(1, rgb.width // factor), max(1, rgb.height // factor))
     w8 = Image.fromarray(weight.astype(np.uint8) * 255, mode="L")
     premul = Image.fromarray(arr * weight[..., None].astype(np.uint8), mode="RGB")
-    if factor > 1:
-        w8 = w8.resize(small, Image.Resampling.BOX)
-        premul = premul.resize(small, Image.Resampling.BOX)
-    w8 = w8.filter(ImageFilter.GaussianBlur(radius / factor))
-    premul = premul.filter(ImageFilter.GaussianBlur(radius / factor))
-    wsum = np.asarray(w8, dtype=np.float32) * (1.0 / 255.0)
-    colour = np.asarray(premul, dtype=np.float32) / np.maximum(wsum, 1e-3)[..., None]
+    wsum = np.asarray(w8.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32) / 255.0
+    csum = np.asarray(premul.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32)
+    colour = csum / np.maximum(wsum, 1e-3)[..., None]
     # Thin strokes spread thin: boost coverage so a coloured area reads as that colour.
     alpha = np.clip(wsum * 4.0, 0.0, 1.0)[..., None]
-    out = colour * alpha + np.asarray(ground_rgb, dtype=np.float32) * (1.0 - alpha)
-    picture = Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), mode="RGB")
-    # Everything here is smooth, so the small result scales up without visible loss.
-    return picture.resize(rgb.size, Image.Resampling.BILINEAR) if factor > 1 else picture
+    out = colour * alpha + np.asarray(ground, dtype=np.float32) * (1.0 - alpha)
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), mode="RGB")
 
 
 def is_blank(sketch: Image.Image, threshold: int = BLANK_THRESHOLD) -> bool:

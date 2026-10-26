@@ -6,9 +6,7 @@ derived from the secret and the PIN, so changing the PIN logs every device out.
 Lockout: after MAX_FAILURES wrong PINs a client is locked out for LOCKOUT_SECONDS. Until
 it logs in successfully, every further wrong PIN locks it out again for twice as long
 (capped at LOCKOUT_MAX_SECONDS). A global budget does the same across all clients, so
-using many addresses does not multiply the guessing rate. A client that has logged in
-before (since the server started) is not held by the global lock, only by its own: a child
-tapping wrong PINs on the iPad must not lock the parent's phone out too.
+using many addresses does not multiply the guessing rate.
 """
 from __future__ import annotations
 
@@ -75,22 +73,17 @@ class AdminAuth:
         self._lock = threading.Lock()
         # key (client or GLOBAL_KEY) -> (failures since last success, locked-until timestamp)
         self._failures: dict[str, tuple[int, float]] = {}
-        # Clients that typed the right PIN since the server started (see the module doc).
-        self._trusted: set[str] = set()
 
     def check_pin(self, pin: str, client: str = "") -> bool:
         """True if correct. Raises LockedOut while the client (or everyone) is locked out."""
         now = self._clock()
         with self._lock:
-            keys = (client,) if client and client in self._trusted else (client, GLOBAL_KEY)
-            until = max(self._failures.get(k, (0, 0.0))[1] for k in keys)
+            until = max(self._failures.get(k, (0, 0.0))[1] for k in (client, GLOBAL_KEY))
             if until > now:
                 raise LockedOut(until - now)
             if hmac.compare_digest(pin.encode("utf-8"), self._pin):
                 self._failures.pop(client, None)
                 self._failures.pop(GLOBAL_KEY, None)
-                if client:
-                    self._trusted.add(client)
                 return True
             self._fail(client, MAX_FAILURES, now)
             self._fail(GLOBAL_KEY, GLOBAL_MAX_FAILURES, now)

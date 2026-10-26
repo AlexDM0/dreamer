@@ -221,7 +221,7 @@ class RefineBackend(MockBackend):
 
 
 def test_refine_path_continues_the_drawing_path():
-    from server.refine import continue_path as refine_path
+    from server.worker import refine_path
 
     # Draw 1 step + 3 more is exactly the evenly spread 4-step path (the admin page's too).
     assert refine_path((6,), 4) == (6, 20, 35, 49)
@@ -334,79 +334,5 @@ def test_backend_with_own_refinement_refines_on_pause():
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
         rec.wait(3)  # the drawing picture, then the backend's two refined pictures
         assert backend.refine_calls == [8]
-    finally:
-        worker.stop()
-
-
-def test_clear_stops_refining_the_old_drawing():
-    backend = SlowRefineBackend()
-    cfg = Config(backend="mock", size=64)
-    params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=20, refine_model="path")
-    worker, rec = _start(backend, cfg, params=params)
-    try:
-        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
-        rec.wait(3)  # the drawing picture and the first refinement steps
-        worker.forget_drawing()  # the kid pressed Clear
-        time.sleep(0.4)
-        count = len(rec.results)
-        time.sleep(0.4)
-        assert len(rec.results) == count  # nothing more for the old drawing
-        assert count < 20
-    finally:
-        worker.stop()
-
-
-class PickyBackend(SpyBackend):
-    """Refuses the safety filter (like a backend built without a checker)."""
-
-    def set_params(self, params):
-        if params.safety_checker:
-            raise RuntimeError("needs a restart with the safety checker")
-        super().set_params(params)
-
-
-def test_one_refused_saved_setting_keeps_the_others():
-    backend = PickyBackend()
-    cfg = Config(backend="mock", size=64)
-    base = replace(defaults_from_config(cfg), safety_checker=False)
-    saved = replace(base, seed=42, refine_steps=3, safety_checker=True)
-    worker = GpuWorker(backend, Mailbox(), lambda *a: None, lambda *a: None, cfg,
-                       params=saved, on_params_error=lambda p: reverts.append(p))
-    worker._defaults = base  # what this "config" starts the backend with
-    reverts = []
-    worker.start()
-    try:
-        end = time.monotonic() + 5
-        while worker.state != "ready" and time.monotonic() < end:
-            time.sleep(0.01)
-        assert worker.params.seed == 42 and worker.params.refine_steps == 3
-        assert worker.params.safety_checker is False  # only the refused field fell back
-        assert reverts and reverts[-1] == worker.params
-    finally:
-        worker.stop()
-
-
-def test_rebuild_after_failures_closes_the_old_backend():
-    built = []
-
-    class Broken(OwnRefineBackend):
-        def generate(self, init_image, line_map):
-            raise RuntimeError("CUDA out of memory")
-
-    def factory(kind="turbo"):
-        built.append(Broken(kind))
-        return built[-1]
-
-    cfg = Config(backend="mock", size=64)
-    worker, rec = _start(None, cfg, backend_factory=factory,
-                         params=replace(defaults_from_config(cfg), refine_steps=0))
-    try:
-        for seq in range(1, 4):
-            worker.mailbox.put(FrameJob(seq, sketch_png(size=64, color="red" if seq % 2 else "blue"), "p"))
-            time.sleep(0.2)
-        end = time.monotonic() + 5
-        while len(built) < 2 and time.monotonic() < end:
-            time.sleep(0.01)
-        assert len(built) >= 2 and built[0].closed  # memory freed before the new one loads
     finally:
         worker.stop()

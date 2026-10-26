@@ -4,9 +4,7 @@
 // Events (CustomEvent detail): "color" {color, eraser}, "width" {width}, "clear",
 // "mode" {mode}, "topic" {id}, "style" {id}.
 
-import { DEFAULT_BACKGROUND } from "./canvas.js";
 import { isDark, tooClose } from "./paper.js";
-import { isLight } from "./util.js";
 
 const SWATCHES = [
   { color: "#22223b", name: "Black" },
@@ -46,7 +44,7 @@ export class Toolbar extends EventTarget {
     this.$ = (sel) => root.querySelector(sel);
     this.color = SWATCHES[0].color;
     this.eraser = false;
-    this.background = DEFAULT_BACKGROUND; // the drawing's paper, for the pen contrast and preview
+    this.background = "#000000"; // the drawing's paper, for the pen contrast and preview
     this.width = Number(this.$("#brush-size").value);
     this.scale = 1; // CSS px per canvas px, for the brush preview
     this.topic = null;
@@ -79,8 +77,7 @@ export class Toolbar extends EventTarget {
     dot.dataset.state = state;
     const label = CONN_LABELS[state] || state;
     dot.title = detail ? `${label} (${detail})` : label;
-    const live = this.$("#conn-live"); // read out when it changes
-    if (live && live.textContent !== label) live.textContent = label;
+    dot.setAttribute("aria-label", label);
   }
 
   /**
@@ -359,4 +356,13 @@ export class Toolbar extends EventTarget {
   _emit(type, detail) {
     this.dispatchEvent(new CustomEvent(type, { detail }));
   }
+}
+
+/** Rough perceived brightness check, to outline very light colours. */
+function isLight(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  const r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 225;
 }

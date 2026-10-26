@@ -4,7 +4,7 @@
 // from here lasts 15 minutes (the phone's admin page keeps its 30 days): the child's own
 // screen must never open the parent page by itself.
 
-import { PIN_MAX, renderPinDots, shakePinDots } from "./pin.js";
+const PIN_MAX = 12;
 
 export class ParentGate {
   constructor(button, overlay) {
@@ -78,10 +78,20 @@ export class ParentGate {
     this.pin = "";
     this._render();
     this.$("#gate-msg").textContent = msg;
-    shakePinDots(this.$("#gate-dots"));
+    const dots = this.$("#gate-dots");
+    dots.classList.remove("shake");
+    void dots.offsetWidth; // restart the CSS animation
+    dots.classList.add("shake");
   }
 
   _render() {
-    renderPinDots(this.$("#gate-dots"), this.pin.length);
+    const dots = this.$("#gate-dots");
+    const n = Math.max(4, this.pin.length);
+    dots.replaceChildren(...Array.from({ length: n }, (_, i) => {
+      const s = document.createElement("span");
+      if (i < this.pin.length) s.className = "on";
+      return s;
+    }));
+    dots.setAttribute("aria-label", `${this.pin.length} digits entered`);
   }
 }

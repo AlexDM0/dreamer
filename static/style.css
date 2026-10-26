@@ -27,20 +27,6 @@ body {
 }
 
 button, input, label { font: inherit; color: inherit; touch-action: manipulation; }
-input, textarea, [contenteditable]:not([contenteditable="false"]) {
-  -webkit-user-select: text;
-  user-select: text;
-  -webkit-touch-callout: default;
-}
-/* Read out by screen readers, not shown. */
-.sr-only {
-  position: absolute;
-  width: 1px; height: 1px;
-  margin: -1px; padding: 0; border: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
 button { cursor: pointer; }
 button:focus-visible, input:focus-visible, label:focus-within { outline: none; box-shadow: var(--focus-ring); }
 
@@ -1277,6 +1263,6 @@ button.brand:focus-visible { box-shadow: var(--focus-ring); }
   z-index: 50;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--marker-edge), 0 0 0 4px var(--marker-halo);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }

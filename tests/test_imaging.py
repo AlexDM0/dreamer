@@ -134,30 +134,3 @@ def test_init_colors_with_only_outlines_is_ground():
     ImageDraw.Draw(img).ellipse([8, 8, 56, 56], outline="black", width=3)
     arr = np.asarray(imaging.make_init_image(img, "colors"))
     assert (arr == np.array(imaging.INIT_BACKGROUND, dtype=arr.dtype)).all()
-
-
-@pytest.mark.parametrize("dilate", [0, 1, 2, 3])
-@pytest.mark.parametrize("polarity", imaging.POLARITIES)
-def test_line_map_matches_pillow_max_filter(dilate, polarity):
-    from PIL import ImageFilter
-    img = Image.new("RGBA", (97, 61), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    draw.line([(0, 0), (96, 60)], fill=(255, 0, 0, 255), width=2)
-    draw.point([(0, 60), (96, 0), (50, 30)], fill=(0, 0, 255, 255))
-    mask = Image.fromarray((np.asarray(img.getchannel("A")) > 40).astype(np.uint8) * 255)
-    if dilate:
-        mask = mask.filter(ImageFilter.MaxFilter(2 * dilate + 1))
-    if polarity == "black_on_white":
-        mask = Image.eval(mask, lambda v: 255 - v)
-    expected = np.asarray(mask.convert("RGB"))
-    assert np.array_equal(np.asarray(imaging.make_line_map(img, polarity, 40, dilate)), expected)
-
-
-def test_colour_clouds_keep_the_stroke_colour_where_drawn():
-    img = Image.new("RGBA", (640, 448), (0, 0, 0, 0))
-    ImageDraw.Draw(img).rectangle([100, 100, 300, 300], fill=(255, 0, 0, 255))
-    out = imaging.make_init_image(img, "colors", 24, 40, "#000000")
-    assert out.size == (640, 448)
-    r, g, b = out.getpixel((200, 200))
-    assert r > 200 and g < 40 and b < 40  # red inside the stroke area
-    assert out.getpixel((600, 420)) == (0, 0, 0)  # the background far away

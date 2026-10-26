@@ -74,20 +74,12 @@ export class Gallery extends EventTarget {
     this._gen += 1;
     const gen = this._gen;
     this.loading = true;
-    const want = Math.max(this.items.length, PAGE);
+    const limit = Math.min(Math.max(this.items.length, PAGE), RELOAD_MAX);
     try {
-      // As many as were shown, in pages the server accepts.
-      const items = [];
-      let more = true;
-      while (more && items.length < want) {
-        const data = await this._fetch(Math.min(want - items.length, RELOAD_MAX), items.length);
-        if (gen !== this._gen) return;
-        const page = data.artworks || [];
-        items.push(...page.filter((a) => !items.some((b) => b.id === a.id)));
-        more = !!data.more && page.length > 0;
-      }
-      this.items = items;
-      this.hasMore = more;
+      const data = await this._fetch(limit, 0);
+      if (gen !== this._gen) return;
+      this.items = data.artworks || [];
+      this.hasMore = !!data.more;
       this.failed = false;
       this._render(false);
       this._dropMissingDetail();

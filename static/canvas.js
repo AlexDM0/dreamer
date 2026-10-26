@@ -9,9 +9,8 @@
 // A drawing has an orientation ("landscape" | "portrait"), fixed when it is started. Its
 // aspect never changes afterwards: rotating the iPad only re-fits it on screen.
 //
-// Events: "strokestart", "strokeend", "strokecancel" (a finger stroke was taken back
-// because it became a pinch: the drawing is as before it), "drawing" (detail: {width,
-// height, background, orientation}) when the size or the background changes.
+// Events: "strokestart", "strokeend", "drawing" (detail: {width, height, background,
+// orientation}) when the size or the background changes.
 
 export const DEFAULT_SIZES = { landscape: [640, 448], portrait: [448, 640] };
 export const DEFAULT_BACKGROUND = "#000000";
@@ -52,13 +51,7 @@ export class DrawingCanvas extends EventTarget {
     this._penSeen = false;
     this._penDown = false;
     this._penUpAt = 0;
-    // The drawing before a finger stroke (an offscreen copy, so no pixel read-back), put
-    // back if a pencil takes over (palm) or a second finger makes it a pinch.
-    this._snap = document.createElement("canvas");
-    this._snapValid = false;
-    this._snapInk = false;
-    // False when the stroke layer is surely empty; true means "maybe ink" (isBlank looks).
-    this._maybeInk = false;
+    this._touchSnapshot = null; // drawing before a touch stroke, undone if a pen takes over
     // Pinch to resize the brush: fingers on the canvas (pointerId -> client point), and the
     // pinch in progress ({distance} at its start), or null.
     this._fingers = new Map();
@@ -104,11 +97,9 @@ export class DrawingCanvas extends EventTarget {
     old.width = this.src.width;
     old.height = this.src.height;
     old.getContext("2d").drawImage(this.src, 0, 0);
-    const inked = this._maybeInk;
     this._endStroke(false);
     this._setSourceSize();
     this.sctx.drawImage(old, 0, 0, this.src.width, this.src.height);
-    this._maybeInk = inked;
     this._changed();
   }
 
@@ -134,7 +125,6 @@ export class DrawingCanvas extends EventTarget {
   clear() {
     this._endStroke(false);
     this.sctx.clearRect(0, 0, this.src.width, this.src.height);
-    this._maybeInk = false;
     this._repaint();
     this._dirty = true;
   }
@@ -162,19 +152,16 @@ export class DrawingCanvas extends EventTarget {
     const top = Math.round((fullHeight - drawHeight) / 2);
     this.sctx.drawImage(img, left, top, drawWidth, drawHeight);
     this._keyOutIfOpaque(left, top, drawWidth, drawHeight);
-    this._maybeInk = true;
     this._repaint();
     this._dirty = true;
   }
 
   /** True when the stroke layer is empty (no visible ink). */
   isBlank() {
-    if (!this._maybeInk) return true;
     const data = this.sctx.getImageData(0, 0, this.src.width, this.src.height).data;
     for (let i = 3; i < data.length; i += 4) {
       if (data[i] > 8) return false;
     }
-    this._maybeInk = false; // all erased: skip the scan until something is drawn again
     return true;
   }
 
@@ -194,7 +181,6 @@ export class DrawingCanvas extends EventTarget {
     const [width, height] = this.sizes[this.orientation];
     this.src.width = width;   // resizing also clears it
     this.src.height = height;
-    this._maybeInk = false;
   }
 
   /** Size or content was replaced: refit the display and tell the page. */
@@ -309,7 +295,7 @@ export class DrawingCanvas extends EventTarget {
   _startPinch() {
     if (this._active !== null && this._activeType === "touch") {
       this._restoreTouchSnapshot();
-      this._endStroke("strokecancel");
+      this._endStroke(true); // the restored drawing goes out like a finished stroke
     }
     const span = this._fingerSpan();
     this._pinch = { distance: Math.max(1, span.distance) };
@@ -317,12 +303,7 @@ export class DrawingCanvas extends EventTarget {
   }
 
   _down(e) {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    if (e.pointerType === "touch" && this._penSeen
-        && (this._penDown || Date.now() - this._penUpAt < PEN_GRACE_MS)) {
-      return; // palm rejection: the hand rests on the glass while / just after writing
-    }
-    if (e.pointerType === "touch") {
+    if (e.pointerType === "touch" && !this._penDown) {
       this._fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this._pinch) { e.preventDefault(); return; } // a third finger changes nothing
       if (this._fingers.size === 2) {
@@ -331,23 +312,24 @@ export class DrawingCanvas extends EventTarget {
         return;
       }
     }
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     if (e.pointerType === "pen") {
       this._penSeen = true;
       this._penDown = true;
-      // Pen wins over fingers (a palm) that came first: no pinch, and undo what they drew.
-      this._fingers.clear();
-      if (this._pinch) {
-        this._pinch = null;
-        this.dispatchEvent(new Event("pinchend"));
-      }
+      // Pen wins over a palm/finger stroke that started first: undo what it drew.
       if (this._active !== null && this._activeType === "touch") {
         this._restoreTouchSnapshot();
         this._endStroke(false);
       }
+    } else if (e.pointerType === "touch" && this._penSeen
+               && (this._penDown || Date.now() - this._penUpAt < PEN_GRACE_MS)) {
+      return; // palm rejection: the hand rests on the glass while / just after writing
     }
     if (this._active !== null) return; // one stroke at a time; ignore extra fingers
-    this._snapValid = false;
-    if (e.pointerType === "touch") this._takeTouchSnapshot();
+    // Remember the drawing before a finger stroke, so it can be undone when a pencil takes
+    // over (palm) or a second finger turns it into a pinch.
+    this._touchSnapshot = e.pointerType === "touch"
+      ? this.sctx.getImageData(0, 0, this.src.width, this.src.height) : null;
 
     e.preventDefault();
     try { this.el.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
@@ -399,40 +381,21 @@ export class DrawingCanvas extends EventTarget {
     this._endStroke(true);
   }
 
-  /** Copy the stroke layer aside (canvas to canvas: no read-back to the CPU). */
-  _takeTouchSnapshot() {
-    const snap = this._snap;
-    if (snap.width !== this.src.width || snap.height !== this.src.height) {
-      snap.width = this.src.width;   // resizing also clears it
-      snap.height = this.src.height;
-    } else {
-      snap.getContext("2d").clearRect(0, 0, snap.width, snap.height);
-    }
-    snap.getContext("2d").drawImage(this.src, 0, 0);
-    this._snapValid = true;
-    this._snapInk = this._maybeInk;
-  }
-
   _restoreTouchSnapshot() {
-    if (!this._snapValid) return;
-    this._snapValid = false;
-    this.sctx.save();
-    this.sctx.globalCompositeOperation = "copy";
-    this.sctx.drawImage(this._snap, 0, 0);
-    this.sctx.restore();
-    this._maybeInk = this._snapInk;
+    if (!this._touchSnapshot) return;
+    this.sctx.putImageData(this._touchSnapshot, 0, 0);
+    this._touchSnapshot = null;
     this._repaint();
     this._dirty = true;
   }
 
-  /** End the stroke in progress; `emit`: true for "strokeend", or an event name. */
   _endStroke(emit) {
-    this._snapValid = false;
+    this._touchSnapshot = null;
     if (this._active === null) return;
     this._active = null;
     this._activeType = null;
     this._last = null;
-    if (emit) this.dispatchEvent(new Event(emit === true ? "strokeend" : emit));
+    if (emit) this.dispatchEvent(new Event("strokeend"));
   }
 
   _dot(point) {
@@ -442,7 +405,6 @@ export class DrawingCanvas extends EventTarget {
       ctx.arc(point.x, point.y, this.width / 2, 0, Math.PI * 2);
       ctx.fill();
     });
-    if (!this.eraser) this._maybeInk = true;
     this._dirty = true;
   }
 
@@ -457,7 +419,6 @@ export class DrawingCanvas extends EventTarget {
       ctx.lineTo(to.x, to.y);
       ctx.stroke();
     });
-    if (!this.eraser) this._maybeInk = true;
     this._dirty = true;
   }
 }

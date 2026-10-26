@@ -4,18 +4,9 @@ All methods are called ONLY from the GPU worker thread.
 """
 from __future__ import annotations
 
-from typing import Any, Protocol, Sequence, runtime_checkable
+from typing import Protocol, Sequence, runtime_checkable
 
 from PIL import Image
-
-# The StreamDiffusion wrapper's own default seed (StreamDiffusionWrapper(seed=2)); the TCD
-# backend uses the same so both picture models start from the same "surprise number".
-DEFAULT_SEED = 2
-
-
-def model_attr(config: Any, name: str, default: Any) -> Any:
-    """``config.model.<name>``, or ``default`` (tests pass partial configs)."""
-    return getattr(getattr(config, "model", None), name, default)
 
 
 class GenParamsLike(Protocol):
