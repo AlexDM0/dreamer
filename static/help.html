@@ -299,7 +299,11 @@
         strip.innerHTML = '<p class="missing">Example pictures are missing. Run tools/make_help_images.py on the PC.</p>';
       }
     }
-    if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+    if (location.hash) {
+      try {
+        document.querySelector(location.hash)?.scrollIntoView();
+      } catch { /* not a valid selector (e.g. a hand-typed hash): stay at the top */ }
+    }
   </script>
 </body>
 </html>

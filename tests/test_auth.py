@@ -1,8 +1,8 @@
 import pytest
 
-from server.auth import (COOKIE_MAX_AGE, GLOBAL_MAX_FAILURES, LOCKOUT_MAX_SECONDS,
-                         LOCKOUT_SECONDS, MAX_FAILURES, AdminAuth, LockedOut,
-                         load_or_create_secret)
+from server.auth import (COOKIE_MAX_AGE, GLOBAL_MAX_FAILURES, GLOBAL_WINDOW_SECONDS,
+                         LOCKOUT_MAX_SECONDS, LOCKOUT_SECONDS, MAX_FAILURES, AdminAuth,
+                         LockedOut, load_or_create_secret)
 from conftest import ADMIN_PIN
 
 
@@ -61,11 +61,30 @@ def test_lockout_escalates_until_success(auth, clock):
     assert not auth.check_pin("0000", "ip1")  # success reset the count: no lockout
 
 
-def test_global_budget_across_clients(auth):
+def test_global_backstop_holds_only_clients_that_guessed(auth, clock):
     for i in range(GLOBAL_MAX_FAILURES):
         auth.check_pin("0000", f"ip{i}")  # one guess per address
     with pytest.raises(LockedOut):
-        auth.check_pin("2468", "fresh-ip")
+        auth.check_pin("2468", "ip0")  # guessed before: held by the backstop
+    assert auth.check_pin("2468", "parent-phone")  # no failures of its own: let through
+    assert not auth.check_pin("0000", "fresh-ip")  # one guess per fresh address...
+    with pytest.raises(LockedOut):
+        auth.check_pin("2468", "fresh-ip")  # ...then held too
+    clock.now += GLOBAL_WINDOW_SECONDS + 1
+    assert auth.check_pin("2468", "ip0")
+
+
+def test_wrong_pins_on_the_ipad_gate_do_not_lock_the_parent_out(auth, clock):
+    wrong = 0
+    while wrong < 20:  # the old global limit; waiting out each lockout in between
+        try:
+            assert not auth.check_pin("0000", "ipad")
+            wrong += 1
+        except LockedOut as exc:
+            clock.now += exc.retry_after + 0.1
+    with pytest.raises(LockedOut):
+        auth.check_pin("2468", "ipad")
+    assert auth.check_pin("2468", "parent-phone")
 
 
 def test_pin_change_invalidates_cookies(clock):

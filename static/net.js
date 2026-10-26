@@ -24,6 +24,7 @@ const HEADER = 5;
 const INFLIGHT_TIMEOUT_MS = 2000;
 const PING_MS = 10000;
 const DEAD_MS = 25000;       // no traffic for this long -> assume the socket is dead
+const CONNECT_TIMEOUT_MS = 5000; // a socket still connecting after this is given up
 const BACKOFF_MIN_MS = 500;
 const BACKOFF_MAX_MS = 5000;
 const CLOSE_REPLACED = 4000; // server close code: a newer kid socket took over
@@ -49,6 +50,7 @@ export class Net extends EventTarget {
     this._sending = false;     // encoding a PNG right now
     this._backoff = BACKOFF_MIN_MS;
     this._retryTimer = null;
+    this._connectTimer = null;
     this._pingTimer = null;
     this._lastRx = 0;
     this._stopped = false;
@@ -156,8 +158,15 @@ export class Net extends EventTarget {
     }
     ws.binaryType = "arraybuffer";
     this.ws = ws;
+    // An attempt can hang (e.g. an iPad waking up on a Wi-Fi that isn't back yet): give up
+    // on it, so onclose schedules a fresh one.
+    clearTimeout(this._connectTimer);
+    this._connectTimer = setTimeout(() => {
+      if (this.ws === ws && ws.readyState === WebSocket.CONNECTING) this._abandon(ws);
+    }, CONNECT_TIMEOUT_MS);
 
     ws.onopen = () => {
+      clearTimeout(this._connectTimer);
       this._backoff = BACKOFF_MIN_MS;
       this._lastRx = Date.now();
       this._setState("open");
@@ -172,6 +181,7 @@ export class Net extends EventTarget {
     };
     ws.onclose = (ev) => {
       if (this.ws !== ws) return;
+      clearTimeout(this._connectTimer);
       this._teardown();
       // The close code is a backstop in case the {"t":"replaced"} message was lost.
       if (ev.code === CLOSE_REPLACED) this._setState("replaced");
@@ -186,8 +196,22 @@ export class Net extends EventTarget {
   retryNow() {
     if (this.connected || this.state === "replaced") return;
     this._backoff = BACKOFF_MIN_MS;
-    if (this.ws) return; // a connection attempt is already under way
+    // An attempt that is still connecting may be stuck: replace it with a fresh one.
+    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) this._abandon(this.ws);
+    else if (this.ws) return; // already open, or closing (onclose retries)
     this._connect();
+  }
+
+  /** Drop a connection attempt that never opened, without waiting for its onclose. */
+  _abandon(ws) {
+    clearTimeout(this._connectTimer);
+    if (this.ws === ws) this._teardown();
+    ws.onopen = ws.onmessage = ws.onclose = null;
+    try { ws.close(); } catch { /* not fatal */ }
+    if (this.state !== "replaced") {
+      this._setState("off");
+      this._scheduleRetry();
+    }
   }
 
   /** Reconnect after being replaced by another screen. */

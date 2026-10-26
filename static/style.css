@@ -17,9 +17,7 @@ body {
   background:
     radial-gradient(70vmax 50vmax at 0% 0%, var(--accent-soft) 0%, transparent 60%),
     var(--bg);
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
+  /* No text selection or iOS callout: the shared base rule in theme.css. */
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
@@ -31,6 +29,19 @@ button { cursor: pointer; }
 button:focus-visible, input:focus-visible, label:focus-within { outline: none; box-shadow: var(--focus-ring); }
 
 svg { display: block; }
+
+/* Read by screen readers, not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* One icon style everywhere: 24px viewBox, round line art. */
 .btn svg, .tile svg, .mode svg, .side-btn svg, .row-icon svg, .swatch.eraser svg,
@@ -1263,6 +1274,6 @@ button.brand:focus-visible { box-shadow: var(--focus-ring); }
   z-index: 50;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 2px var(--pinch-ring-edge), 0 0 0 4px var(--pinch-ring-halo);
   pointer-events: none;
 }

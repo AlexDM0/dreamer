@@ -87,7 +87,7 @@ def test_update_file_failure_keeps_old_version_intact(store, monkeypatch):
     art = store.save(sketch_png(), jpeg("red"), META)
     folder = store.root / art.dir
     before = {p.name: p.read_bytes() for p in folder.iterdir()}
-    real = g._replace
+    real = g.replace_with_retry
     calls = []
 
     def flaky(src, dst):
@@ -95,7 +95,7 @@ def test_update_file_failure_keeps_old_version_intact(store, monkeypatch):
         if len(calls) == 2:
             raise PermissionError("in use")
         real(src, dst)
-    monkeypatch.setattr(g, "_replace", flaky)
+    monkeypatch.setattr(g, "replace_with_retry", flaky)
     with pytest.raises(PermissionError):
         store.update(art.id, sketch_png(color="blue"), jpeg("blue"), META)
     monkeypatch.undo()
@@ -266,3 +266,13 @@ def test_is_blank_sketch():
     assert g.is_blank_sketch(sketch_png(blank=True))
     assert not g.is_blank_sketch(sketch_png())
     assert g.is_blank_sketch(b"garbage")
+
+
+def test_list_gives_one_row_more_than_a_full_page(store, monkeypatch):
+    """The API asks for limit + 1 rows to know whether there are more: at a full page of
+    LIST_MAX that extra row must still come back."""
+    monkeypatch.setattr(g, "LIST_MAX", 3)  # instead of saving 100+ artworks
+    for _ in range(5):
+        store.save(sketch_png(), jpeg("red", (8, 8)), META)
+    assert len(store.list(4)) == 4
+    assert len(store.list(50)) == 4

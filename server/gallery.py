@@ -45,6 +45,7 @@ from typing import Any, Callable, Iterator
 from PIL import Image
 
 from . import imaging
+from .fsutil import replace_with_retry
 
 log = logging.getLogger("dreamer.gallery")
 
@@ -60,7 +61,6 @@ TITLE_MAX = 60
 LIST_MAX = 100
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 JPEG_MAGIC = b"\xff\xd8"
-REPLACE_RETRIES = 5  # Windows refuses to replace a file someone is reading; retry briefly
 
 # Schema migrations: (version, statements). Append only; never edit a released entry.
 MIGRATIONS: list[tuple[int, list[str]]] = [
@@ -242,17 +242,6 @@ def _check_images(sketch_png: bytes, picture_jpeg: bytes) -> None:
         raise ValueError("picture must be a JPEG")
 
 
-def _replace(src: Path, dst: Path) -> None:
-    for attempt in range(REPLACE_RETRIES):
-        try:
-            os.replace(src, dst)
-            return
-        except PermissionError:
-            if attempt == REPLACE_RETRIES - 1:
-                raise
-            time.sleep(0.05 * (attempt + 1))
-
-
 def _write_temp(directory: Path, name: str, data: bytes) -> Path:
     """Write ``data`` to a fresh temp file next to ``name`` (fsynced); returns its path."""
     tmp = directory / f".{name}.{secrets.token_hex(4)}.tmp"
@@ -342,7 +331,7 @@ class GalleryStore:
         try:
             for name, data in files:
                 dst = folder / _versioned(name, version)
-                _replace(_write_temp(folder, name, data), dst)
+                replace_with_retry(_write_temp(folder, name, data), dst)
                 written.append(dst)
         except BaseException:
             for path in written:
@@ -371,7 +360,9 @@ class GalleryStore:
     def list(self, limit: int = 24, offset: int = 0, include_drafts: bool = False,
              deleted: bool = False) -> list[Artwork]:
         """Newest (most recently updated) first. ``deleted=True`` lists the trash."""
-        limit = max(1, min(int(limit), LIST_MAX))
+        # LIST_MAX + 1: a caller asking for one row more than a full page (to tell whether
+        # there are more) must get it, or "more" would always be false at LIST_MAX.
+        limit = max(1, min(int(limit), LIST_MAX + 1))
         offset = max(0, int(offset))
         sql = (f"SELECT {_COLUMNS} FROM artworks WHERE {self._where(include_drafts, deleted)} "
                "ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?")
@@ -645,6 +636,10 @@ class DraftAutosaver:
         self._get_frame = get_frame
         self._get_source = get_source
         self._saved: LastFrame | None = None   # frame the draft currently holds
+        # ...and the artwork it records as continued: a Save after the frame was written
+        # changes only this, which must still reach the draft (or the next Save after a
+        # restart would make a copy instead of updating that artwork).
+        self._saved_source: str | None = None
         # monotonic() counts from boot, so 0.0 would throttle the first write on a
         # freshly booted PC; -inf means "never written": the first write is immediate.
         self._last_write = float("-inf")
@@ -653,11 +648,6 @@ class DraftAutosaver:
         self.draft_id: str | None = drafts[0].id if drafts else None
         for extra in drafts[1:]:  # one draft per session; older ones are leftovers
             store.delete_draft(extra.id)
-
-    @property
-    def dirty(self) -> bool:
-        frame = self._get_frame()
-        return frame is not None and frame is not self._saved
 
     def touch(self) -> None:
         if self._task is None or self._task.done():
@@ -686,8 +676,8 @@ class DraftAutosaver:
 
     async def _write(self) -> None:
         async with self.lock:
-            frame = self._get_frame()
-            if frame is None or frame is self._saved:
+            frame, source = self._get_frame(), self._get_source()
+            if frame is None or (frame is self._saved and source == self._saved_source):
                 return
             self._last_write = time.monotonic()
             try:
@@ -695,14 +685,14 @@ class DraftAutosaver:
                 # empty canvas for a moment before it restores the draft. Only an explicit
                 # clear / new drawing drops it (discard()).
                 if not await asyncio.to_thread(is_blank_sketch, frame.sketch_png):
-                    await self._store(frame)
+                    await self._store(frame, source)
             except (OSError, ValueError, sqlite3.Error) as exc:
                 log.error("could not autosave the draft: %s", exc)
                 return  # not marked saved: the next frame or flush tries again
-            self._saved = frame
+            self._saved, self._saved_source = frame, source
 
-    async def _store(self, frame: LastFrame) -> None:
-        meta = frame.meta(self._get_source())
+    async def _store(self, frame: LastFrame, source: str | None) -> None:
+        meta = frame.meta(source)
         if self.draft_id is not None:
             try:
                 await asyncio.to_thread(self.store.update, self.draft_id,
@@ -726,7 +716,7 @@ class DraftAutosaver:
         """The canvas was cleared / a new drawing started: forget the draft."""
         self._cancel()
         async with self.lock:
-            self._saved = self._get_frame()
+            self._saved, self._saved_source = self._get_frame(), self._get_source()
             await self._drop()
 
     def current(self) -> Artwork | None:

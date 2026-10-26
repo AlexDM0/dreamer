@@ -4,8 +4,9 @@ The owner's rule: the picture the child first sees must not change in broad term
 should only add detail. Every model here is a generator that yields the pictures to show, one
 per refinement step, given:
 
-- ``backend``: the StreamDiffusion backend (``refine_steps`` runs one denoising path step by
-  step; see there),
+- ``backend``: the StreamDiffusion backend. Most models run ``latent_ladder`` (single-step
+  rungs from the picture on screen, see there); A and B continue the drawing's own denoising
+  path with ``refine_steps``. (The TCD picture model refines itself: ``refine_own``.)
 - ``first``: the drawing picture already on screen,
 - ``init`` / ``line_map``: the drawing's img2img start image and ControlNet line map,
 - ``draw_t_index``: the draw steps; ``total_steps``: the refine step budget (params).
@@ -21,14 +22,6 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 T_INDEX_MAX = 49
-
-
-def _spread(first: int, steps: int) -> tuple[int, ...]:
-    """``steps`` t_index values from ``first`` to the last one, evenly spaced."""
-    steps = max(1, min(steps, T_INDEX_MAX - first + 1))
-    if steps == 1:
-        return (first,)
-    return tuple(round(first + i * (T_INDEX_MAX - first) / (steps - 1)) for i in range(steps))
 
 
 def continue_path(draw: tuple[int, ...], total_steps: int) -> tuple[int, ...] | None:
@@ -47,20 +40,11 @@ def continue_path(draw: tuple[int, ...], total_steps: int) -> tuple[int, ...] | 
 
 
 def _path(backend: Any, init: Image.Image, line_map: Image.Image | None,
-          draw: tuple[int, ...], total_steps: int, noise: str) -> Iterator[Image.Image]:
+          draw: tuple[int, ...], total_steps: int) -> Iterator[Image.Image]:
     path = continue_path(draw, total_steps)
     if path is None:
         return
-    yield from backend.refine_steps(init, line_map, list(path), len(draw) + 1, noise=noise)
-
-
-def _img2img(backend: Any, image: Image.Image, line_map: Image.Image | None,
-             t_index: tuple[int, ...]) -> Image.Image:
-    """One complete low-noise pass from ``image`` (steps one after another)."""
-    picture = None
-    for picture in backend.refine_steps(image, line_map, list(t_index), len(t_index)):
-        pass
-    return picture
+    yield from backend.refine_steps(init, line_map, list(path), len(draw) + 1)
 
 
 def lock_broad_terms(first: Image.Image, picture: Image.Image, radius: float) -> Image.Image:
@@ -115,6 +99,11 @@ def _rungs(schedule: tuple[int, ...], draw: tuple[int, ...], total_steps: int) -
     return list(schedule[:count])
 
 
+def _anchor_weights(count: int) -> list[float]:
+    """Per-rung anchor weights: fully pinned on the first rung, easing to 0.8 on the last."""
+    return [1.0 - 0.2 * i / max(1, count - 1) for i in range(count)]
+
+
 def model_sdedit(backend, first, init, line_map, draw, total_steps):
     """Low-noise passes that each start again from the first picture (steady noise): cannot
     drift, but detail does not build up from one picture to the next."""
@@ -127,26 +116,25 @@ def model_anchored(backend, first, init, line_map, draw, total_steps):
     frequencies of the latent) are pinned to the first picture: detail builds up, layout,
     colours and light stay."""
     rungs = _rungs(ANCHORED_RUNGS, draw, total_steps)
-    weights = [1.0 - 0.2 * i / max(1, len(rungs) - 1) for i in range(len(rungs))]
     yield from backend.latent_ladder(first, line_map, rungs, chain=True, anchor_sigma=ANCHOR_SIGMA,
-                                     gamma=ANCHOR_GAMMA, anchor_weights=weights)
+                                     gamma=ANCHOR_GAMMA, anchor_weights=_anchor_weights(len(rungs)))
 
 
 def model_anchored_edges(backend, first, init, line_map, draw, total_steps):
     """Anchored, and the ControlNet also sees the first picture's outlines (with the child's
     lines), so object shapes stay where they are too."""
     rungs = _rungs(ANCHORED_RUNGS, draw, total_steps)
-    weights = [1.0 - 0.2 * i / max(1, len(rungs) - 1) for i in range(len(rungs))]
     control = edge_map(first) if line_map is None else _union(line_map, edge_map(first))
     yield from backend.latent_ladder(first, line_map, rungs, chain=True, anchor_sigma=ANCHOR_SIGMA,
-                                     gamma=ANCHOR_GAMMA, anchor_weights=weights,
+                                     gamma=ANCHOR_GAMMA, anchor_weights=_anchor_weights(len(rungs)),
                                      control_images=[control] * len(rungs))
 
 
-# Hires in tiles: upscale 2x, then single anchored low-noise steps over overlapping tiles of the
-# drawing's own size (the TensorRT engines are dynamic only up to 1024 px, and a bigger
-# pipeline would need a rebuild), feather-blended. Real detail at twice the resolution while
-# every tile keeps its own broad terms.
+# Hires in tiles: enlarge 1.5x (TILE_SCALE), then single anchored low-noise steps over
+# overlapping tiles of the drawing's own size (the TensorRT engines are dynamic only up to
+# 1024 px, and a bigger pipeline would need a rebuild), feather-blended. Real detail at the
+# bigger size while every tile keeps its own broad terms. Tiles are not safety-checked one by
+# one: the finished picture is (a flagged one falls back to the enlarged first picture).
 TILE_RUNGS = (40, 44, 47)
 TILE_SIGMA = 2.5
 TILE_SCALE = 1.5  # 960x672 from 640x448: 4 tiles (2x needs 9, ~600 ms per rung)
@@ -163,8 +151,22 @@ def _feather(width: int, height: int, overlap_x: int, overlap_y: int) -> np.ndar
     return np.outer(ramp(height, overlap_y), ramp(width, overlap_x))[..., None]
 
 
+def _hires_size(first: Image.Image) -> tuple[int, int]:
+    return (round(first.width * TILE_SCALE / 8) * 8, round(first.height * TILE_SCALE / 8) * 8)
+
+
+def _enlarged(upscaler: Any, picture: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """``picture`` at ``size``: through the AI upscaler (2x) if there is one, then resized."""
+    if upscaler is not None and upscaler.available:
+        picture = upscaler.upscale(picture, 2)
+    return picture.resize(size, Image.Resampling.LANCZOS)
+
+
 def _tiled_pass(backend: Any, picture: Image.Image, line_map: Image.Image | None,
-                rung: int, tile_size: tuple[int, int], anchor: Image.Image) -> Image.Image:
+                rung: int, tile_size: tuple[int, int], anchor: Image.Image,
+                anchor_cache: dict[Any, Any]) -> Image.Image:
+    """One rung over all tiles, safety-checked as a whole (``anchor`` if flagged).
+    ``anchor_cache`` keeps each tile's anchor latent for the later rungs of the same run."""
     tile_w, tile_h = tile_size
     width, height = picture.size
     columns = max(1, -(-(width - tile_w) // (tile_w // 2)) + 1)
@@ -186,24 +188,23 @@ def _tiled_pass(backend: Any, picture: Image.Image, line_map: Image.Image | None
             # Broad terms pinned to the (upscaled) first picture, so drift cannot build up.
             for out in backend.latent_ladder(tile, tile_map, [rung], chain=True,
                                              anchor_sigma=TILE_SIGMA, gamma=ANCHOR_GAMMA,
-                                             anchor_image=anchor.crop(box)):
+                                             anchor_image=anchor.crop(box), anchor_cache=anchor_cache,
+                                             anchor_key=box, safety_check=False):
                 pass
             total[y:y + tile_h, x:x + tile_w] += np.asarray(out, dtype=np.float32) * weight
             weights[y:y + tile_h, x:x + tile_w] += weight
-    return Image.fromarray(np.clip(total / weights, 0, 255).astype(np.uint8))
+    composite = Image.fromarray(np.clip(total / weights, 0, 255).astype(np.uint8))
+    return backend.checked_picture(composite, fallback=anchor)
 
 
 def model_hires_tiles(backend, first, init, line_map, draw, total_steps, upscaler=None):
     """Upscale (1.5x), then add detail tile by tile with low-noise steps (gentler each rung),
     every tile's broad terms pinned to the upscaled first picture."""
-    size = (round(first.width * TILE_SCALE / 8) * 8, round(first.height * TILE_SCALE / 8) * 8)
-    if upscaler is not None and upscaler.available:
-        anchor = upscaler.upscale(first, 2).resize(size, Image.Resampling.LANCZOS)
-    else:
-        anchor = first.resize(size, Image.Resampling.LANCZOS)
+    anchor = _enlarged(upscaler, first, _hires_size(first))
     picture = anchor
+    anchor_cache: dict[Any, Any] = {}
     for rung in _rungs(TILE_RUNGS, draw, total_steps):
-        picture = _tiled_pass(backend, picture, line_map, rung, first.size, anchor)
+        picture = _tiled_pass(backend, picture, line_map, rung, first.size, anchor, anchor_cache)
         yield picture
 
 
@@ -221,13 +222,12 @@ def model_anchored_hires(backend, first, init, line_map, draw, total_steps, upsc
     hires_rungs = budget - base_rungs
     if hires_rungs <= 0:
         return
-    size = (round(first.width * TILE_SCALE / 8) * 8, round(first.height * TILE_SCALE / 8) * 8)
-    big = upscaler.upscale(picture, 2) if upscaler is not None and upscaler.available else picture
-    anchor_big = (upscaler.upscale(first, 2) if upscaler is not None and upscaler.available else first)
-    big = big.resize(size, Image.Resampling.LANCZOS)
-    anchor_big = anchor_big.resize(size, Image.Resampling.LANCZOS)
+    size = _hires_size(first)
+    big = _enlarged(upscaler, picture, size)
+    anchor_big = _enlarged(upscaler, first, size)
+    anchor_cache: dict[Any, Any] = {}
     for rung in TILE_RUNGS[-hires_rungs:] if hires_rungs < len(TILE_RUNGS) else TILE_RUNGS:
-        big = _tiled_pass(backend, big, line_map, rung, first.size, anchor_big)
+        big = _tiled_pass(backend, big, line_map, rung, first.size, anchor_big, anchor_cache)
         yield big
 
 
@@ -235,12 +235,12 @@ def model_anchored_hires(backend, first, init, line_map, draw, total_steps, upsc
 
 def model_path(backend, first, init, line_map, draw, total_steps):
     """Continue the drawing's own denoising path step by step (fresh noise each step)."""
-    yield from _path(backend, init, line_map, draw, total_steps, "fresh")
+    yield from _path(backend, init, line_map, draw, total_steps)
 
 
 def model_path_locked(backend, first, init, line_map, draw, total_steps):
     """The path, with the broad terms pinned to the first picture in pixel space."""
-    yield from _locked(_path(backend, init, line_map, draw, total_steps, "fresh"), first)
+    yield from _locked(_path(backend, init, line_map, draw, total_steps), first)
 
 
 # name -> (generator, label shown on the admin page, makes pictures bigger itself)

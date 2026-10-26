@@ -4,7 +4,7 @@ import time
 
 from PIL import Image
 
-from conftest import is_json, is_picture, recv, recv_until, sketch_frame
+from conftest import current_prompt, is_json, is_picture, recv, recv_until, sketch_frame
 from server import protocol
 
 
@@ -36,7 +36,7 @@ def test_sketch_to_picture_echoes_seq(client):
         _, (msg_type, seq, jpeg) = recv_until(ws, is_picture())
     assert msg_type == protocol.PICTURE and seq == 42
     img = Image.open(io.BytesIO(jpeg))
-    assert img.format == "JPEG" and img.size == (256, 192)  # landscape: canvas_dims(size=256)
+    assert img.format == "JPEG" and img.size == (384, 256)  # landscape: canvas_dims(size=384)
 
 
 def test_blank_sketch_gives_white_picture(client):
@@ -96,7 +96,7 @@ def test_kid_cannot_inject_prompt_text(client):
         recv_until(ws, is_json("pong"))
         ws.send_bytes(sketch_frame(1))
         recv_until(ws, is_picture(1))
-    prompt = app.state.session.current_prompt()
+    prompt = current_prompt(app)
     assert "INJECTED" not in prompt and "crayon" in prompt
     assert app.state.styles.get("styles", "crayon")["prompt"] in prompt
 
@@ -150,7 +150,9 @@ def test_picture_from_replaced_socket_not_sent_to_new_one(make_client):
     with make_client(delay_ms=600) as client, client.websocket_connect("/ws") as old:
         hello(old)
         old.send_bytes(sketch_frame(500))
-        time.sleep(0.2)  # the worker has taken frame 500 by now
+        end = time.monotonic() + 5
+        while client.app.state.mailbox.pending and time.monotonic() < end:
+            time.sleep(0.005)  # until the worker has taken frame 500
         with client.websocket_connect("/ws") as new:
             hello(new)
             new.send_bytes(sketch_frame(1))
@@ -177,3 +179,46 @@ async def _fill_then_replace(peer, n, code):
     for i in range(n):
         peer.send_json({"t": "filler", "i": i})
     peer.close_soon(code, farewell={"t": "replaced"})
+
+
+def test_clear_and_new_reset_the_worker(client):
+    worker = client.app.state.runtime.worker
+    resets = []
+    real_reset = worker.reset
+    worker.reset = lambda: (resets.append(1), real_reset())
+    with client.websocket_connect("/ws") as ws:
+        hello(ws)
+        for msg in ("clear", "new"):
+            ws.send_json({"t": msg})
+        ws.send_json({"t": "ping"})
+        recv_until(ws, is_json("pong"))
+    assert len(resets) >= 2
+
+
+def test_resolution_change_sends_the_kid_page_its_new_canvas(admin):
+    with admin.websocket_connect("/ws") as ws:
+        hello(ws)
+        assert admin.patch("/api/admin/params", json={"seed": 3}).status_code == 200
+        assert admin.patch("/api/admin/params", json={"resolution": 512}).status_code == 200
+        msg = recv_until(ws, lambda kind, value: kind == "json" and "canvas" in value)[1]
+    assert msg["t"] == "styles" and msg["canvas"] == {"landscape": [512, 384], "portrait": [384, 512]}
+    assert "topics" in msg and "styles" in msg and msg["topic"] == "ocean"
+
+
+def test_admin_watcher_closes_when_its_login_expires(admin):
+    from conftest import ADMIN_PIN
+
+    auth = admin.app.state.auth
+    assert admin.post("/api/admin/login", json={"pin": ADMIN_PIN, "short": True}).status_code == 200
+    with admin.websocket_connect("/ws/admin") as watch:
+        recv_until(watch, is_json("stats"))
+        real_clock = auth._clock
+        auth._clock = lambda: real_clock() + 16 * 60  # past the 15-minute gate login
+        try:
+            for _ in range(200):
+                kind, value = recv(watch)
+                if kind == "close":
+                    break
+            assert (kind, value) == ("close", 1008)
+        finally:
+            auth._clock = real_clock

@@ -49,3 +49,15 @@ def test_take_wakes_on_put_from_other_thread():
     mb.put("hello")
     t.join(1)
     assert got == ["hello"]
+
+
+def test_wake_ends_a_waiting_take_without_an_item():
+    mb = Mailbox()
+    got = []
+    waiter = threading.Thread(target=lambda: got.append(mb.take(timeout=5)))
+    waiter.start()
+    mb.wake()
+    waiter.join(1)
+    assert got == [None] and not waiter.is_alive()
+    mb.put("next")
+    assert mb.take(timeout=0) == "next"  # one wake, not a permanent state

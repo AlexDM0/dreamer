@@ -2,18 +2,22 @@
 // Plain ES module, no dependencies. Every API call goes through api(), which sends the
 // user back to the PIN pad on a 401 (expired or missing cookie).
 
+import { normaliseColor } from "./canvas.js";
+
 const $ = (id) => document.getElementById(id);
 
 const PICTURE = 0x02;          // protocol.py: server->client JPEG frame
 const HEADER_BYTES = 5;        // type (1) + seq (uint32 BE)
 const PIN_MAX = 12;
 const KIND_LABEL = { preset: "Built-in", custom: "Custom", image: "Picture" };
+const LIVE_SILENCE_MS = 6000;  // the server pushes stats every second: silence = dead socket
 
 let state = null;              // last GET /api/admin/state
 let pin = "";
 let ws = null;
 let wsRetry = 0;
 let wsTimer = 0;
+let wsSilenceTimer = 0;        // closes a socket that stopped sending (half-open)
 let wantSocket = false;        // false while logged out, so the socket stops reconnecting
 let liveUrl = null;            // current object URL shown in the live <img>
 let openEditor = null;         // "styles:<id>" of the row whose editor is open
@@ -453,6 +457,7 @@ $("p-seed-new").addEventListener("click", () => {
 $("params-reset").addEventListener("click", async () => {
   clearTimeout(paramsTimer);
   pendingParams = {};
+  for (const key of Object.keys(pendingInputs)) delete pendingInputs[key]; // show the defaults
   const res = await attempt(() => api("POST", "/api/admin/params/reset"), "Back to defaults");
   if (res) applyParams(res);
 });
@@ -718,9 +723,7 @@ function showArt(art) {
   $("art-picture").src = art.picture;
   // sketch.png is the transparent stroke layer: show it over the drawing's paper colour
   // (artworks from before layers have an opaque sketch on white).
-  const sketchBg = typeof art.background === "string" && /^#[0-9a-f]{6}$/i.test(art.background)
-    ? art.background : "#ffffff";
-  $("art-sketch").style.backgroundColor = sketchBg;
+  $("art-sketch").style.backgroundColor = normaliseColor(art.background, "#ffffff");
   $("art-sketch").src = art.sketch;
   $("art-meta").textContent = `Saved ${niceDate(art.created_at)}`
     + (art.updated_at !== art.created_at ? ` · changed ${niceDate(art.updated_at)}` : "")
@@ -791,13 +794,28 @@ function openSocket() {
   ws = sock;
   setLive("connecting");
 
-  sock.onopen = () => { opened = true; wsRetry = 0; };
+  // No message for a while (stats come every second): the socket is dead even if it
+  // looks open (phone slept, Wi-Fi changed): close it, show Offline and try again.
+  const watchSilence = () => {
+    clearTimeout(wsSilenceTimer);
+    wsSilenceTimer = setTimeout(() => {
+      if (ws !== sock) return;
+      // Don't wait for onclose: a dead socket's closing handshake can take a long time.
+      sock.onclose = sock.onmessage = null;
+      sock.close();
+      dropped();
+    }, LIVE_SILENCE_MS);
+  };
+  watchSilence(); // also covers an attempt that never opens
+  sock.onopen = () => { opened = true; wsRetry = 0; watchSilence(); };
   sock.onmessage = (e) => {
+    watchSilence();
     if (typeof e.data === "string") onJson(e.data);
     else onBinary(e.data);
   };
-  sock.onclose = () => {
+  const dropped = () => {
     if (ws !== sock) return;
+    clearTimeout(wsSilenceTimer);
     ws = null;
     if (!wantSocket) return;
     setLive("offline");
@@ -807,10 +825,12 @@ function openSocket() {
     const delay = Math.min(5000, 500 * 2 ** wsRetry++);
     wsTimer = setTimeout(openSocket, delay);
   };
+  sock.onclose = dropped;
 }
 
 function closeSocket() {
   clearTimeout(wsTimer);
+  clearTimeout(wsSilenceTimer);
   if (ws) {
     const s = ws;
     ws = null;

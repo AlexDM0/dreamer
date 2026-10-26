@@ -62,7 +62,7 @@ def test_custom_style_crud_and_persistence(tmp_path):
     assert "shiny stickers" in reloaded.build_prompt("ocean", item["id"])
     assert reloaded.build_prompt("ocean", item["id"]).endswith(SAFETY_TAIL)
 
-    reloaded.delete_style(item["id"])
+    reloaded.delete_item("styles", item["id"])
     assert StyleStore(tmp_path).get("styles", item["id"]) is None
 
 
@@ -100,9 +100,9 @@ def test_prompt_editable_only_for_custom(store):
 
 def test_presets_cannot_be_deleted(store):
     with pytest.raises(ValueError):
-        store.delete_style("cartoon")
+        store.delete_item("styles", "cartoon")
     with pytest.raises(KeyError):
-        store.delete_style("missing")
+        store.delete_item("styles", "missing")
 
 
 def test_cannot_hide_everything(store):
@@ -142,11 +142,11 @@ def test_failed_save_rolls_back_memory(tmp_path, monkeypatch):
     """If styles.json cannot be written, memory must keep matching what is on disk."""
     store = StyleStore(tmp_path)
 
-    def boom(*a, **k):
+    def boom(*args, **kwargs):
         raise PermissionError("file is locked")
 
-    monkeypatch.setattr("server.styles.os.replace", boom)
-    monkeypatch.setattr("server.styles.time.sleep", lambda s: None)
+    monkeypatch.setattr("server.fsutil.os.replace", boom)
+    monkeypatch.setattr("server.fsutil.time.sleep", lambda seconds: None)
     before = store.admin_list()
     with pytest.raises(OSError):
         store.add_custom_style("Rainbow", None, "rainbow colors")

@@ -1,5 +1,7 @@
 # Addendum: background layer, drawing shape, minimisable toolbar (Alex, 2026-10-25)
 
+_Updated 2026-10-26 to match the code; docs/setup.md is the user guide._ This replaced the phase 1 square 512x512 white canvas. The toolbar minimise button lives in `static/app.js`, the background colour picker in `static/paper.js`.
+
 "I want to be able to set the background color, keep that as 2 layers so I can always change
 it later." / "background should be selected when a new image is started" / "default black" /
 "The ui should be minimisable, leaving only the color and size slider. Max space for the
@@ -13,7 +15,7 @@ drawing. The iPad aspect ratio and "up" direction should be respected."
 - The kid page keeps **two layers**: the background (a solid colour, changeable any time) and
   a transparent **stroke layer**. The eraser and Clear only touch strokes.
 - Drawings and pictures have the iPad's shape, not a square. `config.size` is the long side
-  (default 640, a multiple of 64). The short side is 0.7× rounded to 64: landscape 640×448,
+  (default 640, a multiple of 64); the admin "Resolution" param (`resolution`, 512 to 1024) overrides it live and `canvas_dims(cfg, long_side)` computes the shapes. The short side is 0.7× rounded to 64: landscape 640×448,
   portrait 448×640 (`config.canvas_dims`). When the iPad rotates mid-drawing, the drawing
   stays upright and is letterboxed. Only a new drawing takes the new orientation.
 
@@ -37,7 +39,7 @@ drawing. The iPad aspect ratio and "up" direction should be respected."
   soft clouds of the coloured strokes over the background, `blank` = the background,
   `sketch` = strokes over the background. With ControlNet off, strokes over the background.
   So a black background gives a night-time starting point.
-- Switching orientation rebuilds the StreamDiffusion wrapper at the other size. The TensorRT
+- Switching orientation (or the resolution param) rebuilds the StreamDiffusion wrapper at the other size (`set_size`). The TensorRT
   engines have dynamic shapes (384 to 1024), so they are reused. The worker reports "busy"
   meanwhile.
 

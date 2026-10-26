@@ -1,11 +1,12 @@
 // Dreamer kid page: wires the toolbar, drawing canvas, view and network together.
 import { DEFAULT_BACKGROUND, DrawingCanvas, deviceOrientation } from "./canvas.js";
+import { hideDialog, showDialog } from "./dialog.js";
 import { Gallery } from "./gallery.js";
 import { Net } from "./net.js";
 import { ParentGate } from "./gate.js";
 import { PaperPicker } from "./paper.js";
 import { Toolbar } from "./toolbar.js";
-import { View } from "./view.js";
+import { View, loadImage } from "./view.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -38,9 +39,8 @@ new ParentGate($("#parents"), $("#gate"));
 
 // The drawing's size and paper: the view frames it, the toolbar keeps the pen visible.
 const showDrawing = (drawing) => {
-  view.setDrawing(drawing);
+  view.setDrawing(drawing); // re-lays out the panes: the "layout" handler updates the scale
   toolbar.setBackground(drawing.background);
-  toolbar.setScale(canvas.displayScale());
 };
 canvas.addEventListener("drawing", (e) => showDrawing(e.detail));
 showDrawing({ width: canvas.drawingWidth, height: canvas.drawingHeight, background: canvas.background });
@@ -86,6 +86,12 @@ canvas.addEventListener("strokeend", () => {
   net.sendNow();
   unsaved = true;
 });
+// A finger stroke that turned into a pinch was undone: re-send the drawing as it is now,
+// but there is nothing new to save.
+canvas.addEventListener("strokecancel", () => {
+  view.strokeEnd();
+  net.sendNow();
+});
 
 // Pinch on the canvas: spread two fingers for a bigger brush, pinch them for a smaller one.
 // A ring at the fingers shows the size on the drawing while pinching.
@@ -110,8 +116,9 @@ canvas.addEventListener("pinch", (e) => {
 });
 canvas.addEventListener("pinchend", () => { pinchRing.hidden = true; });
 
-// Mouse: the scroll wheel over the drawing changes the brush size too (up = bigger). A
-// trackpad pinch arrives as a wheel event with ctrlKey and works the same way.
+// Mouse: the scroll wheel over the drawing changes the brush size too (up = bigger). In
+// Chrome and Firefox a trackpad pinch arrives as a wheel event with ctrlKey and works the
+// same way; Safari sends gesture events instead, which are blocked above (no pinch zoom).
 const WHEEL_STEP_PX = 100; // wheel travel per size step (one mouse notch is about 100)
 let wheelTravel = 0;
 let wheelRingTimer = 0;
@@ -131,7 +138,7 @@ $("#sketch").addEventListener("wheel", (e) => {
 // View -> toolbar
 view.addEventListener("mode", (e) => toolbar.setMode(e.detail.mode));
 view.addEventListener("layout", () => toolbar.setScale(canvas.displayScale()));
-toolbar.setScale(canvas.displayScale());
+toolbar.setScale(canvas.displayScale()); // the first layout ran before this listener
 
 // Net -> everything
 let backendState = null; // last status from the server on this connection
@@ -200,7 +207,8 @@ addEventListener("online", () => { net.retryNow(); updateOffline(); });
 addEventListener("offline", updateOffline);
 
 net.addEventListener("state", (e) => {
-  $("#replaced").hidden = e.detail.state !== "replaced";
+  if (e.detail.state === "replaced") showDialog($("#replaced"), $("#take-over"));
+  else hideDialog($("#replaced"));
   if (e.detail.state === "open") backendState = null;
   // A reply that never came on the old socket must not swallow later error statuses.
   if (e.detail.state !== "open") { continuing = false; if (saving) saveDone(); }
@@ -225,9 +233,10 @@ net.addEventListener("status", (e) => {
 });
 net.addEventListener("ready", (e) => {
   const m = e.detail;
+  // The server's drawing sizes, before the "canvas" message and the first sketch. Also
+  // taken from a "styles" message, so a live resolution change can reach this page.
+  if (m.canvas) canvas.setSizes(m.canvas);
   if (m.t === "ready") {
-    // The server's drawing sizes, before the "canvas" message and the first sketch.
-    if (m.canvas) canvas.setSizes(m.canvas);
     // Only on the first connection after loading the page: bring back the drawing the
     // kid left (a reconnect keeps what is on the canvas). Without a draft the kid starts
     // on black paper right away; the Paper button wiggles so it is easy to find.
@@ -262,7 +271,8 @@ $("#take-over").addEventListener("click", () => net.takeOver());
 // ---- Gallery: save, new drawing, draft restore, keep drawing (SPEC-addendum-gallery) ----
 
 let unsaved = false;        // strokes since the last save / load
-let drewSomething = false;  // the kid drew on this page (a draft must not overwrite that)
+let drewSomething = false;  // the kid drew on this page (unsaved work since the last clear)
+let draftUnwanted = false;  // a fresh drawing or paper was picked: a late draft must not load
 let firstReadyDone = false;
 let saving = false;
 let continuing = false;
@@ -292,15 +302,6 @@ function hideHint() {
   $("#hint").hidden = true;
 }
 
-function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("could not load " + url));
-    img.src = url;
-  });
-}
-
 /** Put a saved sketch on the canvas and get a fresh picture for it. `unless()` is checked
  * once the image has loaded: true means the canvas must not be replaced after all.
  * `loaded()` runs once the sketch is on the canvas, before it is sent (it tells the
@@ -321,7 +322,7 @@ async function loadSketch(url, unless = () => false, loaded = () => {}, meta = {
 async function restoreDraft(draft) {
   try {
     // The kid may already be drawing while the draft loads: never paint over that.
-    if (!await loadSketch(draft.sketch, () => drewSomething,
+    if (!await loadSketch(draft.sketch, () => drewSomething || draftUnwanted,
                           () => net.restored(draft.id, draft.source),
                           { background: draft.background, orientation: draft.orientation })) return;
   } catch {
@@ -344,6 +345,7 @@ function startFresh(background = DEFAULT_BACKGROUND) {
   net.newDrawing();
   unsaved = false;
   drewSomething = false;
+  draftUnwanted = true; // drewSomething is reset, so it can't keep a late draft out
 }
 
 /** Ask before throwing away an unsaved drawing; runs `fn` when it is fine to go on. */
@@ -352,12 +354,19 @@ function confirmThen(fn, title, yes) {
   $("#confirm-title").textContent = title;
   $("#confirm-yes").textContent = yes;
   const box = $("#confirm");
-  box.hidden = false;
+  const onKey = (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    done(false); // Escape = keep this one
+  };
   const done = (go) => {
-    box.hidden = true;
+    document.removeEventListener("keydown", onKey);
+    hideDialog(box);
     $("#confirm-yes").onclick = $("#confirm-no").onclick = null;
     if (go) fn();
   };
+  document.addEventListener("keydown", onKey);
+  showDialog(box, $("#confirm-no")); // the safe choice has the focus
   $("#confirm-yes").onclick = () => done(true);
   $("#confirm-no").onclick = () => done(false);
 }
@@ -381,7 +390,7 @@ function changePaper(color) {
   canvas.setBackground(color); // the strokes stay
   net.sendCanvas();
   net.sendNow();
-  drewSomething = true; // a late draft must not replace the paper the kid chose
+  draftUnwanted = true; // a late draft must not replace the paper the kid chose
   if (!canvas.isBlank()) unsaved = true;
 }
 
@@ -421,8 +430,10 @@ function waitForFinalPicture(timeoutMs = 3000) {
   });
 }
 
+let saveTimer = 0;
 function saveDone() {
   saving = false;
+  clearTimeout(saveTimer); // or it would end the next Save early
   $("#save").classList.remove("busy");
 }
 
@@ -434,7 +445,7 @@ $("#save").addEventListener("click", async () => {
   $("#save").classList.add("busy");
   await waitForFinalPicture(); // save exactly the picture made from the whole drawing
   if (!net.save()) { saveDone(); showHint("Not connected yet. Try again in a moment."); return; }
-  setTimeout(() => { if (saving) saveDone(); }, 8000); // never stay stuck
+  saveTimer = setTimeout(() => { if (saving) saveDone(); }, 8000); // never stay stuck
 });
 
 net.addEventListener("saved", () => {
@@ -507,6 +518,7 @@ function burst(el) {
       { transform: "translate(-50%, -50%) scale(1.1)", opacity: 1, offset: 0.25 },
       { transform: `translate(calc(-50% + ${Math.cos(a) * d}px), calc(-50% + ${Math.sin(a) * d}px)) scale(0.7) rotate(${a}rad)`, opacity: 0 },
     ], { duration: 700 + Math.random() * 200, easing: "cubic-bezier(.2,.7,.3,1)" }).onfinish = () => s.remove();
+    setTimeout(() => s.remove(), 2000); // onfinish never fires if the animation is dropped
   });
 }
 

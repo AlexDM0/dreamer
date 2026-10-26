@@ -24,7 +24,7 @@ ADMIN_PIN = "4321"
 @pytest.fixture
 def config(tmp_path: Path) -> Config:
     return Config(backend="mock", admin_pin=ADMIN_PIN, secret_key="test-secret",
-                  data_dir=str(tmp_path / "data"), size=256)
+                  data_dir=str(tmp_path / "data"), size=384)
 
 
 @pytest.fixture
@@ -55,6 +55,12 @@ def sketch_png(blank: bool = False, size: int = 256, color: str = "black") -> by
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()
+
+
+def current_prompt(app) -> str:
+    """The prompt the server builds for the kid's current topic and style."""
+    current = app.state.session.current()
+    return app.state.styles.build_prompt(current["topic"], current["style"])
 
 
 def sketch_frame(seq: int, blank: bool = False) -> bytes:

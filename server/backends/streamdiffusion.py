@@ -12,17 +12,15 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Iterator
+from typing import Any, Hashable, Iterator
 
 from PIL import Image
 
 from ..config import canvas_dims
 from .base import GenParamsLike
+from .common import DEFAULT_SEED, model_attr, previous_or_black
 
 log = logging.getLogger("dreamer.backend.streamdiffusion")
-
-# The wrapper's own default seed (StreamDiffusionWrapper(seed=2)).
-DEFAULT_SEED = 2
 
 # Used for prepare() before the first real prompt arrives from the worker.
 DEFAULT_PROMPT = "a colorful illustration, for children, friendly, bright colors, wholesome"
@@ -44,11 +42,6 @@ class _WarningCollector(logging.Handler):
         self.messages.append(record.getMessage())
 
 
-def _model_attr(config: Any, name: str, default: Any) -> Any:
-    model = getattr(config, "model", None)
-    return getattr(model, name, default) if model is not None else default
-
-
 class StreamDiffusionBackend:
     def __init__(self, config: Any) -> None:
         # The only place torch/streamdiffusion get imported (SPEC hard rule).
@@ -60,20 +53,20 @@ class StreamDiffusionBackend:
 
         # Pictures have the drawing's shape; set_size() switches orientation.
         self._width, self._height = canvas_dims(config)["landscape"]
-        self._model_id = _model_attr(config, "base", "stabilityai/sd-turbo")
-        self._controlnet_id = _model_attr(config, "controlnet", "thibaud/controlnet-sd21-scribble-diffusers")
-        self._engine_dir = _model_attr(config, "engine_dir", "engines")
-        self._max_steps = max(1, int(_model_attr(config, "max_steps", 8)))
+        self._model_id = model_attr(config, "base", "stabilityai/sd-turbo")
+        self._controlnet_id = model_attr(config, "controlnet", "thibaud/controlnet-sd21-scribble-diffusers")
+        self._engine_dir = model_attr(config, "engine_dir", "engines")
+        self._max_steps = max(1, int(model_attr(config, "max_steps", 8)))
         # Steps up to this run as one UNet batch; more run one after another (see _batched).
-        self._batch_steps = min(self._max_steps, max(1, int(_model_attr(config, "max_batch_steps", 4))))
+        self._batch_steps = min(self._max_steps, max(1, int(model_attr(config, "max_batch_steps", 4))))
 
         # Live params (SPEC addendum); start from config.model defaults.
-        self._t_index_list = [int(t) for t in _model_attr(config, "t_index_list", [6, 26])]
+        self._t_index_list = [int(t) for t in model_attr(config, "t_index_list", [6, 26])]
         self._seed: int | None = None  # None = wrapper's own default seed
         self._controlnet_enabled = self._controlnet_id is not None
-        self._controlnet_scale = float(_model_attr(config, "controlnet_scale", 0.55))
-        self._safety_on = bool(_model_attr(config, "safety_checker", True))
-        self._safety_threshold = float(_model_attr(config, "safety_threshold", 0.5))
+        self._controlnet_scale = float(model_attr(config, "controlnet_scale", 0.55))
+        self._safety_on = bool(model_attr(config, "safety_checker", True))
+        self._safety_threshold = float(model_attr(config, "safety_threshold", 0.5))
 
         self._wrapper: Any = None
         # What the stream runs right now: the draw steps (_t_index_list), or a refine pass's
@@ -118,19 +111,25 @@ class StreamDiffusionBackend:
             # has moved on since: the same drawing would get different noise every time and
             # a refinement round could repaint a different picture. Re-seed in the same call
             # (the updater applies the seed after the step change).
-            updates = {**updates, "seed": self._seed if self._seed is not None else DEFAULT_SEED}
-        if new_t_index is not None:
-            mode = self._batched(new_t_index) if batched is None else batched
-            if mode != previous and len(new_t_index) == len(self._stream_t_index):
-                # The updater only rebuilds batch buffers when the step COUNT changes; pass
-                # through another count first so a mode switch gets buffers that fit.
-                stream.use_denoising_batch = mode
-                wrapper.update_stream_params(t_index_list=new_t_index[:-1] or [new_t_index[0], 49])
-            stream.use_denoising_batch = mode
+            updates = {**updates, "seed": self._current_seed()}
+        passed_through = False
         try:
+            if new_t_index is not None:
+                mode = self._batched(new_t_index) if batched is None else batched
+                if mode != previous and len(new_t_index) == len(self._stream_t_index):
+                    # The updater only rebuilds batch buffers when the step COUNT changes;
+                    # pass through another count first so a mode switch gets buffers that fit.
+                    stream.use_denoising_batch = mode
+                    wrapper.update_stream_params(t_index_list=new_t_index[:-1] or [new_t_index[0], 49])
+                    passed_through = True
+                stream.use_denoising_batch = mode
             wrapper.update_stream_params(**updates)
         except Exception:
             stream.use_denoising_batch = previous
+            if passed_through:
+                # The stream now runs the pass-through steps, not _stream_t_index: forget
+                # what it runs so the next _ensure_stream() sets the steps again.
+                self._stream_t_index = []
             raise
         if new_t_index is not None:
             self._stream_t_index, self._stream_batched = list(new_t_index), stream.use_denoising_batch
@@ -140,6 +139,21 @@ class StreamDiffusionBackend:
         if self._stream_t_index == t_index and self._stream_batched == batched:
             return
         self._update_t_index(self._wrapper, {"t_index_list": t_index}, batched=batched)
+
+    def _current_seed(self) -> int:
+        return self._seed if self._seed is not None else DEFAULT_SEED
+
+    def _seed_cuda(self, torch: Any) -> None:
+        """Re-seed the global CUDA generator (torch.randn_like between steps) with the
+        surprise number, so the same drawing gets the same noise every time."""
+        if torch is not None and torch.cuda.is_available():
+            torch.cuda.manual_seed(self._current_seed())
+
+    def _apply_pending_prompt(self) -> None:
+        """Send a prompt set since the last picture (passes that bypass wrapper(prompt=...))."""
+        if self._pending_prompt is not None:
+            self._wrapper.update_prompt(self._pending_prompt)
+            self._prompt, self._pending_prompt = self._pending_prompt, None
 
     # -- lifecycle -----------------------------------------------------------------
 
@@ -318,8 +332,7 @@ class StreamDiffusionBackend:
         return self._run(init_image, line_map)
 
     def refine_steps(self, init_image: Image.Image, line_map: Image.Image | None,
-                     t_index: list[int], first_shown: int,
-                     noise: str = "fresh") -> Iterator[Image.Image]:
+                     t_index: list[int], first_shown: int) -> Iterator[Image.Image]:
         """One denoising path over ``t_index``, run one step after another, yielding the
         picture after each step from step ``first_shown`` (1-based) on.
 
@@ -327,9 +340,8 @@ class StreamDiffusionBackend:
         LCM branch), opened up so every step's prediction can be shown: the picture keeps the
         same composition and each step changes less than the last, because the noise put back
         between steps shrinks along the path. With the same seed, the first steps are the
-        quick drawing picture: draw 1 step + 3 more here == a 4-step picture.
-        ``noise``: what is put back between steps: "fresh" random noise (the fork's way),
-        "fixed" (the same noise every step: converges instead of wandering).
+        quick drawing picture: draw 1 step + 3 more here == a 4-step picture. Fresh random
+        noise is put back between steps (the fork's way).
         """
         import torch
 
@@ -339,11 +351,8 @@ class StreamDiffusionBackend:
         stream = wrapper.stream
         self._ensure_stream([int(t) for t in t_index], False)
         image = self._prepare_inputs(init_image, line_map)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(self._seed if self._seed is not None else DEFAULT_SEED)
-        if self._pending_prompt is not None:
-            wrapper.update_prompt(self._pending_prompt)
-            self._prompt, self._pending_prompt = self._pending_prompt, None
+        self._seed_cuda(torch)
+        self._apply_pending_prompt()
         with torch.no_grad():
             x = wrapper.preprocess_image(image)
             sample = stream.encode_image(x)
@@ -356,15 +365,17 @@ class StreamDiffusionBackend:
                 if idx < steps - 1:
                     sample = stream.alpha_prod_t_sqrt[idx + 1] * x_0_pred
                     if stream.do_add_noise:
-                        added = stream.init_noise[0:1] if noise == "fixed" else torch.randn_like(
-                            x_0_pred, device=stream.device, dtype=stream.dtype)
+                        added = torch.randn_like(x_0_pred, device=stream.device, dtype=stream.dtype)
                         sample = sample + stream.beta_prod_t_sqrt[idx + 1] * added
 
     def latent_ladder(self, first: Image.Image, line_map: Image.Image | None,
                       t_index: list[int], *, chain: bool, anchor_sigma: float | None,
                       gamma: float, anchor_weights: list[float] | None = None,
                       control_images: list[Image.Image | None] | None = None,
-                      anchor_image: Image.Image | None = None) -> Iterator[Image.Image]:
+                      anchor_image: Image.Image | None = None,
+                      anchor_cache: dict[Hashable, Any] | None = None,
+                      anchor_key: Hashable = None,
+                      safety_check: bool = True) -> Iterator[Image.Image]:
         """Refine ``first`` (the picture on screen) in single-step rungs at ``t_index`` (rising:
         less noise each rung), yielding the picture after every rung.
 
@@ -375,9 +386,15 @@ class StreamDiffusionBackend:
           so layout, colours and light cannot move; ``anchor_weights`` per rung (default 1).
         - ``gamma``: re-noise with sqrt(1-gamma) * the predicted noise + sqrt(gamma) * fresh
           noise (TCD-style stochasticity): 0 is deterministic, 1 is fresh noise only.
-        - ``control_images``: per-rung ControlNet image (None keeps ``line_map``).
+        - ``control_images``: per-rung ControlNet image (None keeps ``line_map``); only used
+          while a ControlNet is loaded and on.
         - ``anchor_image``: pin the low frequencies to this picture instead of ``first`` (e.g.
-          the upscaled first picture while refining a later rung's result).
+          the upscaled first picture while refining a later rung's result). With
+          ``anchor_cache``, its latent is kept in ``anchor_cache[anchor_key]``, so a caller
+          pinning the same picture again (hires tiles, every rung) encodes it only once.
+        - ``safety_check``: pictures go through the safety filter (and become the "previous"
+          fallback). Hires tiles are not checked one by one: the caller checks the finished
+          picture with checked_picture().
         """
         import torch
         from torch.nn import functional as F
@@ -387,17 +404,24 @@ class StreamDiffusionBackend:
         wrapper, stream = self._wrapper, self._wrapper.stream
         self._ensure_stream([int(t) for t in t_index], False)
         image = self._prepare_inputs(first, line_map)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(self._seed if self._seed is not None else DEFAULT_SEED)
+        self._seed_cuda(torch)
+        self._apply_pending_prompt()
+        # The fork raises on update_control_image() without a ControlNet (config: null).
+        use_control = self._controlnet_id is not None and self._controlnet_enabled
+
+        kernels: dict[tuple[Any, Any, int], tuple[int, Any, Any]] = {}
 
         def low_pass(latent: torch.Tensor) -> torch.Tensor:
-            radius = max(1, int(round(anchor_sigma * 3)))
-            coords = torch.arange(-radius, radius + 1, device=latent.device, dtype=torch.float32)
-            kernel = torch.exp(-(coords ** 2) / (2 * anchor_sigma ** 2))
-            kernel = (kernel / kernel.sum()).to(latent.dtype)
             channels = latent.shape[1]
-            horizontal = kernel.view(1, 1, 1, -1).repeat(channels, 1, 1, 1)
-            vertical = kernel.view(1, 1, -1, 1).repeat(channels, 1, 1, 1)
+            key = (latent.device, latent.dtype, channels)
+            if key not in kernels:  # built once per call, not on every rung
+                radius = max(1, int(round(anchor_sigma * 3)))
+                coords = torch.arange(-radius, radius + 1, device=latent.device, dtype=torch.float32)
+                kernel = torch.exp(-(coords ** 2) / (2 * anchor_sigma ** 2))
+                kernel = (kernel / kernel.sum()).to(latent.dtype)
+                kernels[key] = (radius, kernel.view(1, 1, 1, -1).repeat(channels, 1, 1, 1),
+                                kernel.view(1, 1, -1, 1).repeat(channels, 1, 1, 1))
+            radius, horizontal, vertical = kernels[key]
             padded = F.pad(latent, (radius, radius, 0, 0), mode="replicate")
             latent = F.conv2d(padded, horizontal, groups=channels)
             padded = F.pad(latent, (0, 0, radius, radius), mode="replicate")
@@ -408,22 +432,28 @@ class StreamDiffusionBackend:
                 retrieve_latents,
             )
 
-            x = wrapper.preprocess_image(image).to(device=stream.device, dtype=stream.vae.dtype)
-            # The clean latent of the picture on screen (encode_image() would add noise).
-            anchor = retrieve_latents(stream.vae.encode(x), stream.generator)
-            anchor = (anchor * stream.vae.config.scaling_factor).to(stream.dtype)
-            current = anchor
+            def clean_latent(picture: Image.Image) -> torch.Tensor:
+                # The clean latent of a picture (encode_image() would add noise).
+                pixels = wrapper.preprocess_image(picture).to(device=stream.device, dtype=stream.vae.dtype)
+                latent = retrieve_latents(stream.vae.encode(pixels), stream.generator)
+                return (latent * stream.vae.config.scaling_factor).to(stream.dtype)
+
+            first_latent = clean_latent(image)
+            anchor = first_latent
             if anchor_image is not None:
-                pinned = wrapper.preprocess_image(self._prepare_inputs(anchor_image, None))
-                pinned = retrieve_latents(stream.vae.encode(pinned.to(device=stream.device, dtype=stream.vae.dtype)),
-                                          stream.generator)
-                anchor = (pinned * stream.vae.config.scaling_factor).to(stream.dtype)
+                if anchor_cache is not None and anchor_key in anchor_cache:
+                    anchor = anchor_cache[anchor_key]
+                else:
+                    anchor = clean_latent(self._prepare_inputs(anchor_image, None))
+                    if anchor_cache is not None:
+                        anchor_cache[anchor_key] = anchor
             anchor_low = low_pass(anchor) if anchor_sigma else None
+            current = first_latent
             eps = stream.init_noise[0:1]
             for idx, timestep in enumerate(stream.sub_timesteps_tensor):
-                if control_images is not None and control_images[idx] is not None:
-                    self._wrapper.update_control_image(0, control_images[idx])
-                start = current if chain else (anchor if anchor_image is None else current)
+                if use_control and control_images is not None and control_images[idx] is not None:
+                    wrapper.update_control_image(0, control_images[idx])
+                start = current if chain else first_latent
                 noise = eps
                 if gamma > 0:
                     noise = (1 - gamma) ** 0.5 * eps + gamma ** 0.5 * torch.randn_like(eps)
@@ -437,7 +467,11 @@ class StreamDiffusionBackend:
                 current = x_0_pred
                 if model_pred is not None and model_pred.shape == eps.shape:
                     eps = model_pred  # the model's own noise estimate, for the next rung
-                yield self._checked_picture(stream.decode_image(x_0_pred))
+                decoded = stream.decode_image(x_0_pred)
+                if safety_check:
+                    yield self._checked_picture(decoded)
+                else:
+                    yield wrapper.postprocess_image(decoded, output_type="pil")
 
     def _checked_picture(self, image_tensor: Any) -> Image.Image:
         """Decoded tensor -> PIL, through the wrapper's safety checker like img2img()."""
@@ -446,16 +480,34 @@ class StreamDiffusionBackend:
         if wrapper.use_safety_checker:
             denormalized = (image_tensor / 2 + 0.5).clamp(0, 1)
             if wrapper.safety_checker(denormalized, wrapper.safety_checker_threshold):
-                return wrapper.nsfw_fallback_img
+                # The fork's initial fallback is black with width and height swapped.
+                return previous_or_black(wrapper.nsfw_fallback_img, picture.size)
             wrapper.nsfw_fallback_img = picture
+        return picture
+
+    def checked_picture(self, picture: Image.Image, fallback: Image.Image) -> Image.Image:
+        """A picture made outside the stream (a hires composite) through the live safety
+        filter: ``fallback`` if flagged. The wrapper's "previous" frame is left alone: it
+        must keep the stream's size."""
+        wrapper = self._wrapper
+        checker = self._safety_checker()
+        if checker is None or not wrapper.use_safety_checker:
+            return picture
+        # The checker squashes the whole picture to 448x448 itself.
+        result = checker(self._checker_input(picture.convert("RGB")), wrapper.safety_checker_threshold)
+        if _is_flagged(result, wrapper.safety_checker_threshold):
+            log.info("safety checker flagged a refined picture; showing the first one")
+            return fallback
         return picture
 
     def _prepare_inputs(self, init_image: Image.Image, line_map: Image.Image | None) -> Image.Image:
         """Init image at the picture size, and the line map pushed into the ControlNet."""
         size = (self._width, self._height)
-        image = init_image.convert("RGB")
-        if image.size != size:
-            image = image.resize(size, Image.Resampling.LANCZOS)
+        image = init_image
+        if image.mode != "RGB" or image.size != size:  # usually right already: no copy
+            image = image.convert("RGB")
+            if image.size != size:
+                image = image.resize(size, Image.Resampling.LANCZOS)
         if line_map is not None and self._controlnet_id is not None and self._controlnet_enabled:
             lm = line_map.convert("RGB")
             if lm.size != size:
@@ -474,8 +526,7 @@ class StreamDiffusionBackend:
                 import torch
             except ImportError:  # only in tests with a fake wrapper
                 torch = None
-            if torch is not None and torch.cuda.is_available():
-                torch.cuda.manual_seed(self._seed if self._seed is not None else DEFAULT_SEED)
+            self._seed_cuda(torch)
         if self._pending_prompt is not None:
             prompt = self._pending_prompt
             out = self._wrapper(image=image, prompt=prompt)
@@ -489,13 +540,16 @@ class StreamDiffusionBackend:
             out = out[0] if out else None
         if not isinstance(out, Image.Image):
             raise TypeError(f"unexpected StreamDiffusion output type: {type(out).__name__}")
-        return out
+        # Only the fork's initial NSFW fallback has another size (black, width and height
+        # swapped): black at the picture size instead.
+        return previous_or_black(out, (self._width, self._height))
 
     # -- admin upload screening ----------------------------------------------------
 
     def _safety_checker(self) -> Any:
-        """The wrapper's loaded safety checker, if it exposes one."""
-        if self._wrapper is None or not self._safety_on:
+        """The wrapper's loaded safety checker, if it exposes one (also while the live
+        filter is switched off: uploads are screened whenever a checker is loaded)."""
+        if self._wrapper is None:
             return None
         # wrapper.safety_checker is an NSFWDetectorEngine (TensorRT only), created when
         # use_safety_checker=True or its engine already exists.
@@ -505,7 +559,9 @@ class StreamDiffusionBackend:
     def check_image_safe(self, image: Image.Image) -> bool:
         """Screen an admin upload with the wrapper's own safety checker (SPEC).
 
-        Without one, uploads are allowed and a warning is logged once. If the checker
+        Screens whenever a checker is loaded, also with the live filter switched off.
+        Without one (model.safety_checker off at start-up and no checker engine built),
+        uploads are allowed and a warning is logged once. If the checker
         exists but fails or answers in an unknown shape, the exception propagates and
         the upload is rejected (fail closed): the admin sees "Could not check".
         """
@@ -513,8 +569,9 @@ class StreamDiffusionBackend:
         if checker is None:
             if not self._warned_no_screening:
                 self._warned_no_screening = True
-                log.warning("Dreamer: upload screening unavailable (no safety checker loaded); "
-                            "style pictures are stored unscreened")
+                log.warning("Dreamer: upload screening unavailable (no safety checker loaded: "
+                            "model.safety_checker was off at start-up); style pictures are "
+                            "stored unscreened")
             return True
         size = (self._width, self._height)
         checker_input = self._checker_input(image.convert("RGB").resize(size, Image.Resampling.LANCZOS))
