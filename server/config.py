@@ -10,6 +10,9 @@ from typing import Any
 
 import yaml
 
+from .imaging import POLARITIES
+from .params import RESOLUTION_MAX, RESOLUTION_MIN, T_INDEX_MAX_STEPS
+
 log = logging.getLogger("dreamer.config")
 
 DEFAULT_PIN = "1234"
@@ -18,7 +21,6 @@ KID_THEMES = ("dark", "light")
 # Engine batch sizes known to build: the fork's ControlNet TensorRT engine fails to build
 # ("Invalid Engine") for a batch range of 1..3 on TensorRT 10.12.
 BATCH_STEPS = (1, 2, 4, 8)
-LINE_POLARITIES = ("white_on_black", "black_on_white")
 BACKENDS = ("streamdiffusion", "mock")
 CONFIG_ENV = "SKETCH_CONFIG"
 PIN_RE = re.compile(r"\d{4,12}")  # what the admin PIN pad can type
@@ -76,10 +78,6 @@ class Config:
     mock_delay_ms: int = 30  # simulated GPU time for the mock backend
     model: ModelConfig = field(default_factory=ModelConfig)
 
-    @property
-    def data_path(self) -> Path:
-        return Path(self.data_dir)
-
 
 def _apply(target: Any, values: dict[str, Any], where: str) -> None:
     """Copy known keys from ``values`` onto a dataclass instance, coercing scalars."""
@@ -125,12 +123,15 @@ def _validate(cfg: Config) -> None:
                          "(the ControlNet engine does not build for other batch ranges)")
     if cfg.kid_theme not in KID_THEMES:
         raise ValueError(f"config: kid_theme must be one of {KID_THEMES}")
-    if cfg.model.line_polarity not in LINE_POLARITIES:
-        raise ValueError(f"config: model.line_polarity must be one of {LINE_POLARITIES}")
+    if cfg.model.line_polarity not in POLARITIES:
+        raise ValueError(f"config: model.line_polarity must be one of {POLARITIES}")
+    if not 1 <= cfg.model.max_steps <= T_INDEX_MAX_STEPS:
+        raise ValueError(f"config: model.max_steps must be 1..{T_INDEX_MAX_STEPS}")
     if not 1 <= cfg.jpeg_quality <= 100:
         raise ValueError("config: jpeg_quality must be 1..100")
-    if not 64 <= cfg.size <= 2048 or cfg.size % 64:
-        raise ValueError("config: size must be a multiple of 64 in 64..2048")
+    if not RESOLUTION_MIN <= cfg.size <= RESOLUTION_MAX or cfg.size % 64:
+        raise ValueError(f"config: size must be a multiple of 64 in {RESOLUTION_MIN}.."
+                         f"{RESOLUTION_MAX} (what the TensorRT engines are built for)")
     if not PIN_RE.fullmatch(cfg.admin_pin):
         raise ValueError("config: admin_pin must be 4 to 12 digits (the PIN pad only has "
                          'digits), written in quotes, e.g. admin_pin: "0420"')

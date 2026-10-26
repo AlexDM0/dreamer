@@ -14,11 +14,12 @@ import os
 import re
 import secrets
 import threading
-import time
 import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+from .fsutil import replace_with_retry
 
 log = logging.getLogger("dreamer.styles")
 
@@ -27,7 +28,6 @@ STYLES_FILE = "styles.json"
 PROMPT_MAX = 120
 LABEL_MAX = 40
 EMOJI_MAX = 16  # code points; ZWJ emoji sequences can be long
-REPLACE_RETRIES = 5  # Windows: os.replace fails while antivirus/indexer holds the file
 SAFETY_TAIL = "for children, friendly, bright colors, wholesome"
 # Not "a child's drawing ...": that asks for a drawing look and keeps the pen strokes.
 PROMPT_HEAD = "a colorful illustration"
@@ -172,14 +172,7 @@ class StyleStore:
             json.dump(data, fh, ensure_ascii=False, indent=2)
             fh.flush()
             os.fsync(fh.fileno())
-        for attempt in range(REPLACE_RETRIES):
-            try:
-                os.replace(tmp, self._path)
-                return
-            except PermissionError:
-                if attempt == REPLACE_RETRIES - 1:
-                    raise
-                time.sleep(0.05 * (attempt + 1))
+        replace_with_retry(tmp, self._path)
 
     @contextmanager
     def _mutation(self):
@@ -325,9 +318,6 @@ class StyleStore:
                 raise ValueError(f"at least one of the {kind} must stay visible")
             self._items[kind].remove(item)
         return copy.deepcopy(item)
-
-    def delete_style(self, item_id: str) -> dict[str, Any]:
-        return self.delete_item("styles", item_id)
 
     def set_order(self, kind: str, ids: list[str]) -> None:
         """Move the given ids to the front in that order; unlisted items keep their order."""

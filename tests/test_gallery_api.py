@@ -226,8 +226,9 @@ def test_draft_autosave_and_restore_on_reconnect(fast_drafts):
         assert hello(ws)["draft"] is None
         draw(ws, 1)
         wait_for(lambda: len(store.drafts()) == 1)
+        first = store.drafts()[0]
         draw(ws, 2)
-        time.sleep(0.2)
+        wait_for(lambda: store.get(first.id).updated_at > first.updated_at)
         assert len(store.drafts()) == 1  # one draft, overwritten
     assert client.get("/api/artworks").json()["artworks"] == []  # drafts are not listed
     with client.websocket_connect("/ws") as ws:
@@ -284,7 +285,7 @@ def test_blank_canvas_keeps_the_draft(fast_drafts):
     with fast_drafts.websocket_connect("/ws") as ws:
         draft = hello(ws)["draft"]
         draw(ws, 1, blank=True)
-        time.sleep(0.3)
+        fast_drafts.portal.call(fast_drafts.app.state.runtime.drafts.flush)
         assert store.drafts() == [before]
         assert fast_drafts.get(draft["sketch"]).content == sketch_png()
 
@@ -398,12 +399,12 @@ def test_picture_of_an_abandoned_drawing_is_not_kept(make_client, msg):
             ws.send_json({"t": "new"})
             sync(ws)
             ws.send_bytes(protocol.pack(protocol.SKETCH, 2, sketch_png(color="red")))
-            time.sleep(0.1)  # the worker is busy with seq 2 now
+            wait_for(lambda: not client.app.state.mailbox.pending)  # the worker took seq 2
             ws.send_json({"t": msg, "id": art["id"]})
             recv_until(ws, is_picture(2))  # the stale picture still goes out (page drops it)
             sync(ws)
             assert session.last_frame is None
-            time.sleep(0.1)
+            client.portal.call(client.app.state.runtime.drafts.flush)
             assert store.drafts() == []
             assert save(ws)["msg"] == "Nothing to save yet"
         assert files_of(client, art["id"]) == before
@@ -525,9 +526,44 @@ def test_frames_from_replaced_socket_are_not_saved(make_client):
     with make_client(delay_ms=400) as client, client.websocket_connect("/ws") as old:
         hello(old)
         old.send_bytes(protocol.pack(protocol.SKETCH, 9, sketch_png()))
-        time.sleep(0.15)  # worker is busy with the old page's frame
+        wait_for(lambda: not client.app.state.mailbox.pending)  # the worker took it
         with client.websocket_connect("/ws") as new:
             hello(new)
-            time.sleep(0.5)
+            wait_for(lambda: client.app.state.session.last_picture is not None)  # it finished
+            sync(new)  # ...and the loop has handled it
             assert client.app.state.session.last_frame is None
             assert save(new)["msg"] == "Nothing to save yet"
+
+
+def test_draft_records_the_artwork_saved_after_it_was_written(fast_drafts):
+    """Draw, let the draft catch up, then Save: the draft must learn which artwork it
+    continues, or a Save after a restart would make a copy."""
+    client = fast_drafts
+    store = client.app.state.gallery
+    with client.websocket_connect("/ws") as ws:
+        hello(ws)
+        draw(ws, 1)
+        wait_for(lambda: len(store.drafts()) == 1)
+        client.portal.call(client.app.state.runtime.drafts.flush)  # holds this frame now
+        art = save(ws)["artwork"]
+        wait_for(lambda: store.drafts()[0].source_id == art["id"])
+
+
+def test_save_finishing_after_another_drawing_started_does_not_claim_it(client, monkeypatch):
+    """A page reload's hello can start another drawing while a Save is still writing: that
+    Save must not make the new drawing continue the saved artwork."""
+    gallery, session = client.app.state.gallery, client.app.state.session
+    real_save = gallery.save
+
+    def save_during_reload(*args, **kwargs):
+        art = real_save(*args, **kwargs)
+        client.portal.call(session.new_drawing)  # what the new socket's hello does
+        return art
+
+    with client.websocket_connect("/ws") as ws:
+        hello(ws)
+        draw(ws, 1)
+        monkeypatch.setattr(gallery, "save", save_during_reload)
+        assert save(ws)["t"] == "saved"
+    assert session.continuing_id is None
+

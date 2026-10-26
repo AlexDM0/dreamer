@@ -1,7 +1,11 @@
 """Config loading: admin PIN validation and YAML number pitfalls."""
-import pytest
+from dataclasses import fields
+from pathlib import Path
 
-from server.config import load_config
+import pytest
+import yaml
+
+from server.config import Config, ModelConfig, load_config
 
 
 def _load(tmp_path, text):
@@ -29,3 +33,33 @@ def test_pin_kept_exactly_as_typed(tmp_path, line, expected):
 def test_pin_must_be_typeable_on_pin_pad(tmp_path, pin):
     with pytest.raises(ValueError, match="admin_pin"):
         _load(tmp_path, f"admin_pin: {pin}\n")
+
+
+EXAMPLE = Path(__file__).resolve().parent.parent / "config.example.yaml"
+
+
+def test_example_config_matches_the_defaults():
+    """config.example.yaml documents the defaults: every key it lists has the default value."""
+    listed = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    loaded, defaults = load_config(EXAMPLE), Config()
+    model_listed = listed.pop("model")
+    assert set(listed) <= {item.name for item in fields(Config)}
+    assert set(model_listed) <= {item.name for item in fields(ModelConfig)}
+    for key in listed:
+        assert getattr(loaded, key) == getattr(defaults, key), key
+    for key in model_listed:
+        assert getattr(loaded.model, key) == getattr(defaults.model, key), f"model.{key}"
+
+
+@pytest.mark.parametrize("text", [
+    "size: 2048", "size: 320", "size: 400", "kid_theme: pink",
+    "model:\n  max_batch_steps: 3", "model:\n  max_steps: 9", "model:\n  max_steps: 0",
+])
+def test_invalid_values_are_rejected(tmp_path, text):
+    with pytest.raises(ValueError):
+        _load(tmp_path, text + "\n")
+
+
+def test_smallest_and_largest_size_load(tmp_path):
+    assert _load(tmp_path, "size: 384\n").size == 384
+    assert _load(tmp_path, "size: 1024\n").size == 1024

@@ -181,10 +181,6 @@ class SessionManager:
             "kid_theme": self.selection.kid_theme,
         }
 
-    def current_prompt(self) -> str:
-        cur = self.current()
-        return self.styles.build_prompt(cur["topic"], cur["style"])
-
     def lists_msg(self, t: str) -> dict[str, Any]:
         """The ``ready``/``styles`` payload for the kid page."""
         msg: dict[str, Any] = {"t": t}

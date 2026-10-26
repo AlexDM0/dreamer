@@ -19,7 +19,8 @@ MARKER = "models-ready.json"
 OFFLINE_ENV = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
 
 
-def _marker(config) -> Path:
+def marker_path(config) -> Path:
+    """Where the "models are cached" marker lives (next to the engines)."""
     return Path(config.model.engine_dir) / MARKER
 
 
@@ -28,14 +29,19 @@ def _models(config) -> dict:
             "safety_checker": bool(config.model.safety_checker)}
 
 
+def is_offline() -> bool:
+    """Whether the model loaders are switched offline (by ``apply`` or by the user)."""
+    return any(os.environ.get(name) for name in OFFLINE_ENV)
+
+
 def apply(config) -> bool:
     """Switch the model loaders offline when this config's models are known to be cached.
     Must run before huggingface_hub is imported (it reads the setting once). Returns True
     when offline."""
-    if any(os.environ.get(name) for name in OFFLINE_ENV):
+    if is_offline():
         return True  # the user decided
     try:
-        ready = json.loads(_marker(config).read_text(encoding="utf-8"))
+        ready = json.loads(marker_path(config).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     if ready != _models(config):
@@ -45,13 +51,13 @@ def apply(config) -> bool:
     for name in OFFLINE_ENV:
         os.environ[name] = "1"
     log.info("Dreamer: models are cached, running offline (delete %s to allow downloads)",
-             _marker(config))
+             marker_path(config))
     return True
 
 
 def mark_ready(config) -> None:
     """Record that this config's models loaded successfully (called after GPU warmup)."""
-    marker = _marker(config)
+    marker = marker_path(config)
     try:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(json.dumps(_models(config), indent=1), encoding="utf-8")

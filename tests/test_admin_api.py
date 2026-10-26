@@ -3,7 +3,7 @@ import io
 
 from PIL import Image
 
-from conftest import is_json, recv_until
+from conftest import current_prompt, is_json, recv_until
 from server.styles import SAFETY_TAIL
 
 
@@ -62,7 +62,7 @@ def test_custom_style_appears_on_kid_socket(admin):
         ws.send_json({"t": "style", "id": style["id"]})
         ws.send_json({"t": "ping"})
         recv_until(ws, is_json("pong"))
-        prompt = admin.app.state.session.current_prompt()
+        prompt = current_prompt(admin.app)
         assert "rainbow colors" in prompt and prompt.endswith(SAFETY_TAIL)
     finally:
         ws.__exit__(None, None, None)

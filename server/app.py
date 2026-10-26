@@ -27,7 +27,8 @@ from . import protocol, refine
 from .auth import (COOKIE_MAX_AGE, COOKIE_NAME, SHORT_COOKIE_MAX_AGE, AdminAuth, LockedOut,
                    load_or_create_secret)
 from .config import DEFAULT_PIN, KID_THEMES, ORIENTATIONS, VIEW_MODES, Config, canvas_dims
-from .gallery import FILES, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch, valid_id
+from .gallery import (FILES, LIST_MAX, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch,
+                      valid_id)
 from .imaging import COLOR_RE
 from .mailbox import Mailbox
 from .params import LIMITS, GenParams, ParamsStore, defaults_from_config
@@ -58,6 +59,7 @@ IMMUTABLE = "public, max-age=31536000, immutable"  # artwork file URLs carry ?v=
 GALLERY_PAGE = 24
 DRAFT_INTERVAL = 10.0  # seconds between draft autosaves while the kid draws
 NOTHING_TO_SAVE = "Nothing to save yet"
+CLOSE_LOGGED_OUT = 1008  # admin watcher socket whose login expired (as refused at open)
 
 
 class LoginBody(BaseModel):
@@ -215,6 +217,9 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         return backend.name if backend is not None else config.backend
 
     session = SessionManager(styles, config.default_view_mode, backend_name, config.kid_theme)
+    # The login cookie each admin watcher socket was opened with: re-checked on every stats
+    # push, so a socket opened with a 15-minute parent-gate login closes when that expires.
+    admin_cookies: dict[Peer, str | None] = {}
 
     def worker_stats() -> dict[str, Any]:
         if runtime.worker is None:
@@ -224,6 +229,11 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     async def stats_loop() -> None:
         while True:
             await asyncio.sleep(STATS_INTERVAL)
+            for peer, cookie in list(admin_cookies.items()):
+                if not auth.verify_cookie(cookie):
+                    admin_cookies.pop(peer, None)
+                    session.remove_admin(peer)
+                    peer.close_soon(CLOSE_LOGGED_OUT)
             if session.admins:
                 session.broadcast_admin({"t": "stats", **worker_stats(), **session.current()})
 
@@ -242,11 +252,13 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
 
         def params_reverted(previous: GenParams) -> None:
             """The worker could not apply a change: persist and show what is live."""
+            before = params_store.get()
             try:
                 params_store.set(previous)
             except OSError:
                 log.exception("could not save reverted params")
             session.broadcast_admin(params_msg(previous))
+            announce_canvas(before, previous)
 
         factory = None
         if backend is None:
@@ -331,7 +343,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     # ----- artworks: public (kid LAN) -------------------------------------------------
 
     def page_args(limit: int, offset: int) -> tuple[int, int]:
-        return max(1, min(limit, 100)), max(0, offset)
+        # The store gives up to LIST_MAX + 1 rows: the extra one tells whether there is more.
+        return max(1, min(limit, LIST_MAX)), max(0, offset)
 
     def artwork_file(art: Any, name: str, request: Request,
                      download: bool = False) -> FileResponse:
@@ -382,6 +395,9 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         if origin is None or origin.peer is not session.kid or origin.epoch != session.epoch:
             return  # another socket's, or made from a drawing the kid has left behind
         worker = runtime.worker
+        # The params live when the picture is handed over, not those it was made with: a
+        # change in between is attributed to it. Exact would mean carrying params through
+        # FrameJob and every backend path; for a stored record this is close enough.
         params = worker.params.to_dict() if worker is not None else {}
         if origin.canvas is not None:
             params = {**params, "canvas": origin.canvas}  # stored with the artwork
@@ -389,6 +405,17 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
                                        origin.topic_id, origin.style_id, params)
         if runtime.drafts is not None:
             runtime.drafts.touch()
+
+    def canvas_sizes(params: GenParams) -> dict[str, list[int]]:
+        """{"landscape": [w, h], "portrait": [w, h]}: the drawing sizes for ``params``."""
+        return {name: list(dims) for name, dims in canvas_dims(config, params.resolution).items()}
+
+    def announce_canvas(before: GenParams, after: GenParams) -> None:
+        """A live resolution change: give the kid page the new drawing sizes in a
+        ``styles`` message (the page applies ``canvas`` from ``ready`` and ``styles``, in
+        the same shape as ``ready.canvas``), so its sketches match the pictures again."""
+        if before.resolution != after.resolution and session.kid is not None:
+            session.kid.send_json({**session.lists_msg("styles"), "canvas": canvas_sizes(after)})
 
     def kid_error(peer: Peer, msg: str) -> None:
         """A one-off error for the kid page, then the real backend state again."""
@@ -417,8 +444,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         # page's own sketch comes back, nothing is on screen.
         session.new_drawing(await asyncio.to_thread(live_artwork, continuing))
         msg = session.lists_msg("ready")
-        msg["canvas"] = {name: list(dims) for name, dims
-                         in canvas_dims(config, params_store.get().resolution).items()}
+        msg["canvas"] = canvas_sizes(params_store.get())
         msg["draft"] = await asyncio.to_thread(draft_info)
         peer.send_json(msg)
         peer.send_json(session.last_status)
@@ -430,6 +456,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             return
         drafts = runtime.drafts
         lock = drafts.lock if drafts is not None else asyncio.Lock()
+        epoch = session.epoch  # a reload's hello during the save starts another drawing
         try:
             async with lock:
                 art = None
@@ -447,26 +474,35 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             log.error("could not save artwork: %s", exc)
             kid_error(peer, "Could not save the picture. Try again.")
             return
-        # Further saves of this drawing update the same artwork instead of piling up copies.
-        session.continuing_id = art.id
-        if drafts is not None:
-            drafts.touch()  # the draft now records which artwork it continues
+        # Further saves of this drawing update the same artwork instead of piling up copies
+        # (unless the canvas moved on to another drawing while saving).
+        if session.epoch == epoch:
+            session.continuing_id = art.id
+            if drafts is not None:
+                drafts.touch()  # the draft now records which artwork it continues
         log.info("saved artwork %s", art.id)
         peer.send_json({"t": "saved", "artwork": art.public()})
         session.broadcast_admin({"t": "gallery"})
 
+    def forget_old_drawing() -> None:
+        """Drop the waiting sketch, and stop the worker settling / refining the old one."""
+        mailbox.clear()
+        if runtime.worker is not None:
+            runtime.worker.reset()
+
     async def kid_fresh(continuing_id: str | None = None) -> None:
         """Clear / New drawing (or a saved one put on the canvas): nothing on screen, no
         draft of the old drawing, and only ``continuing_id`` being continued."""
-        mailbox.clear()
+        forget_old_drawing()
         session.new_drawing(continuing_id)  # before any await: stale pictures are ignored
         if runtime.drafts is not None:
             await runtime.drafts.discard()
 
     async def kid_continue(peer: Peer, artwork_id: Any) -> None:
-        """"Keep drawing" asked: send the sketch to load. Nothing changes on the server until
-        the page says it has the sketch on its canvas ({"t":"continuing"}), so a sketch
-        that fails to load cannot make the next Save overwrite that artwork."""
+        """The kid asked to keep drawing a saved artwork: select its topic and style (if
+        still visible) and send the sketch to load. Which artwork Save updates changes
+        only once the page says the sketch is on its canvas ({"t":"continuing"}), so a
+        sketch that fails to load cannot make the next Save overwrite that artwork."""
         art = await asyncio.to_thread(gallery.get, artwork_id) if valid_id(artwork_id) else None
         if art is None or art.is_draft:
             kid_error(peer, "That picture is not there any more")
@@ -487,7 +523,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
 
     async def kid_restored(draft_id: Any) -> None:
         """The page put the draft back on its canvas: it continues what the draft continued."""
-        mailbox.clear()
+        forget_old_drawing()
         drafts = runtime.drafts
         draft = await asyncio.to_thread(drafts.current) if drafts is not None else None
         source = draft.source_id if draft is not None and draft.id == draft_id else None
@@ -603,6 +639,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         await ws.accept()
         peer = Peer(ws, "admin")
         session.add_admin(peer)
+        admin_cookies[peer] = ws.cookies.get(COOKIE_NAME)
         peer.send_json(session.last_status)
         peer.send_json({"t": "stats", **worker_stats(), **session.current()})
         if session.last_picture is not None:
@@ -615,6 +652,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             pass
         finally:
             session.remove_admin(peer)
+            admin_cookies.pop(peer, None)
             await peer.finish()
 
     # ----- admin HTTP API ------------------------------------------------------------
@@ -645,6 +683,9 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
 
     admin = APIRouter(prefix="/api/admin", dependencies=[Depends(require_admin)])
 
+    # StyleStore writes (fsync, plus retries on Windows file locks) run in a thread, not on
+    # the event loop; its lock keeps the loop's reads consistent meanwhile.
+
     def mutated() -> None:
         """Push the new lists/defaults to the kid page after any admin change."""
         session.broadcast_styles()
@@ -664,7 +705,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     @admin.post("/styles")
     async def add_style(body: NewStyleBody) -> dict[str, Any]:
         try:
-            item = styles.add_custom_style(body.label, body.emoji, body.prompt)
+            item = await asyncio.to_thread(styles.add_custom_style, body.label, body.emoji,
+                                           body.prompt)
         except ValueError as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -675,7 +717,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     @admin.post("/topics")
     async def add_topic(body: NewStyleBody) -> dict[str, Any]:
         try:
-            item = styles.add_custom_topic(body.label, body.emoji, body.prompt)
+            item = await asyncio.to_thread(styles.add_custom_topic, body.label, body.emoji,
+                                           body.prompt)
         except ValueError as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -688,8 +731,9 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         if kind not in KINDS:
             raise HTTPException(404, detail="not found")
         try:
-            item = styles.update_item(kind, item_id, hidden=body.hidden, label=body.label,
-                                      emoji=body.emoji, prompt=body.prompt)
+            item = await asyncio.to_thread(partial(
+                styles.update_item, kind, item_id, hidden=body.hidden, label=body.label,
+                emoji=body.emoji, prompt=body.prompt))
         except (KeyError, ValueError) as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -702,7 +746,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         if kind not in KINDS:
             raise HTTPException(404, detail="not found")
         try:
-            item = styles.delete_item(kind, item_id)
+            item = await asyncio.to_thread(styles.delete_item, kind, item_id)
         except (KeyError, ValueError) as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -718,7 +762,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     @admin.post("/order")
     async def set_order(body: OrderBody) -> dict[str, Any]:
         try:
-            styles.set_order(body.kind, body.ids)
+            await asyncio.to_thread(styles.set_order, body.kind, body.ids)
         except (KeyError, ValueError) as exc:
             raise _bad_request(exc)
         except OSError as exc:
@@ -780,7 +824,7 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         try:
             (data_dir / STYLE_IMAGES_DIR).mkdir(parents=True, exist_ok=True)
             await asyncio.to_thread(img.save, data_dir / rel, "PNG")
-            item = styles.add_image_style(label, emoji or None, rel)
+            item = await asyncio.to_thread(styles.add_image_style, label, emoji or None, rel)
         except (ValueError, OSError) as exc:
             (data_dir / rel).unlink(missing_ok=True)  # no orphaned picture files
             raise save_failed(exc) if isinstance(exc, OSError) else _bad_request(exc)
@@ -810,10 +854,11 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
                 "defaults": params_store.defaults.to_dict(), "gpu": gpu_info(),
                 "refine_models": {name: label for name, (_, label, _) in refine.MODELS.items()}}
 
-    def params_changed(params: GenParams) -> None:
+    def params_changed(before: GenParams, params: GenParams) -> None:
         if runtime.worker is not None:
             runtime.worker.set_params(params)
         session.broadcast_admin(params_msg(params))  # keeps other admin phones in sync
+        announce_canvas(before, params)
 
     @admin.get("/params")
     async def get_params() -> dict[str, Any]:
@@ -825,22 +870,24 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             changes = await request.json()
         except ValueError:
             raise HTTPException(400, detail="expected a JSON object")
+        before = params_store.get()
         try:
             params = params_store.patch(changes)
         except ValueError as exc:
             raise _bad_request(exc)
         except OSError as exc:
             raise save_failed(exc)
-        params_changed(params)
+        params_changed(before, params)
         return params_payload(params)
 
     @admin.post("/params/reset")
     async def reset_params() -> dict[str, Any]:
+        before = params_store.get()
         try:
             params = params_store.set(params_store.defaults)
         except OSError as exc:
             raise save_failed(exc)
-        params_changed(params)
+        params_changed(before, params)
         return params_payload(params)
 
     # ----- artworks: admin (SPEC-addendum-gallery) -----------------------------------

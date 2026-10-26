@@ -11,7 +11,7 @@ import logging
 import queue
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, replace
 from typing import Any, Callable
 
 from PIL import Image
@@ -19,7 +19,7 @@ from PIL import Image
 from . import imaging, offline, refine
 from .config import canvas_dims
 from .mailbox import Mailbox
-from .params import T_INDEX_MAX, GenParams, defaults_from_config
+from .params import GenParams, defaults_from_config
 
 log = logging.getLogger("dreamer.worker")
 
@@ -30,10 +30,6 @@ TAKE_TIMEOUT = 0.5
 SETTLE_DELAY = 0.15
 FPS_EMA_ALPHA = 0.2
 FPS_IDLE_GAP = 2.0  # seconds
-
-
-# The step path refinement continues on (kept here for callers of the old name).
-refine_path = refine.continue_path
 
 
 @dataclass
@@ -106,13 +102,15 @@ class GpuWorker(threading.Thread):
         self._settle_job: FrameJob | None = None
         self._settle_left = 0
         self._needs_prime = True
-        # Refinement once drawing pauses: the step lists still to run for _settle_job, and
-        # the upscaler (loaded on first use, if its weights exist).
-        # Whether to refine _settle_job once drawing pauses, and the picture now on screen
-        # (refinement models keep its broad terms).
+        # Whether to refine _settle_job once drawing pauses, the picture now on screen
+        # (refinement models keep its broad terms), and the upscaler (made on first use).
         self._refine_plan: bool = False
         self._shown: Image.Image | None = None
         self._upscaler: Any = None
+        # Set by reset() (any thread), consumed on this thread: forget the drawing.
+        self._reset_event = threading.Event()
+        # Why the last _start_backend() failed ("" when it did not).
+        self._start_error = ""
         # Picture size the backend is set up for (backends start in landscape).
         self._dims = canvas_dims(config)["landscape"]
         # The picture model (params.picture_model) the current backend was built for.
@@ -153,8 +151,14 @@ class GpuWorker(threading.Thread):
         with self._params_lock:
             self._pending_params = params
 
+    def reset(self) -> None:
+        """The kid cleared the canvas or started another drawing: stop settling and
+        refining the old one (after the frame now running, if any). Thread-safe."""
+        self._reset_event.set()
+
     def stop(self, timeout: float | None = 5.0) -> None:
         self._stop_event.set()
+        self.mailbox.wake()  # don't wait out the take() timeout
         if self.is_alive() and threading.current_thread() is not self:
             self.join(timeout)
         self._fail_pending_uploads()
@@ -177,11 +181,14 @@ class GpuWorker(threading.Thread):
         while not self._stop_event.is_set():
             self._drain_uploads()
             self._apply_pending_params()
+            self._consume_reset()
             # Settling and refining start once the drawing has paused for SETTLE_DELAY.
             timeout = SETTLE_DELAY if self._settle_left or self._refine_plan else TAKE_TIMEOUT
             job = self.mailbox.take(timeout=timeout)
             if self._stop_event.is_set():
                 continue
+            # A reset that came while we waited is older than any sketch now taken.
+            self._consume_reset()
             if job is None:
                 if self._settle_left and self._settle_job is not None:
                     self._settle_left -= 1
@@ -197,6 +204,12 @@ class GpuWorker(threading.Thread):
                 log.warning("ignoring unexpected mailbox item %r", type(job).__name__)
         log.info("GPU worker stopped")
 
+    def _consume_reset(self) -> None:
+        if self._reset_event.is_set():
+            self._reset_event.clear()
+            self._settle_job, self._settle_left, self._refine_plan = None, 0, False
+            self._needs_prime, self._shown = True, None
+
     def _set_state(self, state: str, msg: str = "") -> None:
         self._state = state
         try:
@@ -207,6 +220,7 @@ class GpuWorker(threading.Thread):
     def _start_backend(self) -> bool:
         """Build (if needed) and warm up the backend. Returns True when ready."""
         self._set_state("busy", "warming up")
+        self._start_error = ""
         try:
             if self.backend is None:
                 kind = self._params.picture_model
@@ -220,17 +234,61 @@ class GpuWorker(threading.Thread):
                 offline.mark_ready(self.config)  # the models are cached now
         except Exception as exc:
             log.exception("backend warmup failed")
-            self._record_failure(f"warmup failed: {exc}")
+            self._start_error = str(exc) or type(exc).__name__
+            self._record_failure(f"warmup failed: {self._start_error}")
             return False
         self._last_prompt = None  # a fresh backend needs its prompt set again
         self._needs_prime, self._settle_left = True, 0
         self._dims = canvas_dims(self.config)["landscape"]  # a fresh backend's size
         self._failures = 0
         self._set_state("ready")
-        # A fresh backend starts from config defaults: give it the current params.
-        if self._params != self._defaults:
-            self._apply_params(self._params, revert_to=self._defaults)
+        self._restore_params()
         return True
+
+    def _restore_params(self) -> None:
+        """A fresh backend starts from config defaults: give it the current params.
+
+        If the backend refuses them as a whole, they are applied one field at a time and
+        only the refused fields go back to their defaults: one setting it cannot take now
+        (say the safety filter, which needs a restart when config has it off) must not
+        wipe all the admin's other tuning. ``picture_model`` always stays the model this
+        backend was built for."""
+        kind = self._backend_kind or self._params.picture_model
+        wanted = replace(self._params, picture_model=kind)
+        base = replace(self._defaults, picture_model=kind)
+        if wanted == base:
+            self._params = wanted
+            return
+        try:
+            self.backend.set_params(wanted)
+            self._params = wanted
+            return
+        except Exception as exc:
+            log.warning("saved params not accepted as a whole (%s); applying them one by one", exc)
+        current, reverted = base, []
+        for item in fields(GenParams):
+            value = getattr(wanted, item.name)
+            if value == getattr(current, item.name):
+                continue
+            candidate = replace(current, **{item.name: value})
+            try:
+                self.backend.set_params(candidate)  # on failure it keeps ``current``
+                current = candidate
+            except Exception as exc:
+                log.warning("saved param %s=%r not applied: %s", item.name, value, exc)
+                reverted.append(item.name)
+        self._params = current
+        if reverted:
+            self._set_state("error", "Could not apply picture settings "
+                                     f"({', '.join(reverted)}); they are back to their defaults")
+            self._report_revert(current)
+
+    def _report_revert(self, params: GenParams) -> None:
+        if self.on_params_error is not None:
+            try:
+                self.on_params_error(params)
+            except Exception:
+                log.exception("on_params_error callback failed")
 
     def _apply_pending_params(self) -> None:
         if self.backend is None:
@@ -251,15 +309,21 @@ class GpuWorker(threading.Thread):
         self._shown = None
         if self._start_backend():
             return True
+        reason = self._switch_failed_message(params.picture_model, self._start_error)
         self._close_backend()
         self._params = revert_to
         self._start_backend()
-        if self.on_params_error is not None:
-            try:
-                self.on_params_error(revert_to)
-            except Exception:
-                log.exception("on_params_error callback failed")
+        self._report_revert(self._params)
+        self._set_state("error", reason)  # after the restart's "ready", so it stays visible
         return False
+
+    def _switch_failed_message(self, kind: str, error: str) -> str:
+        if kind == "tcd" and offline.is_offline():
+            # Offline mode reads only the local cache, which may not hold the TCD models.
+            return (f"Could not load SD 1.5 + TCD ({error}). Running offline: if its models are "
+                    f"not downloaded yet, delete {offline.marker_path(self.config)} and restart "
+                    "with internet to download them.")
+        return f"Could not switch the picture model: {error}"
 
     def _close_backend(self) -> None:
         backend, self.backend = self.backend, None
@@ -283,11 +347,7 @@ class GpuWorker(threading.Thread):
             log.exception("applying params failed; reverting")
             self._params = revert_to
             self._set_state("error", f"Could not apply picture settings: {exc}")
-            if self.on_params_error is not None:
-                try:
-                    self.on_params_error(revert_to)
-                except Exception:
-                    log.exception("on_params_error callback failed")
+            self._report_revert(revert_to)
             return False
         self._params = params
         # A step-count change rebuilds the stream's buffers (and may change its latency).
@@ -304,7 +364,7 @@ class GpuWorker(threading.Thread):
         if self._failures < MAX_CONSECUTIVE_FAILURES or self.backend_factory is None:
             return
         log.warning("%d consecutive failures; rebuilding backend", self._failures)
-        self.backend = None
+        self._close_backend()  # frees its GPU memory before the new one loads
         self._failures = 0
         if not self._start_backend():
             # Avoid a hot loop when the GPU is wedged; frames keep being dropped meanwhile.
@@ -365,14 +425,17 @@ class GpuWorker(threading.Thread):
                       params: GenParams) -> tuple[Image.Image, Image.Image | None]:
         """(init image, line map) for a drawing, as the backend gets them."""
         line_map = None
-        if self.config.model.controlnet and params.controlnet_enabled:
+        # Each picture model has its own ControlNet (None / empty: it runs without one).
+        model = self.config.model
+        controlnet = model.tcd_controlnet if params.picture_model == "tcd" else model.controlnet
+        if controlnet and params.controlnet_enabled:
             line_map = imaging.make_line_map(sketch, params.line_polarity,
                                              params.line_threshold, params.line_dilate)
-        # Without a line map the strokes are the only structure, so keep them.
-        init = imaging.compose(sketch, job.background)
         if line_map is not None:
             init = imaging.make_init_image(sketch, params.init_mode, params.init_blur,
                                            params.line_threshold, job.background)
+        else:  # without a line map the strokes are the only structure, so keep them
+            init = imaging.compose(sketch, job.background)
         return init, line_map
 
     def _refine_frame(self, job: FrameJob) -> None:
@@ -395,8 +458,8 @@ class GpuWorker(threading.Thread):
                 steps = refine_own(init, line_map, params.refine_steps)
             else:
                 upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
-                if upscales_itself and self._upscaler is None:
-                    self._upscale(first)  # loads the upscaler (and warns once if it is missing)
+                if upscales_itself:
+                    self._ensure_upscaler()
                 steps = refine.run(params.refine_model, self.backend, first, init, line_map,
                                    tuple(params.t_index_list), params.refine_steps, self._upscaler)
             try:
@@ -404,7 +467,8 @@ class GpuWorker(threading.Thread):
                     if params.upscale == "x2" and not upscales_itself:
                         picture = self._upscale(picture)
                     self.on_result(job.seq, imaging.encode_jpeg(picture, params.jpeg_quality), job.owner)
-                    if self.mailbox.pending or self._stop_event.is_set():
+                    if (self.mailbox.pending or self._stop_event.is_set()
+                            or self._reset_event.is_set()):
                         break
             finally:
                 steps.close()
@@ -414,8 +478,8 @@ class GpuWorker(threading.Thread):
             self._record_failure(str(exc) or type(exc).__name__)
             self._maybe_rebuild()
 
-    def _upscale(self, picture: Image.Image) -> Image.Image:
-        """The refined picture through the AI upscaler (x2); unchanged if unavailable."""
+    def _ensure_upscaler(self) -> Any:
+        """The upscaler (its weights load on first use; warns once if they are missing)."""
         if self._upscaler is None:
             from .upscale import Upscaler
 
@@ -423,7 +487,11 @@ class GpuWorker(threading.Thread):
             if not self._upscaler.available:
                 log.warning("upscaler weights not found at %s; pictures are not upscaled",
                             self._upscaler.model_path)
-        if not self._upscaler.available:
+        return self._upscaler
+
+    def _upscale(self, picture: Image.Image) -> Image.Image:
+        """The refined picture through the AI upscaler (x2); unchanged if unavailable."""
+        if not self._ensure_upscaler().available:
             return picture
         return self._upscaler.upscale(picture, 2)
 
@@ -451,6 +519,8 @@ class GpuWorker(threading.Thread):
                 # The pipeline still holds the old drawing: prime it before the next one.
                 self._needs_prime, self._settle_left, self._refine_plan = True, 0, False
             else:
+                if settling and self.mailbox.pending:
+                    return  # a newer sketch is waiting: answer that one instead
                 used_backend = True
                 if self.backend is None:
                     raise RuntimeError("backend not available")

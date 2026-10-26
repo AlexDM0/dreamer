@@ -151,3 +151,21 @@ def test_make_backend_picks_tcd_for_the_real_backend_only():
 
     assert isinstance(make_backend(Config(backend="mock"), "tcd"), MockBackend)
     assert isinstance(make_backend(Config(backend="streamdiffusion"), "tcd"), TcdBackend)
+
+
+@pytest.mark.parametrize("side", [64, 320, 1088, 400])
+def test_resolution_outside_what_the_engines_handle_is_rejected(side):
+    with pytest.raises(ValueError, match="384"):
+        apply_changes(GenParams(), {"resolution": side})
+    assert apply_changes(GenParams(), {"resolution": 384}).resolution == 384
+
+
+@pytest.mark.parametrize("size,expected", [(64, 384), (2048, 1024), (700, 704), (640, 640)])
+def test_config_size_is_clamped_into_the_resolution_limits(size, expected):
+    assert defaults_from_config(Config(size=size)).resolution == expected
+
+
+def test_persisted_bad_resolution_is_ignored_on_load(tmp_path):
+    (tmp_path / "params.json").write_text(json.dumps({"resolution": 64, "seed": 9}))
+    loaded = ParamsStore(tmp_path, GenParams()).get()
+    assert loaded.resolution == GenParams().resolution and loaded.seed == 9

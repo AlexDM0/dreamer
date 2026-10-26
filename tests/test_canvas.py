@@ -11,7 +11,7 @@ from server import imaging, protocol
 from server.gallery import is_blank_sketch
 
 
-def layer_png(width=256, height=192, color=(255, 0, 0, 255), blank=False) -> bytes:
+def layer_png(width=384, height=256, color=(255, 0, 0, 255), blank=False) -> bytes:
     """A page's stroke layer: strokes on transparency."""
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     if not blank:
@@ -34,18 +34,18 @@ def picture(ws, seq, png):
 def test_ready_announces_drawing_sizes(client):
     with client.websocket_connect("/ws") as ws:
         ready = hello(ws)
-    assert ready["canvas"] == {"landscape": [256, 192], "portrait": [192, 256]}
+    assert ready["canvas"] == {"landscape": [384, 256], "portrait": [256, 384]}
 
 
 def test_portrait_layer_gives_portrait_picture_on_its_background(client):
     with client.websocket_connect("/ws") as ws:
         hello(ws)
         ws.send_json({"t": "canvas", "background": "#000000", "orientation": "portrait"})
-        img = picture(ws, 1, layer_png(192, 256))
-        assert img.size == (192, 256)
+        img = picture(ws, 1, layer_png(256, 384))
+        assert img.size == (256, 384)
         # A blank layer is answered with the background colour, not white.
-        blank = picture(ws, 2, layer_png(192, 256, blank=True)).convert("RGB")
-        assert blank.size == (192, 256) and max(blank.getpixel((10, 10))) < 30
+        blank = picture(ws, 2, layer_png(256, 384, blank=True)).convert("RGB")
+        assert blank.size == (256, 384) and max(blank.getpixel((10, 10))) < 30
 
 
 def test_bad_canvas_messages_are_ignored(client):
@@ -55,8 +55,8 @@ def test_bad_canvas_messages_are_ignored(client):
                     {"background": "#000000", "orientation": "upside-down"},
                     {"background": 5}):
             ws.send_json({"t": "canvas", **bad})
-        img = picture(ws, 1, layer_png(256, 192))
-    assert img.size == (256, 192)  # still the landscape default
+        img = picture(ws, 1, layer_png(384, 256))
+    assert img.size == (384, 256)  # still the landscape default
     assert client.app.state.session.canvas is None
 
 
@@ -64,7 +64,7 @@ def test_gallery_keeps_layer_and_background(client):
     with client.websocket_connect("/ws") as ws:
         hello(ws)
         ws.send_json({"t": "canvas", "background": "#112233", "orientation": "portrait"})
-        stroke_layer = layer_png(192, 256, color=(255, 255, 255, 255))  # white on dark
+        stroke_layer = layer_png(256, 384, color=(255, 255, 255, 255))  # white on dark
         picture(ws, 1, stroke_layer)
         ws.send_json({"t": "save"})
         art = recv_until(ws, is_json("saved"))[1]["artwork"]
@@ -93,17 +93,17 @@ def test_draft_carries_the_canvas(client):
 
 
 def test_layer_ink_comes_from_alpha():
-    white_strokes = imaging.decode_sketch(layer_png(color=(255, 255, 255, 255)), (256, 192),
+    white_strokes = imaging.decode_sketch(layer_png(256, 192, color=(255, 255, 255, 255)), (256, 192),
                                           layered=True)
     assert white_strokes.mode == "RGBA" and not imaging.is_blank(white_strokes)
     line_map = np.asarray(imaging.make_line_map(white_strokes).convert("L"))
     assert line_map.max() == 255 and line_map.min() == 0  # white strokes are lines too
-    empty = imaging.decode_sketch(layer_png(blank=True), (256, 192), layered=True)
+    empty = imaging.decode_sketch(layer_png(256, 192, blank=True), (256, 192), layered=True)
     assert imaging.is_blank(empty)
 
 
 def test_init_image_uses_the_background():
-    layer = imaging.decode_sketch(layer_png(color=(255, 255, 255, 255)), (256, 192), layered=True)
+    layer = imaging.decode_sketch(layer_png(256, 192, color=(255, 255, 255, 255)), (256, 192), layered=True)
     for mode in ("colors", "blank"):  # white strokes are outlines: only the ground remains
         init = imaging.make_init_image(layer, mode, background="#000080")
         assert init.getpixel((5, 5)) == (0, 0, 128)

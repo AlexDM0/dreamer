@@ -5,8 +5,14 @@ derived from the secret and the PIN, so changing the PIN logs every device out.
 
 Lockout: after MAX_FAILURES wrong PINs a client is locked out for LOCKOUT_SECONDS. Until
 it logs in successfully, every further wrong PIN locks it out again for twice as long
-(capped at LOCKOUT_MAX_SECONDS). A global budget does the same across all clients, so
-using many addresses does not multiply the guessing rate.
+(capped at LOCKOUT_MAX_SECONDS).
+
+A global backstop counts wrong PINs from all clients: GLOBAL_MAX_FAILURES within
+GLOBAL_WINDOW_SECONDS lock out every client that has wrong PINs of its own, so using many
+addresses does not multiply the guessing rate. It deliberately lets a client without any
+failures through: a child tapping wrong PINs on the iPad's parent gate must not lock the
+parent's phone out as well. An attacker then gets one guess per fresh address while the
+backstop is on, which on a home LAN is a few hundred guesses for a PIN of 4+ digits.
 """
 from __future__ import annotations
 
@@ -17,6 +23,7 @@ import os
 import secrets
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Callable
 
@@ -29,8 +36,9 @@ SHORT_COOKIE_MAX_AGE = 15 * 60
 MAX_FAILURES = 5
 LOCKOUT_SECONDS = 30.0
 LOCKOUT_MAX_SECONDS = 15 * 60.0
-GLOBAL_KEY = "*"               # the all-clients budget
-GLOBAL_MAX_FAILURES = 20
+# Brute-force backstop across all clients (see the module docstring).
+GLOBAL_MAX_FAILURES = 100
+GLOBAL_WINDOW_SECONDS = 10 * 60.0
 SECRET_FILE = "secret"
 
 
@@ -71,34 +79,48 @@ class AdminAuth:
         self._key = hmac.new(secret, b"dreamer-admin-cookie\0" + self._pin, hashlib.sha256).digest()
         self._clock = clock
         self._lock = threading.Lock()
-        # key (client or GLOBAL_KEY) -> (failures since last success, locked-until timestamp)
+        # client -> (failures since its last success, locked-until timestamp)
         self._failures: dict[str, tuple[int, float]] = {}
+        # Times of the most recent wrong PINs from any client (at most GLOBAL_MAX_FAILURES).
+        self._recent: deque[float] = deque(maxlen=GLOBAL_MAX_FAILURES)
 
     def check_pin(self, pin: str, client: str = "") -> bool:
         """True if correct. Raises LockedOut while the client (or everyone) is locked out."""
         now = self._clock()
         with self._lock:
-            until = max(self._failures.get(k, (0, 0.0))[1] for k in (client, GLOBAL_KEY))
+            count, until = self._failures.get(client, (0, 0.0))
+            if count:  # the backstop holds only clients that guessed wrong themselves
+                until = max(until, self._global_until(now))
             if until > now:
                 raise LockedOut(until - now)
             if hmac.compare_digest(pin.encode("utf-8"), self._pin):
                 self._failures.pop(client, None)
-                self._failures.pop(GLOBAL_KEY, None)
                 return True
-            self._fail(client, MAX_FAILURES, now)
-            self._fail(GLOBAL_KEY, GLOBAL_MAX_FAILURES, now)
+            self._fail(client, now)
+            self._recent.append(now)
+            if self._global_until(now):
+                log.warning("admin login: %d wrong PINs from all clients in %.0f minutes",
+                            GLOBAL_MAX_FAILURES, GLOBAL_WINDOW_SECONDS / 60)
             return False
 
-    def _fail(self, key: str, limit: int, now: float) -> None:
-        count = self._failures.get(key, (0, 0.0))[0] + 1
+    def _global_until(self, now: float) -> float:
+        """When the backstop ends: GLOBAL_WINDOW_SECONDS after the oldest of the last
+        GLOBAL_MAX_FAILURES wrong PINs (0 while fewer happened in the window)."""
+        if len(self._recent) < GLOBAL_MAX_FAILURES:
+            return 0.0
+        until = self._recent[0] + GLOBAL_WINDOW_SECONDS
+        return until if until > now else 0.0
+
+    def _fail(self, client: str, now: float) -> None:
+        count = self._failures.get(client, (0, 0.0))[0] + 1
         until = 0.0
-        if count >= limit:
-            # limit -> 30 s, limit+1 -> 60 s, ... capped; only a correct PIN resets it.
-            seconds = min(LOCKOUT_SECONDS * 2 ** min(count - limit, 16), LOCKOUT_MAX_SECONDS)
+        if count >= MAX_FAILURES:
+            # MAX_FAILURES -> 30 s, one more -> 60 s, ... capped; only a correct PIN resets it.
+            seconds = min(LOCKOUT_SECONDS * 2 ** min(count - MAX_FAILURES, 16), LOCKOUT_MAX_SECONDS)
             until = now + seconds
             log.warning("admin login: %d wrong PINs from %s; locked out for %.0fs",
-                        count, "all clients" if key == GLOBAL_KEY else key, seconds)
-        self._failures[key] = (count, until)
+                        count, client, seconds)
+        self._failures[client] = (count, until)
 
     def _sign(self, payload: str) -> str:
         return hmac.new(self._key, payload.encode("ascii"), hashlib.sha256).hexdigest()

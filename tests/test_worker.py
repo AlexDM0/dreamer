@@ -11,7 +11,17 @@ from server.backends.mock import MockBackend
 from server.config import Config
 from server.mailbox import Mailbox
 from server.params import GenParams, defaults_from_config
-from server.worker import FrameJob, GpuWorker
+from server.worker import MAX_CONSECUTIVE_FAILURES as MAX_FAILURES, FrameJob, GpuWorker
+
+SIZE = 384  # the smallest picture size: 384x256 landscape, 256x384 portrait
+
+
+def wait_until(predicate, timeout=5.0):
+    """Poll ``predicate`` until it holds (fails the test after ``timeout`` seconds)."""
+    end = time.monotonic() + timeout
+    while not predicate():
+        assert time.monotonic() < end, "condition never became true"
+        time.sleep(0.005)
 
 
 class Recorder:
@@ -54,7 +64,7 @@ class SpyBackend(MockBackend):
 
 def _start(backend, cfg=None, **kw):
     rec = Recorder()
-    cfg = cfg or Config(backend="mock", size=64)
+    cfg = cfg or Config(backend="mock", size=SIZE)
     worker = GpuWorker(backend, Mailbox(), rec.on_result, rec.on_status, cfg,
                        on_params_error=rec.on_revert, **kw)
     worker.start()
@@ -93,7 +103,7 @@ def test_failed_params_revert_and_report_error():
 
 def test_persisted_params_given_to_fresh_backend():
     backend = SpyBackend()
-    cfg = Config(backend="mock", size=64)
+    cfg = Config(backend="mock", size=SIZE)
     start = replace(defaults_from_config(cfg), seed=5)
     worker, rec = _start(backend, cfg, params=start)
     try:
@@ -137,7 +147,8 @@ class LaggyBackend(MockBackend):
 
 
 def _pixel(jpeg):
-    return Image.open(io.BytesIO(jpeg)).convert("RGB").getpixel((32, 22))  # on the line
+    # On the line: (32, 22) of the 64x64 sketch, stretched to 384x256.
+    return Image.open(io.BytesIO(jpeg)).convert("RGB").getpixel((192, 88))
 
 
 def _is_red(rgb):
@@ -158,7 +169,7 @@ def test_latency_backend_is_primed_and_settled():
 
     backend = LaggyBackend()
     # Init from the sketch itself, so the stroke colour shows up on the line.
-    cfg = Config(backend="mock", size=64)
+    cfg = Config(backend="mock", size=SIZE)
     worker = GpuWorker(backend, Mailbox(), on_result, rec.on_status, cfg,
                        params=replace(defaults_from_config(cfg), init_mode="sketch"))
     worker.start()
@@ -174,8 +185,7 @@ def test_latency_backend_is_primed_and_settled():
         assert jpegs[2][0] == 2 and _is_red(_pixel(jpegs[2][1]))  # one frame behind: still red
         rec.wait(4)  # drawing paused: settled
         assert jpegs[3][0] == 2 and _is_blue(_pixel(jpegs[3][1]))  # now blue
-        time.sleep(0.4)
-        assert len(jpegs) == 4  # settles only as often as the latency
+        assert worker._settle_left == 0 and len(jpegs) == 4  # settles only as often as the latency
     finally:
         worker.stop()
     assert backend.calls == 5  # 2 (primed) + 1 settle + 1 + 1 settle
@@ -192,7 +202,7 @@ class SizedBackend(MockBackend):
 
 def test_worker_switches_backend_size_per_orientation():
     backend = SizedBackend()
-    worker, rec = _start(backend, Config(backend="mock", size=192))  # 192x128 / 128x192
+    worker, rec = _start(backend, Config(backend="mock", size=SIZE))
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p", background="#000000",
                                     orientation="landscape"))
@@ -201,7 +211,7 @@ def test_worker_switches_backend_size_per_orientation():
         worker.mailbox.put(FrameJob(2, sketch_png(size=64), "p", background="#000000",
                                     orientation="portrait"))
         rec.wait(2)
-        assert backend.sizes == [(128, 192)]
+        assert backend.sizes == [(256, 384)]
     finally:
         worker.stop()
 
@@ -212,16 +222,20 @@ class RefineBackend(MockBackend):
     def __init__(self):
         super().__init__(mock_delay_ms=0)
         self.paths, self.refined = [], []
+        self.finished = threading.Event()  # a refinement ran to its end or was stopped
 
     def refine_steps(self, init_image, line_map, t_index, first_shown, noise="fresh"):
         self.paths.append((tuple(t_index), first_shown))
-        for step in range(first_shown, len(t_index) + 1):
-            self.refined.append(step)
-            yield self.generate(init_image, line_map)
+        try:
+            for step in range(first_shown, len(t_index) + 1):
+                self.refined.append(step)
+                yield self.generate(init_image, line_map)
+        finally:
+            self.finished.set()
 
 
 def test_refine_path_continues_the_drawing_path():
-    from server.worker import refine_path
+    from server.refine import continue_path as refine_path
 
     # Draw 1 step + 3 more is exactly the evenly spread 4-step path (the admin page's too).
     assert refine_path((6,), 4) == (6, 20, 35, 49)
@@ -235,13 +249,13 @@ def test_refine_path_continues_the_drawing_path():
 
 def test_pause_continues_the_path_one_picture_per_step():
     backend = RefineBackend()
-    cfg = Config(backend="mock", size=64)
+    cfg = Config(backend="mock", size=SIZE)
     params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=4, refine_model="path")
     worker, rec = _start(backend, cfg, params=params)
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
         rec.wait(4)  # the drawing picture (step 1), then steps 2, 3 and 4 of the same path
-        time.sleep(0.4)
+        assert backend.finished.wait(5)
         assert [seq for seq, _ in rec.results] == [1, 1, 1, 1]
         assert backend.paths == [((6, 20, 35, 49), 2)] and backend.refined == [2, 3, 4]
     finally:
@@ -250,12 +264,12 @@ def test_pause_continues_the_path_one_picture_per_step():
 
 def test_refinement_off_sends_only_the_drawing_frame():
     backend = RefineBackend()
-    cfg = Config(backend="mock", size=64)
+    cfg = Config(backend="mock", size=SIZE)
     worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=0))
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
         rec.wait(1)
-        time.sleep(0.4)
+        assert not worker._refine_plan  # nothing left to do once drawing pauses
         assert backend.paths == [] and len(rec.results) == 1
     finally:
         worker.stop()
@@ -270,7 +284,7 @@ class SlowRefineBackend(RefineBackend):
 
 def test_new_stroke_stops_the_refinement_path():
     backend = SlowRefineBackend()
-    cfg = Config(backend="mock", size=64)
+    cfg = Config(backend="mock", size=SIZE)
     params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=20, refine_model="path")
     worker, rec = _start(backend, cfg, params=params)
     try:
@@ -310,7 +324,7 @@ def test_picture_model_switch_rebuilds_the_backend():
         built.append(OwnRefineBackend(kind))
         return built[-1]
 
-    cfg = Config(backend="mock", size=64)
+    cfg = Config(backend="mock", size=SIZE)
     worker, rec = _start(None, cfg, backend_factory=factory,
                          params=replace(defaults_from_config(cfg), refine_steps=0))
     try:
@@ -328,7 +342,7 @@ def test_picture_model_switch_rebuilds_the_backend():
 
 def test_backend_with_own_refinement_refines_on_pause():
     backend = OwnRefineBackend()
-    cfg = Config(backend="mock", size=64)
+    cfg = Config(backend="mock", size=SIZE)
     worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=8))
     try:
         worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
@@ -336,3 +350,180 @@ def test_backend_with_own_refinement_refines_on_pause():
         assert backend.refine_calls == [8]
     finally:
         worker.stop()
+
+
+def test_reset_stops_settling_and_refining_the_old_drawing():
+    backend = SlowRefineBackend()
+    cfg = Config(backend="mock", size=SIZE)
+    params = replace(defaults_from_config(cfg), t_index_list=(6,), refine_steps=20, refine_model="path")
+    worker, rec = _start(backend, cfg, params=params)
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        rec.wait(3)  # refining
+        worker.reset()
+        assert backend.finished.wait(5)  # the refinement was cut short
+        wait_until(lambda: worker._settle_job is None)
+        assert len(rec.results) < 20 and not worker._refine_plan and worker._settle_left == 0
+    finally:
+        worker.stop()
+
+
+def test_settle_frame_gives_way_to_a_waiting_sketch():
+    backend = LaggyBackend()
+    rec = Recorder()
+    worker = GpuWorker(backend, Mailbox(), rec.on_result, rec.on_status, Config(backend="mock", size=SIZE))
+    job = FrameJob(1, sketch_png(size=64), "p")
+    worker.mailbox.put(FrameJob(2, sketch_png(size=64, color="red"), "p"))
+    worker._process_frame(job, settling=True)  # on this thread; the worker is not started
+    assert backend.calls == 0 and rec.results == []
+
+
+def test_init_image_is_composed_only_without_a_line_map(monkeypatch):
+    from server import imaging
+
+    worker = GpuWorker(MockBackend(mock_delay_ms=0), Mailbox(), lambda *args: None,
+                       lambda *args: None, Config(backend="mock", size=SIZE))
+    sketch = imaging.decode_sketch(sketch_png(size=64), (384, 256))
+    job = FrameJob(1, b"", "p")
+    calls = []
+    real_compose = imaging.compose
+    monkeypatch.setattr(imaging, "compose", lambda *args: calls.append(args) or real_compose(*args))
+    init, line_map = worker._frame_inputs(sketch, job, worker.params)  # ControlNet on
+    assert line_map is not None and calls == []
+    worker._frame_inputs(sketch, job, replace(worker.params, controlnet_enabled=False))
+    assert len(calls) == 1
+
+
+def test_upscaler_is_made_without_upscaling_a_picture(monkeypatch):
+    from server import upscale
+
+    made, upscaled = [], []
+
+    class FakeUpscaler:
+        available = True
+
+        def __init__(self, model_path):
+            made.append(model_path)
+
+        def upscale(self, picture, factor=2):
+            upscaled.append(factor)
+            return picture
+
+    monkeypatch.setattr(upscale, "Upscaler", FakeUpscaler)
+    worker = GpuWorker(MockBackend(mock_delay_ms=0), Mailbox(), lambda *args: None,
+                       lambda *args: None, Config(backend="mock", size=SIZE))
+    assert worker._ensure_upscaler() is worker._ensure_upscaler()
+    assert len(made) == 1 and upscaled == []
+
+
+class FailingBackend(OwnRefineBackend):
+    def generate(self, init_image, line_map):
+        raise RuntimeError("CUDA out of memory")
+
+
+def test_rebuild_after_failures_closes_the_old_backend_first():
+    built = []
+
+    def factory(kind="turbo"):
+        built.append(FailingBackend(kind) if not built else OwnRefineBackend(kind))
+        return built[-1]
+
+    cfg = Config(backend="mock", size=SIZE)
+    worker, rec = _start(None, cfg, backend_factory=factory,
+                         params=replace(defaults_from_config(cfg), refine_steps=0))
+    try:
+        for seq in range(1, MAX_FAILURES + 1):
+            worker.mailbox.put(FrameJob(seq, sketch_png(size=64), "p"))
+            wait_until(lambda: worker._errors >= seq or len(built) > 1)
+        wait_until(lambda: len(built) == 2)
+        assert built[0].closed  # its GPU memory was given back before the new one loaded
+    finally:
+        worker.stop()
+
+
+class PickyBackend(OwnRefineBackend):
+    """Refuses the safety filter on (like a backend whose config has it off)."""
+
+    def set_params(self, params):
+        if params.safety_checker:
+            raise RuntimeError("the safety checker needs a restart")
+        super().set_params(params)
+
+
+def test_one_refused_saved_param_keeps_the_other_saved_params():
+    cfg = Config(backend="mock", size=SIZE)
+    cfg.model.safety_checker = False
+    backend = PickyBackend()
+    saved = replace(defaults_from_config(cfg), seed=5, jpeg_quality=70, safety_checker=True)
+    worker, rec = _start(backend, cfg, params=saved)
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        rec.wait(1)
+        assert worker.params == replace(saved, safety_checker=False)
+        assert backend.applied[-1] == worker.params
+        assert rec.reverts == [worker.params]  # persisted and shown on the admin page
+        assert any(state == "error" and "safety_checker" in msg for state, msg in rec.statuses)
+    finally:
+        worker.stop()
+
+
+def test_switch_with_a_refused_param_keeps_the_picture_model_of_the_backend():
+    built = []
+
+    def factory(kind="turbo"):
+        built.append(PickyBackend(kind) if kind == "tcd" else OwnRefineBackend(kind))
+        return built[-1]
+
+    cfg = Config(backend="mock", size=SIZE)
+    cfg.model.safety_checker = False
+    worker, rec = _start(None, cfg, backend_factory=factory,
+                         params=replace(defaults_from_config(cfg), refine_steps=0, seed=7))
+    try:
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        rec.wait(1)
+        worker.set_params(replace(worker.params, picture_model="tcd", safety_checker=True))
+        worker.mailbox.put(FrameJob(2, sketch_png(size=64), "p"))
+        rec.wait(2)
+        assert worker.backend is built[1] and built[1].kind == "tcd"
+        assert worker.params.picture_model == "tcd" and worker.params.seed == 7
+        assert not worker.params.safety_checker
+    finally:
+        worker.stop()
+
+
+def test_failed_tcd_switch_while_offline_says_how_to_download(monkeypatch):
+    def factory(kind="turbo"):
+        if kind == "tcd":
+            raise OSError("model not in the local cache")
+        return OwnRefineBackend(kind)
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    cfg = Config(backend="mock", size=SIZE)
+    worker, rec = _start(None, cfg, backend_factory=factory,
+                         params=replace(defaults_from_config(cfg), refine_steps=0))
+    try:
+        wait_until(lambda: worker.state == "ready")
+        worker.set_params(replace(worker.params, picture_model="tcd"))
+        worker.mailbox.put(FrameJob(1, sketch_png(blank=True, size=64), "p"))  # blank: keeps the error
+        rec.wait(1)
+        assert worker.params.picture_model == "turbo" and rec.reverts
+        state, msg = rec.statuses[-1]
+        assert state == "error" and "models-ready.json" in msg and "local cache" in msg
+    finally:
+        worker.stop()
+
+
+def test_line_map_follows_the_controlnet_of_the_active_picture_model():
+    from server import imaging
+
+    cfg = Config(backend="mock", size=SIZE)
+    cfg.model.controlnet = None  # SD-Turbo without ControlNet; TCD keeps its own
+    worker = GpuWorker(MockBackend(mock_delay_ms=0), Mailbox(), lambda *args: None,
+                       lambda *args: None, cfg)
+    sketch = imaging.decode_sketch(sketch_png(size=64), (384, 256))
+    job = FrameJob(1, b"", "p")
+    params = replace(worker.params, controlnet_enabled=True)
+    assert worker._frame_inputs(sketch, job, params)[1] is None
+    assert worker._frame_inputs(sketch, job, replace(params, picture_model="tcd"))[1] is not None
+    cfg.model.tcd_controlnet = ""
+    assert worker._frame_inputs(sketch, job, replace(params, picture_model="tcd"))[1] is None

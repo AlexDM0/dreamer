@@ -14,16 +14,18 @@ from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
+from .imaging import INIT_MODES, POLARITIES
+
 log = logging.getLogger("dreamer.params")
 
 PARAMS_FILE = "params.json"
 SEED_MAX = 2**31 - 1
 T_INDEX_MAX = 49
 T_INDEX_MAX_STEPS = 8
-POLARITIES = ("white_on_black", "black_on_white")
-INIT_MODES = ("colors", "sketch", "blank")
 UPSCALERS = ("off", "x2")
 RESOLUTIONS = (512, 640, 768, 896, 1024)  # long sides offered on the admin page
+# Long sides the TensorRT engines are built for (a multiple of 64, which the UNet needs).
+RESOLUTION_MIN, RESOLUTION_MAX = 384, 1024
 REFINE_MAX_STEPS = 20
 # Picture models: SD-Turbo (TensorRT, server/backends/streamdiffusion.py) or SD 1.5 + TCD
 # (server/backends/tcd.py). Switching unloads one and loads the other.
@@ -51,7 +53,8 @@ LIMITS: dict[str, dict[str, Any]] = {
     "picture_model": {"options": list(PICTURE_MODELS)},
     "tcd_steps": {"min": 1, "max": 8, "step": 1},
     # Long side; a multiple of 64 (UNet). The TensorRT engines handle 384..1024.
-    "resolution": {"min": 64, "max": 1024, "step": 64, "options": list(RESOLUTIONS)},
+    "resolution": {"min": RESOLUTION_MIN, "max": RESOLUTION_MAX, "step": 64,
+                   "options": list(RESOLUTIONS)},
 }
 
 
@@ -173,7 +176,8 @@ def apply_changes(base: GenParams, changes: Any) -> GenParams:
         elif name == "resolution":
             side = _as_int(value, name)
             if side % 64 or not LIMITS[name]["min"] <= side <= LIMITS[name]["max"]:
-                raise ValueError("resolution must be a multiple of 64 from 64 to 1024")
+                raise ValueError(f"resolution must be a multiple of 64 from {RESOLUTION_MIN} "
+                                 f"to {RESOLUTION_MAX}")
             out[name] = side
     return replace(base, **out)
 
@@ -199,8 +203,14 @@ def defaults_from_config(config: Any) -> GenParams:
         jpeg_quality=int(_clamp(int(config.jpeg_quality), "jpeg_quality")),
         refine_steps=int(_clamp(int(getattr(model, "refine_steps", base.refine_steps)), "refine_steps")),
         upscale=getattr(model, "upscaler", "off") if getattr(model, "upscaler", "off") in UPSCALERS else "off",
-        resolution=int(config.size),
+        resolution=clamp_resolution(config.size),
     )
+
+
+def clamp_resolution(side: Any) -> int:
+    """``side`` as a resolution the engines handle: a multiple of 64 in the limits."""
+    side = int(round(int(side) / 64) * 64)
+    return min(max(side, RESOLUTION_MIN), RESOLUTION_MAX)
 
 
 class ParamsStore:
