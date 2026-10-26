@@ -110,6 +110,24 @@ canvas.addEventListener("pinch", (e) => {
 });
 canvas.addEventListener("pinchend", () => { pinchRing.hidden = true; });
 
+// Mouse: the scroll wheel over the drawing changes the brush size too (up = bigger). A
+// trackpad pinch arrives as a wheel event with ctrlKey and works the same way.
+const WHEEL_STEP_PX = 100; // wheel travel per size step (one mouse notch is about 100)
+let wheelTravel = 0;
+let wheelRingTimer = 0;
+$("#sketch").addEventListener("wheel", (e) => {
+  e.preventDefault(); // no page zoom or scroll
+  wheelTravel -= e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 33 : e.deltaY;
+  const steps = Math.trunc(wheelTravel / WHEEL_STEP_PX * (e.ctrlKey ? 4 : 1));
+  if (steps) {
+    wheelTravel = 0;
+    toolbar.setWidth(toolbar.width + 2 * steps);
+  }
+  showPinchRing(e.clientX, e.clientY);
+  clearTimeout(wheelRingTimer);
+  wheelRingTimer = setTimeout(() => { pinchRing.hidden = true; }, 700);
+}, { passive: false });
+
 // View -> toolbar
 view.addEventListener("mode", (e) => toolbar.setMode(e.detail.mode));
 view.addEventListener("layout", () => toolbar.setScale(canvas.displayScale()));
