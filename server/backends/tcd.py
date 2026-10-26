@@ -20,12 +20,18 @@ from typing import Any, Iterator
 
 from PIL import Image
 
+from .common import DEFAULT_SEED, model_attr, previous_or_black
+
 log = logging.getLogger("dreamer.backend.tcd")
 
-DEFAULT_SEED = 2
 SAFETY_MODEL = "Freepik/nsfw_image_detector"
 # Refinement re-renders at these step counts (up to the refine budget), after the drawing's.
 REFINE_LADDER = (6, 8, 12, 16, 20)
+# The safety classifier's input size; the whole picture is squashed to it (no crop), like the
+# TensorRT backend's NSFWDetectorEngine.
+CHECKER_SIZE = 448
+CHECKER_MEAN = [0.4815, 0.4578, 0.4082]
+CHECKER_STD = [0.2686, 0.2613, 0.2758]
 
 
 class _OutputOnly:
@@ -39,20 +45,54 @@ class _OutputOnly:
         return result[0] if isinstance(result, tuple) else result
 
 
-def _model_attr(config: Any, name: str, default: Any) -> Any:
-    return getattr(getattr(config, "model", None), name, default)
+def load_pipeline(base: str, controlnet_id: str, lora: str, lora_file: str) -> Any:
+    """SD 1.5 + scribble ControlNet + the fused TCD LoRA on the GPU (also used by
+    tools/tcd_lab.py, so its timings are the backend's)."""
+    import torch
+    from diffusers import ControlNetModel, StableDiffusionControlNetImg2ImgPipeline, TCDScheduler
+
+    controlnet = ControlNetModel.from_pretrained(controlnet_id, torch_dtype=torch.float16)
+    pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+        base, controlnet=controlnet, torch_dtype=torch.float16, safety_checker=None,
+        requires_safety_checker=False).to("cuda")
+    # The fork's diffusers build returns (output, kv cache) from attention; the UNet
+    # expects that, the VAE does not: its processors drop the cache (still fast SDPA;
+    # the plain processor made decoding ~10x slower).
+    pipeline.vae.set_attn_processor({name: _OutputOnly(processor)
+                                     for name, processor in pipeline.vae.attn_processors.items()})
+    pipeline.scheduler = TCDScheduler.from_config(pipeline.scheduler.config)
+    pipeline.load_lora_weights(lora, weight_name=lora_file)
+    pipeline.fuse_lora()
+    pipeline.set_progress_bar_config(disable=True)
+    return pipeline
+
+
+def checker_pixels(image: Image.Image, device: str = "cuda") -> Any:
+    """RGB picture -> the classifier's (1, 3, 448, 448) input: the whole picture resized
+    (bicubic, antialiased), clamped and normalized, as the fork's NSFWDetectorEngine does
+    (its CenterCrop(448) after Resize((448, 448)) changes nothing)."""
+    import numpy as np
+    import torch
+    import torchvision.transforms.v2.functional as functional
+
+    tensor = torch.from_numpy(np.array(image.convert("RGB"))).permute(2, 0, 1).to(device)
+    tensor = tensor.float().div(255)
+    tensor = functional.resize(tensor, [CHECKER_SIZE, CHECKER_SIZE], antialias=True,
+                               interpolation=functional.InterpolationMode.BICUBIC)
+    tensor = functional.normalize(tensor.clamp(0, 1), CHECKER_MEAN, CHECKER_STD)
+    return tensor.unsqueeze(0)
 
 
 class TcdBackend:
     def __init__(self, config: Any) -> None:
-        self._base = _model_attr(config, "tcd_base", "stable-diffusion-v1-5/stable-diffusion-v1-5")
-        self._lora = _model_attr(config, "tcd_lora", "h1t/TCD-SD15-LoRA")
-        self._lora_file = _model_attr(config, "tcd_lora_file", "pytorch_lora_weights.safetensors")
-        self._controlnet_id = _model_attr(config, "tcd_controlnet", "lllyasviel/control_v11p_sd15_scribble")
-        self._strength = float(_model_attr(config, "tcd_strength", 1.0))
-        self._gamma = float(_model_attr(config, "tcd_gamma", 0.3))
-        self._safety_on = bool(_model_attr(config, "safety_checker", True))
-        self._safety_threshold = float(_model_attr(config, "safety_threshold", 0.5))
+        self._base = model_attr(config, "tcd_base", "stable-diffusion-v1-5/stable-diffusion-v1-5")
+        self._lora = model_attr(config, "tcd_lora", "h1t/TCD-SD15-LoRA")
+        self._lora_file = model_attr(config, "tcd_lora_file", "pytorch_lora_weights.safetensors")
+        self._controlnet_id = model_attr(config, "tcd_controlnet", "lllyasviel/control_v11p_sd15_scribble")
+        self._strength = float(model_attr(config, "tcd_strength", 1.0))
+        self._gamma = float(model_attr(config, "tcd_gamma", 0.3))
+        self._safety_on = bool(model_attr(config, "safety_checker", True))
+        self._safety_threshold = float(model_attr(config, "safety_threshold", 0.5))
         self._pipeline: Any = None
         self._checker: Any = None
         self._prompt_embeds: Any = None
@@ -73,24 +113,8 @@ class TcdBackend:
     # ----- lifecycle -------------------------------------------------------------------
 
     def warmup(self) -> None:
-        import torch
-        from diffusers import ControlNetModel, StableDiffusionControlNetImg2ImgPipeline, TCDScheduler
-
         log.info("Dreamer: loading SD 1.5 + TCD (%s, %s)", self._base, self._lora)
-        controlnet = ControlNetModel.from_pretrained(self._controlnet_id, torch_dtype=torch.float16)
-        pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-            self._base, controlnet=controlnet, torch_dtype=torch.float16, safety_checker=None,
-            requires_safety_checker=False).to("cuda")
-        # The fork's diffusers build returns (output, kv cache) from attention; the UNet
-        # expects that, the VAE does not: its processors drop the cache (still fast SDPA;
-        # the plain processor made decoding ~10x slower).
-        pipeline.vae.set_attn_processor({name: _OutputOnly(processor)
-                                         for name, processor in pipeline.vae.attn_processors.items()})
-        pipeline.scheduler = TCDScheduler.from_config(pipeline.scheduler.config)
-        pipeline.load_lora_weights(self._lora, weight_name=self._lora_file)
-        pipeline.fuse_lora()
-        pipeline.set_progress_bar_config(disable=True)
-        self._pipeline = pipeline
+        self._pipeline = load_pipeline(self._base, self._controlnet_id, self._lora, self._lora_file)
         self._load_checker()
         if self._prompt_embeds is None:
             self.set_prompt("a colorful illustration")
@@ -159,17 +183,10 @@ class TcdBackend:
     # ----- safety ----------------------------------------------------------------------
 
     def _nsfw(self, image: Image.Image) -> bool:
-        import numpy as np
         import torch
-        import torchvision.transforms.v2.functional as functional
 
-        tensor = torch.from_numpy(np.array(image.convert("RGB"))).permute(2, 0, 1).to("cuda")
-        tensor = functional.resize(tensor, [448], antialias=True,
-                                   interpolation=functional.InterpolationMode.BICUBIC)
-        tensor = functional.center_crop(tensor, [448, 448]).float().div(255).clamp(0, 1)
-        tensor = functional.normalize(tensor, [0.4815, 0.4578, 0.4082], [0.2686, 0.2613, 0.2758])
         with torch.no_grad():
-            logits = self._checker(pixel_values=tensor.unsqueeze(0).half()).logits
+            logits = self._checker(pixel_values=checker_pixels(image).half()).logits
         nsfw_probability = 1 - torch.softmax(logits.float(), dim=-1)[0, 0].item()
         return nsfw_probability >= self._safety_threshold
 
@@ -180,7 +197,7 @@ class TcdBackend:
             return picture
         if self._nsfw(picture):
             log.info("safety checker flagged a picture; showing the previous one")
-            return self._last_safe or Image.new("RGB", picture.size, "black")
+            return previous_or_black(self._last_safe, picture.size)
         self._last_safe = picture
         return picture
 

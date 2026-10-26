@@ -87,10 +87,9 @@ def main() -> int:
     data["drawing"] = save_thumb(imaging.compose(layer, BACKGROUND), "drawing.jpg")
 
     def render(params, name: str, timed: bool = False) -> dict:
+        # The backend re-seeds whenever a change (e.g. the step count) re-rolls the noise, so
+        # the default picture looks the same in every row of the help page.
         backend.set_params(params)
-        # Re-seed every example: some changes (e.g. the step count) re-roll the noise, and
-        # the default picture should look the same in every row of the help page.
-        backend._wrapper.update_stream_params(seed=int(params.seed))
         line_map = None
         if params.controlnet_enabled:
             line_map = imaging.make_line_map(layer, params.line_polarity, params.line_threshold,
@@ -176,7 +175,6 @@ def main() -> int:
 
     draw = (defaults.t_index_list[0],)
     backend.set_params(dataclasses.replace(defaults, t_index_list=draw))
-    backend._wrapper.update_stream_params(seed=int(defaults.seed))
     line_map = imaging.make_line_map(layer, defaults.line_polarity, defaults.line_threshold,
                                      defaults.line_dilate)
     init = imaging.make_init_image(layer, defaults.init_mode, defaults.init_blur,
@@ -224,7 +222,6 @@ def main() -> int:
         side_dims = canvas_dims(dataclasses.replace(config, size=long_side))["landscape"]
         backend.set_size(*side_dims)
         backend.set_params(defaults)
-        backend._wrapper.update_stream_params(seed=int(defaults.seed))
         side_layer = demo_layer(*side_dims)
         side_map = imaging.make_line_map(side_layer, defaults.line_polarity, defaults.line_threshold,
                                          defaults.line_dilate)

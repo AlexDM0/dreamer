@@ -78,6 +78,10 @@ class Upscaler:
         return self._network
 
     def upscale(self, picture: Image.Image, factor: int = 2) -> Image.Image:
+        """``picture`` ``factor`` times bigger; unchanged when the weights are missing (callers
+        check ``available`` and warn)."""
+        if not self.available:
+            return picture
         import numpy as np
         import torch
         from torch.nn import functional as F

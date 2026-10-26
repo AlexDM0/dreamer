@@ -3,7 +3,8 @@
     .venv\\Scripts\\python.exe tools\\tcd_lab.py
     .venv\\Scripts\\python.exe tools\\tcd_lab.py --steps 2,4,8,12,20 --gamma 0.3
 
-Plain diffusers (no StreamDiffusion, no TensorRT), so the timings are an upper bound. For each
+Plain diffusers (no StreamDiffusion, no TensorRT), loaded exactly as the TCD backend does
+(server/backends/tcd.py: load_pipeline), so the timings are the backend's. For each
 test drawing (screenshots/examples) it makes the picture from the same start image, line map and
 seed at each step count, and measures every picture against the fewest-steps one with the
 refine_lab metrics (drift of the broad layout, detail, step size). If more steps only add
@@ -28,6 +29,7 @@ import torch  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 
 from server import imaging  # noqa: E402
+from server.backends.tcd import load_pipeline  # noqa: E402
 from server.config import canvas_dims, load_config  # noqa: E402
 from server.params import defaults_from_config  # noqa: E402
 from server.styles import PRESET_STYLES, PRESET_TOPICS, PROMPT_HEAD, SAFETY_TAIL  # noqa: E402
@@ -36,32 +38,17 @@ from tools.refine_lab import DRAWINGS, EXAMPLES, layer_from_example, measure  # 
 BASE = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 CONTROLNET = "lllyasviel/control_v11p_sd15_scribble"
 LORA = "h1t/TCD-SD15-LoRA"
+LORA_FILE = "pytorch_lora_weights.safetensors"
 OUT_IMG = REPO_ROOT / "docs" / "research" / "img"
 OUT_JSON = REPO_ROOT / "docs" / "research" / "tcd-results.json"
-
-
-def load_pipeline():
-    from diffusers import ControlNetModel, StableDiffusionControlNetImg2ImgPipeline, TCDScheduler
-
-    controlnet = ControlNetModel.from_pretrained(CONTROLNET, torch_dtype=torch.float16)
-    pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-        BASE, controlnet=controlnet, torch_dtype=torch.float16, safety_checker=None,
-        requires_safety_checker=False).to("cuda")
-    # The fork's diffusers build returns (output, kv cache) from attention; the UNet expects that,
-    # the VAE does not, so the VAE gets the plain processor.
-    pipeline.vae.set_default_attn_processor()
-    pipeline.scheduler = TCDScheduler.from_config(pipeline.scheduler.config)
-    pipeline.load_lora_weights(LORA, weight_name="pytorch_lora_weights.safetensors")
-    pipeline.fuse_lora()
-    pipeline.set_progress_bar_config(disable=True)
-    return pipeline
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--steps", default="2,4,8,12,20")
     parser.add_argument("--gamma", type=float, default=0.3, help="TCD eta: fresh noise per step")
-    parser.add_argument("--strength", type=float, default=0.88, help="img2img strength (t_index 6 of 50)")
+    parser.add_argument("--strength", type=float, default=1.0,
+                        help="img2img strength (1.0, the backend's default: start from noise)")
     parser.add_argument("--controlnet-scale", type=float, default=0.55)
     parser.add_argument("--drawings", default=",".join(DRAWINGS))
     parser.add_argument("--init-mode", default=None, help="start image: colors | sketch | blank")
@@ -77,7 +64,7 @@ def main() -> int:
                                    init_blur=defaults.init_blur if args.init_blur is None else args.init_blur)
     topics = {topic: fragment for topic, _, _, fragment in PRESET_TOPICS}
     styles = {style: fragment for style, _, _, fragment in PRESET_STYLES}
-    pipeline = load_pipeline()
+    pipeline = load_pipeline(BASE, CONTROLNET, LORA, LORA_FILE)
     OUT_IMG.mkdir(parents=True, exist_ok=True)
 
     results: dict = {}
