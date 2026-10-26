@@ -1,0 +1,21 @@
+# Lint settings for `python -m ruff check server tools tests`.
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "B", "I", "UP", "SIM", "RUF"]
+ignore = [
+    "B904",    # raise ... from: the HTTP errors deliberately hide the internal cause
+    "E731",    # small named lambdas are fine
+    "RUF001", "RUF002", "RUF003",  # typographic characters (×, –) in text are intended
+    "SIM102", "SIM117",            # nested if/with often read better here
+    "SIM105",  # try/except/pass is as clear as contextlib.suppress
+    "B008",    # FastAPI's File()/Form() defaults are the framework's idiom
+    "B007",    # `for picture in steps: pass` keeps the last item on purpose
+    "B905",    # zip() over equal-length sequences by construction
+    "RUF005", "RUF007", "RUF015", "RUF046",  # style preferences
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B011", "RUF012"]  # fake classes with shared class-level state
+"tools/*" = ["E501"]            # long caption and help strings

@@ -3,9 +3,9 @@ import io
 import sqlite3
 
 import pytest
+from conftest import sketch_png
 from PIL import Image
 
-from conftest import sketch_png
 from server import gallery as g
 from server.gallery import GalleryStore, valid_id
 
@@ -222,7 +222,7 @@ def test_tampered_dir_is_never_used(store, tmp_path):
     victim.mkdir()
     (victim / "picture.jpg").write_bytes(b"keep me")
     art = store.save(sketch_png(), jpeg(), META)
-    for bad_dir in ["../victim", f"artworks/2026-10/../../../victim", f"artworks/x/{art.id}",
+    for bad_dir in ["../victim", "artworks/2026-10/../../../victim", f"artworks/x/{art.id}",
                     "artworks/2026-10/AAAAAAAAAAAA"]:
         store._conn.execute("UPDATE artworks SET dir = ? WHERE id = ?", (bad_dir, art.id))
         tampered = store.get(art.id)

@@ -4,9 +4,9 @@ import io
 import time
 
 import numpy as np
+from conftest import is_json, is_picture, recv_until
 from PIL import Image, ImageDraw
 
-from conftest import is_json, is_picture, recv_until
 from server import imaging, protocol
 from server.gallery import is_blank_sketch
 

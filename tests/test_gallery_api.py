@@ -3,9 +3,9 @@ import io
 import time
 
 import pytest
+from conftest import is_json, is_picture, recv_until, sketch_frame, sketch_png
 from PIL import Image
 
-from conftest import is_json, is_picture, recv_until, sketch_frame, sketch_png
 from server import protocol
 
 

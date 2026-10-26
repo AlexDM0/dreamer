@@ -118,7 +118,7 @@ def test_importing_backends_does_not_import_torch():
 
 def test_streamdiffusion_missing_gives_clear_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "streamdiffusion", None)
-    with pytest.raises(RuntimeError, match="requirements-gpu.md"):
+    with pytest.raises(RuntimeError, match=r"requirements-gpu\.md"):
         make_backend(Cfg(backend="streamdiffusion"))
 
 

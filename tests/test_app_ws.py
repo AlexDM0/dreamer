@@ -2,9 +2,9 @@
 import io
 import time
 
+from conftest import current_prompt, is_json, is_picture, recv, recv_until, sketch_frame
 from PIL import Image
 
-from conftest import current_prompt, is_json, is_picture, recv, recv_until, sketch_frame
 from server import protocol
 
 

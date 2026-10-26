@@ -10,13 +10,25 @@ import logging
 import queue
 import secrets
 import sqlite3
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from fastapi import (APIRouter, Depends, FastAPI, File, Form, HTTPException, Request,
-                     Response, UploadFile, WebSocket, WebSocketDisconnect)
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
@@ -24,11 +36,16 @@ from pydantic import BaseModel
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import protocol, refine
-from .auth import (COOKIE_MAX_AGE, COOKIE_NAME, SHORT_COOKIE_MAX_AGE, AdminAuth, LockedOut,
-                   load_or_create_secret)
+from .auth import (
+    COOKIE_MAX_AGE,
+    COOKIE_NAME,
+    SHORT_COOKIE_MAX_AGE,
+    AdminAuth,
+    LockedOut,
+    load_or_create_secret,
+)
 from .config import DEFAULT_PIN, KID_THEMES, ORIENTATIONS, VIEW_MODES, Config, canvas_dims
-from .gallery import (FILES, LIST_MAX, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch,
-                      valid_id)
+from .gallery import FILES, LIST_MAX, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch, valid_id
 from .imaging import COLOR_RE
 from .mailbox import Mailbox
 from .params import LIMITS, GenParams, ParamsStore, defaults_from_config

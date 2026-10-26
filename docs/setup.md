@@ -200,6 +200,7 @@ never mixes old and new files. To back up the gallery, copy `dreamer.db` and the
 ```bash
 ./setup.sh --mock                      # once: creates .venv with the server + test packages
 .venv/bin/python -m pytest -q          # unit + API + WebSocket tests (mock backend)
+.venv/bin/python -m ruff check server tools tests   # lint (settings in ruff.toml)
 node tests/e2e/run.mjs                 # browser end-to-end test (needs the playwright npm package)
 ```
 

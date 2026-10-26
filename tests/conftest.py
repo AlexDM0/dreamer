@@ -4,8 +4,9 @@ from __future__ import annotations
 import io
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,10 +14,10 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from server import protocol  # noqa: E402
-from server.app import create_app  # noqa: E402
-from server.backends.mock import MockBackend  # noqa: E402
-from server.config import Config  # noqa: E402
+from server import protocol
+from server.app import create_app
+from server.backends.mock import MockBackend
+from server.config import Config
 
 ADMIN_PIN = "4321"
 

@@ -1,9 +1,17 @@
 import pytest
-
-from server.auth import (COOKIE_MAX_AGE, GLOBAL_MAX_FAILURES, GLOBAL_WINDOW_SECONDS,
-                         LOCKOUT_MAX_SECONDS, LOCKOUT_SECONDS, MAX_FAILURES, AdminAuth,
-                         LockedOut, load_or_create_secret)
 from conftest import ADMIN_PIN
+
+from server.auth import (
+    COOKIE_MAX_AGE,
+    GLOBAL_MAX_FAILURES,
+    GLOBAL_WINDOW_SECONDS,
+    LOCKOUT_MAX_SECONDS,
+    LOCKOUT_SECONDS,
+    MAX_FAILURES,
+    AdminAuth,
+    LockedOut,
+    load_or_create_secret,
+)
 
 
 class Clock:

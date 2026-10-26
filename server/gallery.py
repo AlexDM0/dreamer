@@ -37,10 +37,11 @@ import sqlite3
 import sys
 import threading
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any
 
 from PIL import Image
 

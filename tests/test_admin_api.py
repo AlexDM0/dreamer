@@ -1,9 +1,9 @@
 """Admin HTTP API: state, style CRUD, ordering, selection push, upload screening."""
 import io
 
+from conftest import current_prompt, is_json, recv_until
 from PIL import Image
 
-from conftest import current_prompt, is_json, recv_until
 from server.styles import SAFETY_TAIL
 
 

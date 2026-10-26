@@ -24,8 +24,8 @@ import secrets
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 log = logging.getLogger("dreamer.auth")
 

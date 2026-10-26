@@ -2,8 +2,8 @@
 import json
 
 import pytest
-
 from conftest import is_json, is_picture, recv_until, sketch_frame
+
 from server.config import Config
 from server.params import GenParams, ParamsStore, apply_changes, defaults_from_config
 

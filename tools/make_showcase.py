@@ -48,8 +48,16 @@ from typing import Any
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from showcase_cdp import (  # noqa: E402
-    DESKTOP, IPAD_LANDSCAPE, IPAD_PORTRAIT, PHONE, Cdp, CdpError, Device, Edge, Page, densify,
+from showcase_cdp import (
+    DESKTOP,
+    IPAD_LANDSCAPE,
+    IPAD_PORTRAIT,
+    PHONE,
+    Cdp,
+    CdpError,
+    Edge,
+    Page,
+    densify,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -346,7 +354,7 @@ class Server:
         if not PYTHON.is_file():
             raise ShowcaseError(f"{PYTHON} not found; run setup.ps1 first")
         temp_config(self.port, self.data_dir, self.config, self.mock)
-        self.log_file = open(self.log_path, "w", encoding="utf-8", errors="replace")
+        self.log_file = open(self.log_path, "w", encoding="utf-8", errors="replace")  # noqa: SIM115 (closed in stop())
         env = {**os.environ, "SKETCH_CONFIG": str(self.config), "PYTHONUNBUFFERED": "1"}
         self.proc = subprocess.Popen([str(PYTHON), "-m", "server"], cwd=ROOT, env=env,
                                      stdout=self.log_file, stderr=subprocess.STDOUT)

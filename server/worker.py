@@ -11,8 +11,9 @@ import logging
 import queue
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, fields, replace
-from typing import Any, Callable
+from typing import Any
 
 from PIL import Image
 

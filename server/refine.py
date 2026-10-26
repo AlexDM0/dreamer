@@ -16,7 +16,8 @@ detail added) and makes comparison sheets.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import numpy as np
 from PIL import Image, ImageFilter

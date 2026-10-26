@@ -293,7 +293,7 @@ def test_step_change_reseeds_the_stream(fake_sd):
 
 
 def test_prepare_inputs_keeps_a_ready_picture(fake_sd):
-    backend, wrapper = _backend()
+    backend, _wrapper = _backend()
     ready = _picture()
     assert backend._prepare_inputs(ready, None) is ready
     resized = backend._prepare_inputs(_picture(size=(64, 64)), None)

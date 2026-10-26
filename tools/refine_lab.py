@@ -30,7 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np  # noqa: E402
-from PIL import Image, ImageDraw, ImageFilter  # noqa: E402
+from PIL import Image, ImageDraw  # noqa: E402
 
 from server import imaging, refine  # noqa: E402
 from server.config import canvas_dims, load_config  # noqa: E402
@@ -57,7 +57,8 @@ def layer_from_example(path: Path, size: tuple[int, int]) -> tuple[Image.Image, 
     distance = np.abs(pixels - paper).max(axis=2)
     alpha = np.clip((distance - 20) * 6, 0, 255).astype(np.uint8)
     layer = Image.fromarray(np.dstack([pixels.astype(np.uint8), alpha]), mode="RGBA")
-    return layer, "#%02x%02x%02x" % tuple(int(value) for value in paper)
+    red, green, blue = (int(value) for value in paper)
+    return layer, f"#{red:02x}{green:02x}{blue:02x}"
 
 
 def small(picture: Image.Image) -> np.ndarray:

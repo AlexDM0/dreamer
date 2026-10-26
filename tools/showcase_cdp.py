@@ -22,9 +22,10 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import websockets
 
@@ -69,7 +70,7 @@ class Edge:
 
     @classmethod
     def launch(cls, exe: str = EDGE_PATH, timeout: float = 30.0,
-               extra_args: list[str] | None = None) -> "Edge":
+               extra_args: list[str] | None = None) -> Edge:
         if not Path(exe).is_file():
             raise CdpError(f"Microsoft Edge not found at {exe}")
         profile = tempfile.mkdtemp(prefix="dreamer-edge-")
@@ -138,7 +139,7 @@ class Cdp:
         self.closed = False
 
     @classmethod
-    async def connect(cls, url: str) -> "Cdp":
+    async def connect(cls, url: str) -> Cdp:
         socket = await websockets.connect(url, max_size=None, ping_interval=None,
                                           open_timeout=15)
         return cls(socket)
@@ -208,7 +209,7 @@ class Cdp:
             pass
         try:
             await self.socket.close()
-        except Exception:  # noqa: BLE001 - closing a dead socket is fine
+        except Exception:
             pass
         self.reader.cancel()
 
@@ -228,7 +229,7 @@ class Page:
         cdp.listeners.append(self._on_event)
 
     @classmethod
-    async def create(cls, cdp: Cdp, device: Device, context_id: str | None = None) -> "Page":
+    async def create(cls, cdp: Cdp, device: Device, context_id: str | None = None) -> Page:
         if context_id is None:  # a fresh context: its own cookies and localStorage
             context_id = (await cdp.send("Target.createBrowserContext",
                                          {"disposeOnDetach": True}))["browserContextId"]

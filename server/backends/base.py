@@ -4,7 +4,8 @@ All methods are called ONLY from the GPU worker thread.
 """
 from __future__ import annotations
 
-from typing import Protocol, Sequence, runtime_checkable
+from collections.abc import Sequence
+from typing import Protocol, runtime_checkable
 
 from PIL import Image
 

@@ -1,17 +1,18 @@
 """GpuWorker: params slot, error/ready state handling, owner pass-through."""
 import io
 import threading
-from dataclasses import replace
 import time
-
-from PIL import Image
+from dataclasses import replace
 
 from conftest import sketch_png
+from PIL import Image
+
 from server.backends.mock import MockBackend
 from server.config import Config
 from server.mailbox import Mailbox
 from server.params import GenParams, defaults_from_config
-from server.worker import MAX_CONSECUTIVE_FAILURES as MAX_FAILURES, FrameJob, GpuWorker
+from server.worker import MAX_CONSECUTIVE_FAILURES as MAX_FAILURES
+from server.worker import FrameJob, GpuWorker
 
 SIZE = 384  # the smallest picture size: 384x256 landscape, 256x384 portrait
 
@@ -388,7 +389,7 @@ def test_init_image_is_composed_only_without_a_line_map(monkeypatch):
     calls = []
     real_compose = imaging.compose
     monkeypatch.setattr(imaging, "compose", lambda *args: calls.append(args) or real_compose(*args))
-    init, line_map = worker._frame_inputs(sketch, job, worker.params)  # ControlNet on
+    _init, line_map = worker._frame_inputs(sketch, job, worker.params)  # ControlNet on
     assert line_map is not None and calls == []
     worker._frame_inputs(sketch, job, replace(worker.params, controlnet_enabled=False))
     assert len(calls) == 1
@@ -429,12 +430,12 @@ def test_rebuild_after_failures_closes_the_old_backend_first():
         return built[-1]
 
     cfg = Config(backend="mock", size=SIZE)
-    worker, rec = _start(None, cfg, backend_factory=factory,
-                         params=replace(defaults_from_config(cfg), refine_steps=0))
+    worker, _rec = _start(None, cfg, backend_factory=factory,
+                          params=replace(defaults_from_config(cfg), refine_steps=0))
     try:
         for seq in range(1, MAX_FAILURES + 1):
             worker.mailbox.put(FrameJob(seq, sketch_png(size=64), "p"))
-            wait_until(lambda: worker._errors >= seq or len(built) > 1)
+            wait_until(lambda failures=seq: worker._errors >= failures or len(built) > 1)
         wait_until(lambda: len(built) == 2)
         assert built[0].closed  # its GPU memory was given back before the new one loaded
     finally:
