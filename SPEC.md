@@ -1,11 +1,13 @@
 # Dreamer: implementation spec (phase 1)
 
+_Updated 2026-10-26 to match the code; docs/setup.md is the user guide._ This started as the phase 1 spec; later changes live in the `SPEC-addendum-*.md` files (params, gallery, canvas, setup) and are folded in below where they replaced a phase 1 decision.
+
 **Dreamer** is a kids' drawing game (the product name; use it in page titles, README, logs). A child draws on an iPad in Safari; the sketch streams over a
 WebSocket to a Windows PC with an RTX 3080, which runs StreamDiffusion and streams back a
 generated picture. A parent manages styles from a phone via a PIN-protected admin page.
 Everything runs on the home LAN from one Python process.
 
-Design doc (background, not required reading): see README.
+Design doc (background, not required reading): see README and docs/.
 
 ## Hard rules
 
@@ -30,29 +32,45 @@ dreamer/
     __init__.py
     __main__.py        # `python -m server` -> loads config, runs uvicorn
     app.py             # create_app(config, backend=None) -> FastAPI; routes, static, ws
-    config.py          # load_config(path) -> Config dataclass; defaults
+    config.py          # load_config(path) -> Config dataclass; defaults; canvas_dims()
     session.py         # KidSession manager (single active kid socket), admin watchers
     mailbox.py         # Mailbox (single slot, thread-safe)
-    worker.py          # GpuWorker thread
+    worker.py          # GpuWorker thread (frames, refinement, uploads, picture-model switch)
     protocol.py        # binary header pack/unpack, message type constants
     styles.py          # StyleStore: topics + styles (presets + styles.json), prompt builder
-    auth.py            # admin PIN check, signed session cookie
+    auth.py            # admin PIN check, signed session cookie, lockout
     imaging.py         # decode PNG, make init image + line map, encode JPEG
+    params.py          # GenParams, limits, validation, ParamsStore (data/params.json)
+    gallery.py         # GalleryStore: SQLite metadata + artwork files, drafts
+    refine.py          # refinement models: what happens once the child stops drawing
+    upscale.py         # optional AI upscaler (Real-ESRGAN compact, needs torch)
+    offline.py         # sets HF_HUB_OFFLINE once the models are cached
+    fsutil.py          # atomic-replace helper shared by the stores (Windows retry)
     backends/
-      __init__.py      # make_backend(config) -> Backend
+      __init__.py      # make_backend(config, picture_model) -> Backend
       base.py          # Backend protocol (abstract)
       mock.py          # MockBackend: no GPU, deterministic stylised output
-      streamdiffusion.py  # StreamDiffusionBackend (Daydream fork wrapper)
+      streamdiffusion.py  # StreamDiffusionBackend (Daydream fork wrapper, SD-Turbo)
+      common.py        # small torch-free helpers shared by the GPU backends
+      tcd.py           # TcdBackend: SD 1.5 + TCD picture model (plain diffusers)
   static/
-    index.html  style.css  app.js  toolbar.js  canvas.js  net.js  view.js
-    admin.html  admin.css  admin.js
+    index.html  style.css  theme.css  app.js  toolbar.js  canvas.js  paper.js  net.js
+    view.js  gallery.js  gate.js          # kid page (gate.js = parent PIN gate)
+    admin.html  admin.css  admin.js  admin.webmanifest   # parent page
+    help.html + help/    # parent help page with example pictures
+    vram.json            # measured GPU memory/speed table (tools/measure_vram.py)
+    logo.svg  favicon.svg  icon-*.png  admin-icon-*  dreamer.ico  manifest.webmanifest
   tests/
     test_*.py          # pytest, uses mock backend
-    e2e/               # playwright (node) end-to-end tests against mock backend
+    e2e/run.mjs        # playwright (node) end-to-end test against mock backend
+  tools/               # bench_gpu, controlnet_lab, refine_lab, measure_vram, make_* scripts
+  docs/                # setup.md (user guide), showcase, research, reviews
   config.example.yaml
-  requirements.txt      # runtime deps for the server WITHOUT torch (fastapi etc.)
-  requirements-gpu.md   # (or section in README) exact Windows GPU install steps
-  run.ps1               # Windows launcher
+  requirements.txt      # runtime + test deps for the server WITHOUT torch
+  requirements-gpu.md   # manual reference for the GPU install steps setup.ps1 runs
+  setup.ps1  setup.sh   # create .venv and install everything (see SPEC-addendum-setup.md)
+  run.ps1  run.sh       # launchers (.venv only)
+  Dreamer.cmd           # double-click launcher: runs run.ps1 and pauses on error
   README.md
 ```
 
@@ -62,25 +80,43 @@ dreamer/
 host: 0.0.0.0
 port: 7860
 backend: streamdiffusion      # or "mock"
-admin_pin: "1234"             # REQUIRED to change; server logs a warning if default
+admin_pin: "1234"             # REQUIRED to change; 4-12 digits, quoted; server logs a warning if default
 secret_key: ""                # cookie signing; auto-generated and persisted to data/secret if empty
-data_dir: data                # styles.json, uploaded style images, secret
-jpeg_quality: 85
-size: 512
+data_dir: data                # styles.json, params.json, secret, style pictures, gallery (dreamer.db + artworks/)
+jpeg_quality: 85              # 1..100
+size: 640                     # long side in px, multiple of 64 (64..2048); short side is 0.7x (canvas_dims)
 default_view_mode: auto       # auto | sketch | picture | split
+kid_theme: dark               # dark | light; the drawing page's look, also switchable on /admin
+mock_delay_ms: 30             # mock backend only: simulated GPU time per frame
 model:
   base: stabilityai/sd-turbo
   t_index_list: [6, 26]
+  max_steps: 8                # most denoising steps the admin page may pick
+  max_batch_steps: 4          # 1, 2, 4 or 8; steps run together as one UNet batch (sets engine memory; change rebuilds once)
+  refine_steps: 8             # after drawing pauses, refine up to this many steps in total (0 = off, live max 20)
+  upscaler: "off"             # "off" | "x2"; model file models/realesr-animevideov3.pth (upscaler_model)
   controlnet: thibaud/controlnet-sd21-scribble-diffusers   # null disables ControlNet
   controlnet_scale: 0.55
   line_polarity: white_on_black   # or black_on_white; what the ControlNet expects
   engine_dir: engines
   safety_checker: true
   safety_threshold: 0.5
+  # "SD 1.5 + TCD" picture model (selectable live on /admin):
+  tcd_base: stable-diffusion-v1-5/stable-diffusion-v1-5
+  tcd_lora: h1t/TCD-SD15-LoRA            # tcd_lora_file defaults to pytorch_lora_weights.safetensors
+  tcd_controlnet: lllyasviel/control_v11p_sd15_scribble
+  tcd_strength: 1.0
+  tcd_gamma: 0.3
 ```
 
+Unknown keys are ignored with a warning; invalid values raise ValueError at startup.
+Many of these (t_index_list, controlnet_scale, safety_*, line_polarity, jpeg_quality,
+refine_steps, upscaler, size) are only the *defaults* of the live params, see
+SPEC-addendum-params.md.
+
 `Config` is a dataclass (nested `ModelConfig`). Env var `SKETCH_CONFIG` points at the
-config file; default `config.yaml` in CWD; missing file -> defaults.
+config file; default `config.yaml` in CWD; missing file -> defaults. `canvas_dims(cfg, long_side)`
+gives the landscape/portrait (width, height) of drawings and pictures (see SPEC-addendum-canvas.md).
 
 ## Backend interface (`server/backends/base.py`)
 
@@ -88,14 +124,30 @@ config file; default `config.yaml` in CWD; missing file -> defaults.
 class Backend(Protocol):
     def warmup(self) -> None: ...                          # called once on worker thread
     def set_prompt(self, prompt: str) -> None: ...         # worker thread only
+    def set_params(self, params: GenParamsLike) -> None: ...  # live params; raise on failure, keep old ones
     def generate(self, init_image: PIL.Image.Image, line_map: PIL.Image.Image | None) -> PIL.Image.Image: ...
     def check_image_safe(self, image: PIL.Image.Image) -> bool: ...  # used for admin uploads
     @property
     def name(self) -> str: ...
 ```
 
+Optional members, looked up with `getattr` by the worker (the mock has none of them):
+
+- `latency_frames: int` (default 0): how many `generate()` calls later a sketch's picture
+  comes out (denoising batch, steps - 1); the worker primes a fresh pipeline and re-runs the
+  last sketch once drawing pauses.
+- `set_size(width, height)`: rebuild at another drawing size/orientation (see the canvas addendum).
+- `close()`: free GPU memory; called before another picture model is loaded.
+- `refine_steps(init, line_map, t_index, first_shown, noise)` and
+  `latent_ladder(first, line_map, t_index, ...)` (StreamDiffusionBackend): step-by-step
+  refinement generators used by `server/refine.py`; `refine_own(...)` (TcdBackend): refine by
+  re-rendering with more steps from the same seed.
+
+Phase 1 had only the first five members; the rest came with the params, canvas and refinement work.
+
 All methods are called ONLY from the GPU worker thread (the admin-upload safety check is
-routed through the worker as a job, see Worker).
+routed through the worker as a job, see Worker). `make_backend(config, picture_model)` returns
+the mock, `StreamDiffusionBackend` (SD-Turbo) or, for picture model `tcd`, `TcdBackend`.
 
 - `MockBackend`: no torch. `generate` returns a deterministic stylised version of the
   init image (e.g. posterize + blur + a tint derived from a hash of the prompt) at the same
@@ -116,17 +168,28 @@ routed through the worker as a job, see Worker).
   `check_image_safe` for uploads: if the wrapper exposes a loaded `safety_checker`, use it
   with care; otherwise return True and log that upload screening is unavailable. Mark any
   uncertain API use with a `# VERIFY:` comment — this backend cannot be tested here.
+  Since phase 1 it has been run on the target PC (see docs/gpu-results.md): it also
+  implements `set_params`, `set_size`, `close`, `latency_frames`, `refine_steps` and
+  `latent_ladder`, and uses the pinned fork commit installed by setup.ps1.
+- `TcdBackend` (`backends/tcd.py`): the "SD 1.5 + TCD" picture model, plain diffusers (no
+  TensorRT), selected live with the `picture_model` param; the worker unloads the SD-Turbo
+  backend first. Implements `refine_own` instead of the StreamDiffusion refinement members.
 
 ## Imaging (`server/imaging.py`)
 
-- `decode_sketch(png_bytes, size) -> PIL.Image (RGB, size x size)`: composite alpha onto
-  white, resize if needed. Reject >2 MB payloads and non-image data (raise ValueError).
-- `make_line_map(sketch, polarity) -> PIL.Image (RGB)`: any pixel noticeably non-white
-  (max channel distance from white > ~40) is a line; output white lines on black for
-  `white_on_black` (default) or the inverse. Slight dilation (1px) is fine.
+- `decode_sketch(png_bytes, size, layered=False) -> PIL.Image`: `size` is an int or
+  `(width, height)` (phase 1 was square). PNG only; reject oversized payloads and non-image
+  data (raise ValueError). Unlayered sketches are composited onto white (RGB); `layered`
+  keeps the RGBA stroke layer (see the canvas addendum).
+- `make_line_map(sketch, polarity, ...) -> PIL.Image (RGB)`: pixels that count as ink
+  (distance from white, or alpha for a stroke layer, above `line_threshold`, default 40) are
+  lines; white lines on black for `white_on_black` (default) or the inverse, with
+  `line_dilate` px of dilation (default 1).
+- `make_init_image(...)`: the img2img start image per `init_mode` (colors | sketch | blank),
+  see the params addendum.
 - `encode_jpeg(img, quality) -> bytes`.
-- `is_blank(sketch) -> bool`: all (near) white. For a blank sketch the worker skips the
-  backend and returns a white image (cheap clear).
+- `is_blank(sketch) -> bool`: nothing drawn. For a blank sketch the worker skips the
+  backend and answers with a picture in the background colour (cheap clear).
 
 ## Styles (`server/styles.py`)
 
@@ -136,13 +199,15 @@ Two lists: topics and styles. Each item:
 - Built-in preset topics (at least): ocean, nature, space, dinosaurs, castle, city, jungle,
   winter. Preset styles (at least): cartoon, crayon, watercolor, clay, storybook,
   pixel art. Prompt fragments are short and kid-friendly.
-- Custom styles (admin-typed text) and image styles (phase 2; store the image, kind
-  "image") persist in `data/styles.json`. Presets can be hidden/reordered via the same
+- Custom styles and topics (admin-typed text) and image styles (store the image, kind
+  "image"; not applied to pictures yet, see the style-image endpoint) persist in
+  `data/styles.json`. Presets can be hidden/reordered via the same
   file (store order + hidden flags). Writes are atomic (temp file + replace).
 - `build_prompt(topic_id, style_id) -> str` =
-  `"a colorful illustration, {topic}, {style}, for children, friendly, bright colors, wholesome"`.
+  `"a colorful illustration, {topic}, {style}, for children, friendly, bright colors, wholesome"`
+  (head `a colorful illustration`, tail `for children, friendly, bright colors, wholesome`).
   Unknown ids fall back to defaults (first visible). The safety tail is always last.
-- Admin custom style text: strip, collapse whitespace, max 120 chars, reject control
+- Admin custom style text: strip, collapse whitespace, prompt max 120 chars (label 40), reject control
   characters. (Parent-only, so no blocklist required, but keep the safety tail.)
 - `ids` for custom items: slug of label + short suffix; unique.
 - StyleStore is thread-safe (lock) and exposes `public_list()` (visible items, no file paths)
@@ -174,6 +239,12 @@ class Mailbox:
   `loop.call_soon_threadsafe`. The worker never touches sockets.
 - Errors: log, `on_status("error", msg)`, continue. After 3 consecutive failures, call
   backend factory again to rebuild (factory passed in, optional).
+- Beyond phase 1: live params are applied before the next frame (SPEC-addendum-params.md);
+  once drawing pauses it runs the refinement model (`server/refine.py`, optional upscale via
+  `server/upscale.py`) and sends more pictures with the same seq; it can switch the picture
+  model (`turbo` <-> `tcd`) and the drawing size/orientation by rebuilding the backend; after
+  the first successful warmup `offline.mark_ready` lets later starts run without internet.
+  `FrameJob` also carries the canvas background (see the canvas addendum).
 - `stop()` for clean shutdown (FastAPI lifespan).
 - Track simple stats: last frame ms, fps (EMA). Expose via `stats()`.
 
@@ -191,10 +262,11 @@ bytes 1..4: `seq`, uint32 big-endian. PICTURE echoes the seq of the sketch it wa
 JSON text messages, field `t`:
 
 client -> server
-- `{"t":"hello","v":1}`
+- `{"t":"hello","v":1}` (later also `"continuing": <artwork id>|null`)
 - `{"t":"topic","id":"ocean"}`
 - `{"t":"style","id":"crayon"}`
 - `{"t":"clear"}` — server clears the mailbox; client follows with a blank SKETCH.
+- Added later (see the addenda): `canvas`, `save`, `new`, `continue`, `continuing`, `restored`.
 - `{"t":"ping"}` -> server replies `{"t":"pong"}`
 
 server -> client
@@ -202,6 +274,8 @@ server -> client
 - `{"t":"status","state":"busy"|"ready"|"error","msg":"..."}`
 - `{"t":"replaced"}` sent to an old socket right before it is closed because a new kid socket connected.
 - `{"t":"pong"}`
+- Added later: `ready` also carries `kid_theme`, `canvas` and `draft`; `saved`, `continue` and
+  `gallery` messages (gallery addendum). The selection fields come from `session.current()`.
 
 Server ignores unknown `t` values and any field named `prompt`/`text` from the kid
 socket. Malformed binary (short header, wrong type) is ignored with a log line.
@@ -209,28 +283,34 @@ Max message size 2 MB. The current topic/style selection lives server-side in th
 (survives reconnects).
 
 Admin watchers: `GET /ws/admin` (requires admin cookie) receives the same PICTURE binary
-frames and `status` messages, plus `{"t":"stats",...}` once a second. Read-only.
+frames and `status` messages, plus `{"t":"stats",...}` once a second (also `params` and
+`gallery` change notices). Read-only.
 
 ## Admin HTTP API (cookie auth, JSON)
 
 - `POST /api/admin/login` `{"pin":"1234"}` -> sets HttpOnly signed cookie `sg_admin`
-  (HMAC-SHA256 of an expiry timestamp with secret_key, 30 days). 401 on wrong PIN.
-  Basic rate limit: after 5 wrong attempts, 30 s lockout (in-memory).
+  (HMAC-SHA256 of an expiry timestamp, key derived from secret_key and the PIN, so a new
+  PIN logs everyone out; 30 days, or 15 minutes when the body has `"short": true`). 401 on
+  wrong PIN. Rate limit: after 5 wrong attempts a 30 s lockout, doubling per further wrong
+  PIN up to 15 minutes (429 with Retry-After), plus a global budget of 20 failures (in-memory).
 - `POST /api/admin/logout`
-- `GET /api/admin/state` -> `{"topics":[...all],"styles":[...all],"topic","style","view_mode","backend","stats":{...}}`
-- `POST /api/admin/styles` `{"label","emoji","prompt"}` -> creates custom style.
+- `GET /api/admin/state` -> `{"topics":[...all],"styles":[...all],"topic","style","view_mode","kid_theme","backend","stats":{...}}`
+- `POST /api/admin/styles` `{"label","emoji","prompt"}` -> creates custom style; `POST /api/admin/topics` the same for a custom topic.
 - `PATCH /api/admin/items/{kind}/{id}` `{"hidden"?:bool, "label"?, "emoji"?, "prompt"?}` (kind = topics|styles; prompt editable only for custom)
-- `DELETE /api/admin/items/styles/{id}` (custom/image only)
+- `DELETE /api/admin/items/{kind}/{id}` (custom/image items only)
 - `POST /api/admin/order` `{"kind":"topics"|"styles","ids":[...]}`
-- `POST /api/admin/select` `{"topic"?:id,"style"?:id,"view_mode"?:mode}` -> sets current
+- `POST /api/admin/select` `{"topic"?:id,"style"?:id,"view_mode"?:mode,"kid_theme"?:"dark"|"light"}` -> sets current
   selection / default view mode and pushes to the kid page.
 - `POST /api/admin/style-image` multipart `file`, `label`, `emoji` -> screens via worker
-  (`ScreenUploadJob`), stores in `data/style_images/`, creates kind "image" style. Respond
+  (`ScreenUploadJob`), stores in `data/style_images/` (PNG, long side capped at 1024), creates kind "image" style. Respond
   `{"ok":true,"style":{...},"note":"Style pictures need phase 2 (SD 1.5 + IP-Adapter); stored but not applied yet."}` when the backend doesn't support image styles. Max 8 MB, image types only.
+- Later endpoints, documented in the addenda: `GET|PATCH /api/admin/params`, `POST /api/admin/params/reset`
+  (params; the GET also returns `limits`, `defaults` and `gpu` memory info), the artwork
+  endpoints under `/api/admin/artworks` and the public `/api/artworks` (gallery).
 - Every successful mutation broadcasts `{"t":"styles",...}` to the kid socket.
 - `GET /healthz` -> `{"ok":true,"backend":..,"state":..}` (no auth).
 
-Static: `/` -> `static/index.html`, `/admin` -> `static/admin.html`, `/static/*`.
+Static: `/` -> `static/index.html`, `/admin` -> `static/admin.html`, `/static/*`, `/favicon.ico` -> `favicon.svg`.
 Disable caching on HTML (Cache-Control: no-cache) so the iPad picks up updates.
 
 ## Kid page (`static/index.html` + modules)
@@ -243,8 +323,9 @@ Landscape-first iPad layout, also usable in portrait. Big touch targets (>= 48px
   icon); view-mode toggle (Auto / Sketch / Picture / Split icons); topic and style buttons
   (emoji + label, horizontally scrollable rows, current one highlighted). Connection dot
   (green/yellow/red).
-- `canvas.js`: 512x512 backing canvas, white background, scaled to fit via CSS keeping
-  square aspect; Pointer Events (`pointerdown/move/up/cancel`), `setPointerCapture`,
+- `canvas.js`: phase 1 had a 512x512 white canvas; now the drawing is a transparent stroke
+  layer over a background colour, with the iPad's shape (SPEC-addendum-canvas.md), scaled
+  to fit via CSS; Pointer Events (`pointerdown/move/up/cancel`), `setPointerCapture`,
   `getCoalescedEvents()` when available; round caps/joins; draw line segments between
   points; palm rejection: if a `pen` pointer has been seen, ignore `touch` pointers while
   a pen is down. Exposes `isDirty()`, `clearDirty()`, `toBlob()`, `clear()`, events
@@ -269,20 +350,26 @@ Landscape-first iPad layout, also usable in portrait. Big touch targets (>= 48px
   prevent `gesturestart` and double-tap zoom, `apple-mobile-web-app-capable` meta + a
   simple inline SVG/PNG icon for "Add to Home Screen".
 - No prompt text box anywhere on the kid page.
+- Added since phase 1: `gallery.js` (Save / Gallery / continue, see the gallery addendum),
+  `gate.js` (tapping the Dreamer icon asks for the admin PIN, then opens `/admin`),
+  `paper.js` (background colour picker) and `theme.css` (dark/light look, `kid_theme`).
 
 ## Admin page (`static/admin.html` + admin.js)
 
 Phone-first layout. If not logged in: big PIN pad (digits) -> login. Then sections:
 
 1. Now: live picture (from `/ws/admin`), backend + state + fps, current topic/style
-   pickers, default view mode select.
+   pickers, default view mode select, kid theme select.
+   Then "Picture controls" (live diffusion params, SPEC-addendum-params.md).
 2. Styles: list of all styles (presets + custom + image) with hide/show toggle, up/down
    reorder, edit label/emoji (and prompt for custom), delete (custom/image).
    "Add a style" form: label, emoji, prompt text.
 3. Style picture: file input (camera/library), label, emoji, upload; show the server's
-   note about phase 2.
+   note that style pictures are stored but not applied to pictures yet.
 4. Topics: hide/show + reorder.
-5. Log out.
+5. Gallery (saved artworks, trash; gallery addendum).
+6. Log out.
+Help for parents is in `static/help.html`.
 
 ## Testing
 
@@ -301,6 +388,9 @@ Phone-first layout. If not logged in: big PIN pad (digits) -> login. Then sectio
   view-mode switching works, clear works; open admin, log in with PIN, add a custom style,
   assert it appears on the kid page without reload.
 - `python -m server` with `backend: mock` must start and serve.
+- Tests now also cover config, params, gallery (+API), canvas, refine, offline and the worker;
+  run them with `.venv/bin/python -m pytest -q` (Windows: `.venv\Scripts\python.exe -m pytest -q`).
+  The e2e is the single script `tests/e2e/run.mjs` (`node tests/e2e/run.mjs`).
 
 ## Branding
 
@@ -314,4 +404,4 @@ Phone-first layout. If not logged in: big PIN pad (digits) -> login. Then sectio
   Pillow) and `static/favicon.svg` (mark only).
 - Use the logo in the kid page toolbar (small mark), the admin page header, and README.
 - Colour palette: soft sky blue, sunny yellow, coral pink, mint; define as CSS variables
-  shared by both pages.
+  shared by both pages (`theme.css`; docs/design-system.md describes the current look).
