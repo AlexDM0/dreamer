@@ -22,7 +22,8 @@ flowchart LR
 ```
 
 Drawings and pictures never leave your home network. Models are downloaded once, on the first start;
-after that Dreamer runs without contacting the internet.
+after that Dreamer runs without contacting the internet, unless the picture model is changed in
+`config.yaml` (then the next start may download again, `server/offline.py`).
 
 ## From a drawing to a picture
 
@@ -54,10 +55,12 @@ sequenceDiagram
     W-->>Kid: picture, 2 steps batched (~70 ms)
     Kid->>W: stroke (seq 42)
     W-->>Kid: picture (~70 ms)
-    Note over Kid,W: child stops drawing (150 ms pause)
+    Note over Kid,W: child stops drawing (150 ms quiet)
+    W-->>Kid: settle frame, same seq (~70 ms)
+    Note over Kid,W: 150 ms quiet again
     W-->>Kid: rung 1 (~44 ms)
     W-->>Kid: rung 2 (~44 ms)
-    W-->>Kid: rung 3 ... up to rung 6 (~0.3 s in all)
+    W-->>Kid: rung 3 ... up to rung 6 (~0.3 s of rungs, last one ~0.7 s after the stroke)
     Note over Kid,W: (+ 2x AI upscale, if it is switched on)
     Kid->>W: new stroke (seq 43)
     Note over W: stops refining after the current rung

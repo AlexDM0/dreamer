@@ -118,6 +118,8 @@ header.hero { padding-top: 40px; padding-bottom: 24px; }
 nav.toc { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
 nav.toc ol { list-style: none; display: flex; gap: 6px; margin: 0 auto; padding: 10px 16px; max-width: 1040px; overflow-x: auto; scrollbar-width: none; }
 nav.toc ol::-webkit-scrollbar { display: none; }
+/* Narrow screens: wrap the sections instead of a hidden horizontal drag strip. */
+@media (max-width: 860px) { nav.toc ol { flex-wrap: wrap; overflow-x: visible; } nav.toc a { padding: 5px 10px; } }
 nav.toc a { display: block; white-space: nowrap; text-decoration: none; color: var(--text-muted); font-size: 14px; font-weight: 600; padding: 6px 12px; border-radius: var(--radius-pill); }
 nav.toc a:hover { background: var(--surface-sunken); color: var(--text); }
 nav.toc a.on { background: var(--accent-soft); color: var(--accent-text); }
@@ -178,7 +180,7 @@ label.switch input { width: 20px; height: 20px; accent-color: var(--accent); }
 .lat-bar { height: 26px; border-radius: 8px; background: var(--surface-sunken); position: relative; overflow: hidden; }
 .lat-bar span { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding: 0 8px; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--text-on-accent); overflow: hidden; }
 .lat-bar .gpu { background: var(--accent); }
-.lat-bar .net { background: var(--iris-300); color: var(--iris-900); }
+.lat-bar .net { background: var(--iris-100); color: var(--iris-900); }
 .lat-bar .wait { background: repeating-linear-gradient(135deg, var(--surface-pressed) 0 6px, transparent 6px 12px); color: var(--text-muted); }
 .lat-bar .rung { background: var(--track-rung); color: var(--iris-900); border-left: 1px solid var(--surface); }
 
@@ -294,6 +296,11 @@ footer ul { padding-left: 20px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
 }
+/* Keyboard focus must win over the components' own box-shadows. */
+.stage button:focus-visible, button.primary:focus-visible, .seg button:focus-visible,
+.pick:focus-visible, .pad:focus-visible { box-shadow: var(--focus-ring); }
+@media (max-width: 560px) { .lat-row { grid-template-columns: 1fr; gap: 4px; } }
+@media (max-width: 560px) { .net .lbl { font-size: 20px; } .net .sub { font-size: 17px; } }
 </style>
 </head>
 <body>
@@ -368,7 +375,7 @@ footer ul { padding-left: 20px; }
 <section class="chapter" id="loop">
   <p class="kicker">1 &middot; The loop</p>
   <h2>From a finger on glass to a picture, and back</h2>
-  <p>Everything happens on the home network. The iPad runs a plain web page saved to the home screen. With every stroke it sends what the child drew to one Python program on the PC, over a WebSocket (a connection that stays open, so each message goes straight through). The picture comes back on the same connection.</p>
+  <p>Everything happens on the home network. The iPad runs a plain web page saved to the home screen. While the child draws, it keeps sending what is on the paper to one Python program on the PC (a new copy as soon as the previous picture comes back), over a WebSocket (a connection that stays open, so each message goes straight through). The picture comes back on the same connection.</p>
 
   <div class="card net">
     <svg viewBox="0 0 640 190" role="img" aria-label="The iPad sends the stroke layer and paper colour to the PC; the PC sends a picture back over the same WebSocket">
@@ -471,7 +478,7 @@ footer ul { padding-left: 20px; }
   <p class="kicker">3 &middot; Drawing fast, refining slowly</p>
   <h2>Keep up while the pen moves. Polish when it stops.</h2>
   <p><b>While the child draws,</b> Dreamer runs 2 steps per picture, and runs them <i>together</i> as one batch through the model (StreamDiffusion's &ldquo;denoising batch&rdquo;). That keeps up with the pen, at the cost of each picture arriving one frame late, so once the child pauses Dreamer re-draws the last sketch once (&ldquo;settle&rdquo;).</p>
-  <p><b>When the child stops for 150 ms,</b> the polishing starts: up to 6 single-step <b>rungs</b>, each 44&ndash;48 ms, each one replacing the picture on screen. A new stroke stops it after the rung in progress, and the pen is followed again straight away.</p>
+  <p><b>About a third of a second after the child stops</b> (150 ms of quiet, one settle frame, 150 ms of quiet again), the polishing starts: up to 6 single-step <b>rungs</b>, each 44&ndash;48 ms, each one replacing the picture on screen. A new stroke stops it after the rung in progress, and the pen is followed again straight away.</p>
 
   <div class="card">
     <div class="sim">
@@ -498,13 +505,13 @@ footer ul { padding-left: 20px; }
           <span><i style="background:var(--celebrate)"></i>pen down</span>
         </div>
         <div class="readout" id="simReadout" aria-live="polite">Hold the picture (or the space bar) to draw.</div>
-        <p class="note" style="margin-top:10px">Timings follow the worker's real rules: one picture in flight, 150 ms of quiet before settling and again before polishing, then the rungs, so the last rung lands about 0.65&ndash;0.72 s after the pen lifts (depending on where in a frame it lifts). The picture on the left is a real frame from Dreamer's refinement lab for the <span id="padDrawingName">cat</span> drawing (lab run: 1-step drawing picture).</p>
+        <p class="note" style="margin-top:10px">Timings follow the worker's real rules: one picture in flight, 150 ms of quiet before settling and again before polishing, then the rungs, so the last rung lands about 0.65&ndash;0.72 s after the pen lifts (depending on where in a frame it lifts). With AI upscale on, each rung takes about 31 ms more. The picture on the left is a real frame from Dreamer's refinement lab for the <span id="padDrawingName">cat</span> drawing (lab run: 1-step drawing picture).</p>
       </div>
     </div>
   </div>
 
   <h3>Why not simply keep going with more steps?</h3>
-  <p>The obvious way to polish is to continue the model's own path with more steps. Dreamer's first version did exactly that, in passes of 4, 8, 12, 16 and 20 steps. By eye, the first few extra steps looked like the same picture getting sharper. Measured, the layout already shifts after the first extra step (drift 20&ndash;26 in the slider below), and from about 6 steps the picture visibly <b>repaints the scene</b>: in the close-ups, the cat's face is redrawn. SD-Turbo is made for 1 to 4 steps, not twenty.</p>
+  <p>The obvious way to polish is to continue the model's own path with more steps. Dreamer's first version did exactly that, in passes of 4, 8, 12, 16 and 20 steps. By eye, the first few extra steps looked like the same picture getting sharper. Measured, the layout already shifts after the first extra step (drift 20&ndash;26 in the slider below), from about 6 steps it <b>drifts</b> further, and at 12&ndash;20 steps it paints a different scene: in the close-ups, the cat's face is redrawn. SD-Turbo is made for 1 to 4 steps, not twenty.</p>
   <p>Drag the slider to compare, on a real test drawing. <b>Drift</b> is how much the broad layout changed compared to the first picture (shrink both pictures to a tiny 40&times;28 thumbnail and measure the average difference, on a 0&ndash;255 scale). The target was to stay under about 6.</p>
 
   <div class="card">
@@ -548,7 +555,7 @@ footer ul { padding-left: 20px; }
     <div class="card tight"><b>Max drift</b> <span class="note">lower is better</span><div class="bars" id="driftBars"></div></div>
     <div class="card tight"><b>Final detail (&times; first picture)</b> <span class="note">higher is better</span><div class="bars" id="detailBars"></div></div>
   </div>
-  <p class="note">Anchored has the lowest average max drift (5.6), almost the most detail, shrinking steps (9.0 &rarr; 0.9) and the fastest rungs (44 ms in the lab), so it is the default. It is not perfect: averaged it stays under 6, but the cat (8.3 at the first rung, 7.1 at the last) and the meadow (7.4&ndash;7.9) still go over, mostly at the first rung, and only 2 of 6 drawings pass the full rule (the others miss it by detail staying flat rather than rising). The tiled hi-res variants add slightly more detail but cost 175&ndash;295 ms per rung and drift more.</p>
+  <p class="note">Anchored has the lowest average max drift (5.6), almost the most detail, shrinking steps (9.0 &rarr; 0.9) and the fastest rungs (44 ms in the lab), so it is the default. It is not perfect: averaged it stays under 6, but the cat (8.3 at the first rung, 7.1 at the last) and the meadow (7.4&ndash;7.9, creeping up) go over the drift target, and only 2 of 6 drawings pass the full rule: the house and dinosaur stay under the drift target but their detail dips after the first rung. The tiled hi-res variants add slightly more detail but cost 175&ndash;295 ms per rung and drift more.</p>
 
   <div class="card tight">
     <b>Optional: AI upscale</b>
@@ -578,7 +585,7 @@ footer ul { padding-left: 20px; }
   <p class="small muted">Parents manage the list from a PIN-protected page on their phone: hide topics, rename them, or write their own (up to 120 characters, for example &ldquo;a pirate ship on a sunny sea&rdquo;). The start phrase is deliberately &ldquo;a colorful illustration&rdquo; and not &ldquo;a child's drawing&rdquo;: the second one asked for a drawing look and kept the pen strokes.</p>
 
   <h3>A safety check on every picture</h3>
-  <p>Before any picture is shown, an image safety classifier (<code>Freepik/nsfw_image_detector</code>, running as a TensorRT engine) looks at it. That costs about 4 ms per picture. If it flags a picture, the iPad simply keeps the previous one.</p>
+  <p>Before any picture is shown, an image safety classifier (the StreamDiffusion fork's NSFW detector, running as a TensorRT engine) looks at it. That costs about 4 ms per picture. If it flags a picture, the PC sends the previous picture again. It looks for nudity and adult content; it does not judge whether a picture is scary.</p>
   <div class="card">
     <div class="row"><label class="switch"><input type="checkbox" id="flagToggle"> Pretend the new picture is flagged</label></div>
     <div class="safety">
@@ -610,7 +617,7 @@ footer ul { padding-left: 20px; }
     <div class="vram-stats" id="vramStats"></div>
     <details class="techy">
       <summary>For the tech-curious: engine size</summary>
-      <p class="small muted" style="margin:8px 0">An engine is built for a fixed range of steps that can run together in one batch. A bigger range needs more memory, but not always: see the note below.</p>
+      <p class="small muted" style="margin:8px 0">An engine is built for a fixed range of steps that can run together in one batch. A bigger range needs more memory, but not always: see the note below. Dreamer accepts 1, 2, 4 or 8: an engine for up to 3 cannot be built (the ControlNet's TensorRT build fails for that range).</p>
       <div class="seg" role="group" aria-label="Engine batch" id="engPick"></div>
     </details>
     <p class="note" style="margin:12px 0 0">GB here means 1,024 MB, so the parts add up to the bar. From <code>static/vram.json</code>: whole-card memory measured with <code>nvidia-smi</code> on the RTX 3080, including the desktop. Surprise from the measurements: engines for &ldquo;up to 2 steps&rdquo; need <i>more</i> memory than &ldquo;up to 4&rdquo; (measured twice). Picture size barely matters for memory, but a lot for speed.</p>
@@ -715,7 +722,7 @@ footer ul { padding-left: 20px; }
     { title: "Line map", body: "Wherever the child drew becomes a white line on black, thickened by one pixel. This is the guide the ControlNet follows. White-on-black turned out to matter: with black-on-white, the model followed the lines clearly less.", facts: ["white on black", "lines thickened 1 px", "feeds the ControlNet"] },
     { title: "Start image: colour clouds", body: "The model does not start from the sketch itself, because then the pen strokes showed up in the picture. Instead each coloured stroke becomes a soft cloud of its colour (blur radius 24 px) on the paper colour. Dark outlines add no colour; the line map carries them. So the picture knows where the orange is, without tracing the line.", facts: ["Gaussian blur, radius 24 px", "paper colour is the ground", "black paper → night scene"] },
     { title: "Prompt", body: "The text that steers the model is built on the PC from the topic and style the child tapped, both chosen by a parent beforehand. It always ends with a fixed child-friendly phrase. Section 4 lets you build one.", facts: ["never typed by the child", "fixed ending, always last"] },
-    { title: "SD-Turbo UNet + scribble ControlNet", body: "The heart of it. SD-Turbo's UNet removes noise in 2 steps while the scribble ControlNet keeps it on the child's lines (strength 0.55). Both run as TensorRT engines compiled for this graphics card. While drawing, the 2 steps run together as one batch, so the picture keeps pace with the pen.", facts: ["2 steps, batched", "ControlNet strength 0.55", "ControlNet ≈ 27 ms of a 49 ms one-step frame"] },
+    { title: "SD-Turbo UNet + scribble ControlNet", body: "The heart of it. SD-Turbo's UNet removes noise in 2 steps while the scribble ControlNet keeps it on the child's lines (strength 0.55). Both run as TensorRT engines compiled for this graphics card. While drawing, the 2 steps run together as one batch, so the picture keeps pace with the pen.", facts: ["2 steps, batched", "ControlNet strength 0.55", "ControlNet ≈ half of a one-step frame"] },
     { title: "Tiny VAE decode", body: "The denoising happens on a compact latent grid, eight times smaller than the picture on each side. A small, fast decoder (TinyVAE) turns that grid into the full-colour picture.", facts: ["latent grid → pixels", "TensorRT engine"] },
     { title: "Safety check", body: "An image classifier looks at every picture before it leaves the PC. If it flags one, the previous picture stays on the iPad. It costs about 4 ms per picture.", facts: ["Freepik/nsfw_image_detector", "≈ 4 ms", "flagged → previous picture stays"] },
     { title: "Picture to the iPad", body: "The picture goes back as a JPEG on the same WebSocket and appears next to the drawing. Measured with a WebSocket test client on the PC itself (512 px), the mean round trip from a new sketch to a new picture was 128 ms; the facts sheet puts it at about 0.1–0.2 s once running. The picture in this panel was made with the optional AI upscale on (off by default).", facts: ["JPEG", "128 ms mean (test client, Wi-Fi not included)", "first picture after start-up 733 ms"] },
@@ -777,7 +784,7 @@ footer ul { padding-left: 20px; }
     rows.push({ title: "Child pauses", note: "quiet, settle, quiet, 6 rungs × 44–48 ms", bar: polish });
     byId("latency").innerHTML = rows.map((row) =>
       `<div class="lat-row"><span>${row.title}<br><span class="note">${row.note}</span></span><div class="lat-bar">${row.bar}</div></div>`).join("")
-      + `<div class="legend" style="margin-top:2px"><span><i style="background:var(--accent)"></i>graphics card</span><span><i style="background:var(--iris-300)"></i>whole round trip</span><span><i style="background:var(--track-rung)"></i>polishing rung</span><span><i style="background:var(--surface-pressed)"></i>waiting for quiet</span><span>full width = 0.7 s</span></div>`;
+      + `<div class="legend" style="margin-top:2px"><span><i style="background:var(--accent)"></i>graphics card</span><span><i style="background:var(--iris-100)"></i>whole round trip</span><span><i style="background:var(--track-rung)"></i>polishing rung</span><span><i style="background:var(--surface-pressed)"></i>waiting for quiet</span><span>full width = 0.7 s</span></div>`;
   })();
 
   /* ---------- 2. denoising slider ---------- */
@@ -864,7 +871,7 @@ footer ul { padding-left: 20px; }
 
   /* ---------- 3. refinement data (docs/research/refinement-results.json) ---------- */
   const DRAWINGS = ["cat", "house", "rocket", "dinosaur", "castle"];
-  const DRAWING_LABEL = { cat: "Cat", house: "House", rocket: "Rocket", dinosaur: "Dinosaur", castle: "Castle" };
+  const DRAWING_LABEL = { cat: "Cat", house: "House", rocket: "Rocket", dinosaur: "Dinosaur", castle: "Castle", meadow: "Meadow" };
   const DRIFT = {
     path: {
       house: [20.3, 26.1, 30.2, 31.6, 31.8, 32.3, 32.5],
@@ -1109,7 +1116,7 @@ footer ul { padding-left: 20px; }
   ];
   const STYLES = [
     ["Cartoon", "\u{1F58D}️", "cartoon style, bold outlines, flat colors"],
-    ["Crayon", "✏️", "crayon drawing, waxy texture"],
+    ["Crayon", "🖍", "crayon drawing, waxy texture"],
     ["Watercolor", "\u{1F3A8}", "soft watercolor painting"],
     ["Clay", "\u{1F9F8}", "claymation, plasticine models"],
     ["Storybook", "\u{1F4D6}", "storybook illustration"],
@@ -1177,6 +1184,7 @@ footer ul { padding-left: 20px; }
   let engineBatch = 4;
   let longSide = 640;
   // One unit convention: GB = 1024 MB, and the bar is 10 x 1024 MB like the admin page's budget.
+  // (The fact sheet divides by 1,000: its "7.4 GB" for the default engines is 7,418 MB, shown here as 7.2.)
   const gigabytes = (megabytes) => (megabytes / 1024).toFixed(1);
   const DEFAULT_DRAW_MS = 73; // 2 steps together, 1-4 engine, 640x448 (docs/gpu-results.md)
   function renderVram() {
@@ -1226,7 +1234,7 @@ footer ul { padding-left: 20px; }
     byId("cnLook").innerHTML = `<b>${variant.label}${variant.current ? " (what Dreamer uses)" : ""}:</b> ${variant.look}`;
   }
   segmented(byId("cnPick"), VARIANTS.map((variant, index) => ({ value: index, label: variant.label })), 0, (index) => { variantIndex = index; renderControlNet(); });
-  segmented(byId("cnDrawingPick"), DRAWINGS.map((name) => ({ value: name, label: DRAWING_LABEL[name] })), cnDrawing, (name) => { cnDrawing = name; renderControlNet(); });
+  segmented(byId("cnDrawingPick"), [...DRAWINGS, "meadow"].map((name) => ({ value: name, label: DRAWING_LABEL[name] })), cnDrawing, (name) => { cnDrawing = name; renderControlNet(); });
   byId("cnTable").innerHTML = VARIANTS.map((variant) => `<tr class="${variant.current ? "best" : ""}"><td>${variant.label}${variant.current ? " <span class='chip accent'>current</span>" : ""}</td><td class="num">${variant.ms}</td><td class="num">${variant.memory}</td><td>${variant.look}</td></tr>`).join("");
   renderControlNet();
 

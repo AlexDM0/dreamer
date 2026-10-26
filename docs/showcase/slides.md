@@ -58,7 +58,7 @@ Those four constraints drive every later slide.
 Watercolor, draw a rocket. In the live split view the picture is already there while the
 rocket is half drawn. Backend speed while drawing is about 12-15 pictures per second
 (67-80 ms) at 640×448 (facts.md, "The experience"); through the real server the round trip is about
-0.1-0.2 s (facts.md).
+0.1-0.2 s (facts.md; measured at 512 px).
 
 ---
 
@@ -84,7 +84,7 @@ the app's default is off.
 
 **Headline:** Parents set the boundaries from their phone.
 
-- PIN-protected, with a growing lock-out after wrong tries.
+- PIN-protected, with a growing lock-out after wrong tries; on the iPad the PIN is asked every time.
 - Live view of the iPad's picture; change topic, style and look on the fly.
 - Picture controls with a help page that shows real example pictures for every setting.
 
@@ -96,7 +96,7 @@ the app's default is off.
 (`screenshots/phone-admin-memory-meter-dark.png`) greys out settings that would not fit
 in the graphics card's 10 GB, which is a nice detail if there is time. If you show the
 "Now" card (`phone-admin-now-dark.png`), explain its stats row first: "Engine", "Speed" and
-"Last picture" are technical readouts , not something parents need to watch.
+"Last picture" are technical readouts, not something parents need to watch.
 
 ---
 
@@ -131,7 +131,8 @@ a backlog.
 `screenshots/desktop-help-refine.png`
 
 **Speaker notes:** The help strip shows the current anchored refinement: the picture while
-drawing, then steps 3, 5 and 7 (about 0.1, 0.2 and 0.3 s after the pause). The scene stays
+drawing, then steps 3, 5 and 7 (about 0.1, 0.2 and 0.3 s after refinement starts, which is about a
+third of a second after the last stroke). The scene stays
 put and gains detail. For the contrast with the earlier "continue the path" approach, which
 repainted the scene after about 6 steps, show `docs/research/img/refine-cat.png` (row 1 vs
 row "anchored").
@@ -163,8 +164,8 @@ hires adds real resolution but costs about 295 ms per step.
 **Headline:** Built for a child, checked every time, kept at home.
 
 - Children never type: prompts are built on the PC from parent-approved topics and styles, ending in a fixed child-friendly phrase.
-- An image safety classifier checks every picture before it is shown (about 4 ms); if flagged, the previous picture stays.
-- No account. Drawings and pictures never leave your home network; models are downloaded once, on the first start, then Dreamer runs without contacting the internet.
+- An image classifier checks every picture for nudity and adult content before it is shown (about 4 ms); if flagged, the previous picture is shown again. It does not judge "scary": parents choose the topics.
+- No account. Drawings and pictures never leave your home network; models are downloaded once, on the first start, then Dreamer runs without contacting the internet (unless the picture model is changed).
 
 **Image:** `screenshots/phone-admin-login-light.png` next to `screenshots/ipad-landscape-start.png`
 
@@ -202,14 +203,14 @@ story: always test that your conditioning actually conditions.
 **Headline:** Measured on one RTX 3080 (10 GB).
 
 - About 12-15 pictures/s while drawing; refinement done about 0.6-0.7 s after the pen lifts (facts.md).
-- 7.4 GB graphics memory for the default engines; start-up about 8-10 s; first-ever engine build roughly 10-25 min, once (facts.md).
-- 256 automated tests on the mock backend (facts.md).
+- 7.4 GB graphics memory for the default engines; start-up about 8-10 s; first-ever engine build roughly 10-30 min, once (facts.md).
+- About 260 automated tests on the mock backend (facts.md).
 
 **What's next:**
 
 - Test with more children and iPads (so far one iPad at home).
 - Style from a photo (needs SD 1.5 + IP-Adapter; uploads are already stored, and screened while the safety filter is on).
-- Refinement: try SD 1.5 + TCD, and lineart/HED ControlNets (refinement-models.md, "Still to try").
+- Refinement: try a lower ControlNet strength for refinement only (SD 1.5 + TCD and lineart/HED were tested and lost to the current setup, refinement-models.md).
 
 **Image:** `screenshots/ipad-landscape-gallery.jpg` as a closing backdrop, or the six
 before/after pairs from `screenshots/examples/` as a grid
