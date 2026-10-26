@@ -21,10 +21,10 @@ document.addEventListener("touchend", (e) => {
   lastTouchEnd = now;
 }, { passive: false });
 document.addEventListener("dblclick", (e) => e.preventDefault());
-// Allow horizontal scrolling of the pick rows only; everything else stays put. Sliders
+// Allow scrolling the world/style sheet and the gallery only; everything else stays put. Sliders
 // must get their touch moves too, or Safari will not let them be dragged.
 document.addEventListener("touchmove", (e) => {
-  if (!e.target.closest('.pick-row, .gallery-scroll, input[type="range"]')) e.preventDefault();
+  if (!e.target.closest('.pick-grid, .gallery-scroll, input[type="range"]')) e.preventDefault();
 }, { passive: false });
 
 // ---- modules ----

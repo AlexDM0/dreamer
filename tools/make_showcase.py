@@ -497,10 +497,10 @@ class Output:
 KID_CLEAN = """(() => {
   const hidden = (sel) => { const el = document.querySelector(sel); return !el || el.hidden; };
   return document.querySelector('#conn').dataset.state === 'ready'
-    && hidden('#hint') && hidden('#confirm') && hidden('#replaced')
+    && hidden('#hint') && hidden('#confirm') && hidden('#replaced') && hidden('#pick-sheet') && hidden('#offline')
     && (%(picker)s || hidden('#bg-picker'))
     && (%(fx)s || !document.querySelector('.fly, .spark'))
-    && document.querySelectorAll('#topics .pick[data-id]').length > 0;
+    && document.querySelector('#topics .chooser[data-id]') !== null;
 })()"""
 
 
@@ -515,7 +515,7 @@ class Kid:
         await self.page.navigate(self.server.base + "/")
         await self.page.wait_for("document.querySelector('#conn').dataset.state === 'ready'",
                                  "the kid page to connect", timeout=30)
-        await self.page.wait_for("document.querySelectorAll('#topics .pick[data-id]').length > 0",
+        await self.page.wait_for("document.querySelector('#topics .chooser[data-id]') !== null",
                                  "topic buttons on the kid page")
 
     async def clean(self, picker: bool = False, effects: bool = False, timeout: float = 15) -> None:
@@ -547,13 +547,15 @@ class Kid:
         await asyncio.sleep(0.35)
 
     async def pick(self, kind: str, item_id: str) -> None:
-        selector = f'#{kind} .pick[data-id="{item_id}"]'
-        await self.page.eval(f"document.querySelector('{selector}').scrollIntoView("
-                             "{block: 'nearest', inline: 'nearest', behavior: 'instant'})")
+        # Picking the current item again still re-renders (used for a fresh live picture).
+        current = f'#{kind} .chooser[data-id="{item_id}"]'
+        await self.page.tap_selector(f"#{kind} .chooser")
+        await self.page.wait_for("!document.querySelector('#pick-sheet').hidden", f"the {kind} sheet")
+        tile = f'#pick-grid .pick-tile[data-id="{item_id}"]'
+        await self.page.eval(f"document.querySelector('{tile}').scrollIntoView({{block: 'nearest', behavior: 'instant'}})")
         await asyncio.sleep(0.2)
-        await self.page.tap_selector(selector, scroll=False)
-        await self.page.wait_for(f"document.querySelector('{selector}').classList.contains('active')",
-                                 f"{kind} {item_id} selected")
+        await self.page.tap_selector(tile, scroll=False)
+        await self.page.wait_for(f"document.querySelector('{current}') !== null", f"{kind} {item_id} selected")
 
     async def color(self, color: str) -> None:
         if await self.page.eval(f"window.dreamer.toolbar.color === '{color}' && !window.dreamer.toolbar.eraser"):

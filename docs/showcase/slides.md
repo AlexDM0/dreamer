@@ -48,7 +48,7 @@ Those four constraints drive every later slide.
 **Headline:** Pick a paper, pick a world, and draw.
 
 - "New" asks for a paper colour first; black paper gives night scenes.
-- Big colour swatches, one brush slider, worlds and styles as picture buttons.
+- Big colour swatches, one brush slider, one button for the world and one for the style, each opening a sheet of big picture tiles.
 - The picture follows every line within a fraction of a second.
 
 **Images:** `screenshots/ipad-landscape-paper-picker.png`, then

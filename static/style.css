@@ -370,18 +370,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   padding: 4px;
   border-radius: var(--radius-pill);
   background: var(--surface-sunken);
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  touch-action: pan-x;
-  scroll-padding: 0 12px 0 60px;
-  /* Fade the far end so it is obvious the row scrolls (mask: only alpha matters). */
-  -webkit-mask-image: linear-gradient(90deg, black calc(100% - 36px), transparent);
-  mask-image: linear-gradient(90deg, black calc(100% - 36px), transparent);
 }
-.pick-row::after { content: ""; flex: none; width: 24px; height: 1px; } /* room past the fade */
-.pick-row::-webkit-scrollbar { display: none; }
 
 .row-icon {
   position: sticky;
@@ -400,13 +389,15 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 .row-icon svg { width: 24px; height: 24px; }
 .row-icon svg .dot { fill: currentColor; stroke: none; }
 
-.pick {
-  flex: none;
-  display: inline-flex;
+/* The current world / style; tapping it opens the picker sheet. */
+.chooser {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   align-items: center;
   gap: var(--space-2);
   height: var(--touch-kid);
-  padding: 0 var(--space-4) 0 var(--space-2);
+  padding: 0 var(--space-3) 0 var(--space-2);
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--surface);
@@ -415,26 +406,72 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
-  white-space: nowrap;
-  transition: transform var(--dur-fast) var(--ease-spring), background-color var(--dur-fast), color var(--dur-fast), box-shadow var(--dur-fast);
+  text-align: left;
+  transition: transform var(--dur-fast) var(--ease-spring), background-color var(--dur-fast);
 }
-.pick:active { transform: scale(var(--press-scale)); }
-.pick .emoji { font-size: 26px; line-height: 1; }
-.pick.active {
-  background: var(--accent);
-  color: var(--text-on-accent);
-  box-shadow: var(--shadow-2);
-}
-.pick.active:focus-visible { box-shadow: var(--focus-ring); }
+.chooser:active { transform: scale(var(--press-scale)); background: var(--surface-pressed); }
+.chooser:focus-visible { box-shadow: var(--focus-ring); }
+.chooser .emoji { flex: none; font-size: 26px; line-height: 1; }
+.chooser .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chooser .chevron { flex: none; display: grid; place-items: center; width: 24px; height: 24px; color: var(--text-muted); }
+.chooser .chevron svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 
-.pick.placeholder {
-  width: 110px;
+.chooser.placeholder {
   box-shadow: none;
-  background: var(--surface);
   opacity: 0.7;
   animation: shimmer 1.4s var(--ease-in-out) infinite;
 }
 @keyframes shimmer { 50% { opacity: 0.3; } }
+
+/* Picker sheet: big tiles, one tap picks and closes. */
+.overlay .pick-card {
+  width: min(720px, 100%);
+  max-width: 720px;
+  max-height: calc(100dvh - 2 * var(--space-6));
+  padding: var(--space-6) var(--space-5) var(--space-5);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.pick-grid {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-2) 4px 4px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.pick-tile {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: var(--space-2);
+  min-height: 112px;
+  padding: var(--space-3) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-1), 0 0 0 1px var(--border);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  transition: transform var(--dur-fast) var(--ease-spring), background-color var(--dur-fast), color var(--dur-fast);
+}
+.pick-tile:active { transform: scale(var(--press-scale)); }
+.pick-tile .emoji { font-size: 44px; line-height: 1; }
+.pick-tile .label { overflow-wrap: anywhere; }
+.pick-tile.active { background: var(--accent); color: var(--text-on-accent); box-shadow: var(--shadow-2); }
+.pick-tile:focus-visible { box-shadow: var(--focus-ring); }
+@media (max-width: 560px) {
+  .overlay .pick-card { padding-left: var(--space-3); padding-right: var(--space-3); }
+  .pick-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--space-2); }
+  .pick-tile { min-height: 96px; }
+  .pick-tile .emoji { font-size: 36px; }
+}
 
 /* ---------- Stage ---------- */
 
@@ -555,8 +592,6 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .brush { flex: 1; max-width: 340px; }
   .brush input[type="range"] { flex: 1; width: auto; min-width: 90px; }
   .modes { margin-left: auto; }
-  .row.picks { grid-template-columns: 1fr auto; }
-  .row.picks #minimise { grid-column: 2; grid-row: 1 / span 2; }
 }
 
 /* Landscape iPads up to ~1180 px wide (iPad mini, 10.2", Air at 1024-1180): the tools row
@@ -685,7 +720,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 }
 
 /* Phones in portrait (a parent trying the page first): every tool must stay on screen.
-   The swatches wrap instead of running off the edge, the topic/style rows sit side by
+   The swatches wrap instead of running off the edge, the topic/style pickers sit side by
    side, and the Save / Gallery / New pills shrink to fit the width. */
 @media (orientation: portrait) and (max-width: 700px) {
   .toolbar { margin: var(--space-2) var(--space-2) 0; padding: 6px var(--space-2); gap: 6px; border-radius: var(--radius-lg); }
@@ -703,11 +738,11 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .mode { width: 46px; height: 46px; border-radius: 14px; }
   .row.picks { grid-template-columns: 1fr 1fr auto; gap: 6px; }
   .row.picks #minimise { grid-row: auto; grid-column: auto; width: var(--touch-kid); height: var(--touch-kid); }
-  .pick { height: 42px; font-size: var(--text-md); padding: 0 var(--space-3) 0 6px; }
-  .pick .emoji { font-size: 22px; }
+  .chooser { height: 42px; font-size: var(--text-md); }
+  .chooser .emoji { font-size: 22px; }
   .row-icon { width: 42px; height: 42px; }
   .row-icon svg { width: 20px; height: 20px; }
-  .pick-row { padding: 3px; gap: 6px; scroll-padding: 0 12px 0 50px; }
+  .pick-row { padding: 3px; gap: 6px; }
   .stage-wrap { margin: var(--space-2) var(--space-2) 6px; }
   .side { gap: var(--space-2); padding: 0 var(--space-2) 10px; justify-content: center; }
   .side-btn { gap: 6px; padding: 3px var(--space-3) 3px 3px; font-size: var(--text-md); }
@@ -718,6 +753,8 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 /* Phones: four pills don't fit, so they become plain round buttons (they keep their
    aria-label). */
 @media (orientation: portrait) and (max-width: 480px) {
+  .row-icon { display: none; } /* the picker's emoji is enough; its label gets the room */
+  .chooser .chevron { display: none; }
   .side { gap: 28px; }
   .side-btn { padding: 0; background: transparent; box-shadow: none; }
   .side-btn .disc { background: var(--surface); box-shadow: var(--shadow-2), 0 0 0 1px var(--border); }
@@ -745,11 +782,11 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .tile span, .mode span { display: none; }
   .modes { padding: 2px; border-radius: var(--radius-md); }
   .mode { width: 40px; height: 38px; border-radius: 12px; }
-  .pick { height: 36px; font-size: var(--text-md); padding: 0 var(--space-3) 0 6px; }
-  .pick .emoji { font-size: 20px; }
+  .chooser { height: 36px; font-size: var(--text-md); }
+  .chooser .emoji { font-size: 20px; }
   .row-icon { width: 36px; height: 36px; }
   .row-icon svg { width: 18px; height: 18px; }
-  .pick-row { padding: 3px; gap: 6px; scroll-padding: 0 12px 0 46px; }
+  .pick-row { padding: 3px; gap: 6px; }
   .stage-wrap { margin: 6px var(--space-2) var(--space-2); }
   .side { gap: var(--space-3); padding-right: var(--space-2); }
   .side-btn { width: 56px; }

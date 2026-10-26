@@ -171,6 +171,17 @@
       </div>
     </div>
 
+    <!-- World / style picker: one tap picks and closes. Filled by toolbar.js. -->
+    <div class="overlay" id="pick-sheet" hidden>
+      <div class="card pick-card" role="dialog" aria-modal="true" aria-labelledby="pick-title">
+        <button type="button" class="card-close" id="pick-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <p id="pick-title">Pick a world</p>
+        <div class="pick-grid" id="pick-grid" role="radiogroup" aria-labelledby="pick-title"></div>
+      </div>
+    </div>
+
     <!-- Paper colour: picked for a new drawing, or changed any time (strokes stay). -->
     <div class="overlay" id="bg-picker" hidden>
       <div class="card paper-card" role="dialog" aria-modal="true" aria-labelledby="bg-title">
