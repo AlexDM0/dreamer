@@ -188,3 +188,21 @@ More to read:
 - [Refinement research](docs/research/refinement-models.md): how the "polish when they pause" step was chosen
 - [Design system](docs/design-system.md): the look of the drawing page and the parent page
 - [Showcase kit](docs/showcase/README.md): material for a short presentation
+
+## 📄 License
+
+Dreamer's own code and documentation are under the [MIT License](LICENSE).
+
+The AI models are not part of this repository: they are downloaded on first use and each
+comes with its own license, which applies to how you use them.
+
+| Model | Used for | License |
+|---|---|---|
+| [stabilityai/sd-turbo](https://huggingface.co/stabilityai/sd-turbo) | the pictures (default) | Stability AI Community License (non-commercial use; see the model card) |
+| [thibaud/controlnet-sd21-scribble-diffusers](https://huggingface.co/thibaud/controlnet-sd21-scribble-diffusers) | following the drawing | see the model card |
+| [Freepik/nsfw_image_detector](https://huggingface.co/Freepik/nsfw_image_detector) | the safety filter | see the model card |
+| [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) `realesr-animevideov3` | AI upscale (optional) | BSD-3-Clause |
+| [stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5), [h1t/TCD-SD15-LoRA](https://huggingface.co/h1t/TCD-SD15-LoRA), [lllyasviel/control_v11p_sd15_scribble](https://huggingface.co/lllyasviel/control_v11p_sd15_scribble) | the optional SD 1.5 + TCD picture model | CreativeML OpenRAIL-M (SD 1.5); see each model card |
+
+Dreamer is made for a trusted home Wi-Fi. Never make its port (7860) reachable from the
+internet.
