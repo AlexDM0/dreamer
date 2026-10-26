@@ -54,6 +54,16 @@ class ScreenUploadJob:
     future: concurrent.futures.Future = field(default_factory=concurrent.futures.Future)
 
 
+# A CUDA context that hit one of these is broken for good: every later call (even loading the
+# models again) fails the same way, so only a fresh process helps.
+FATAL_CUDA_MARKERS = ("illegal memory access", "cudaErrorIllegalAddress", "CUDA error: an illegal",
+                      "unspecified launch failure", "device-side assert")
+
+
+def _is_fatal(msg: str) -> bool:
+    return any(marker.lower() in msg.lower() for marker in FATAL_CUDA_MARKERS)
+
+
 class GpuWorker(threading.Thread):
     """Daemon thread running warmup, then the frame loop until ``stop()``.
 
@@ -69,8 +79,13 @@ class GpuWorker(threading.Thread):
                  config: Any,
                  backend_factory: Callable[[], Any] | None = None,
                  params: GenParams | None = None,
-                 on_params_error: Callable[[GenParams], None] | None = None) -> None:
+                 on_params_error: Callable[[GenParams], None] | None = None,
+                 on_fatal: Callable[[str], None] | None = None) -> None:
         super().__init__(name="gpu-worker", daemon=True)
+        # ``on_fatal(msg)`` is called once when the GPU itself has crashed (see _is_fatal):
+        # nothing in this process can recover then, so the app restarts the process.
+        self.on_fatal = on_fatal
+        self._fatal_reported = False
         if backend is None and backend_factory is None:
             raise ValueError("need a backend or a backend_factory")
         self.backend = backend
@@ -359,6 +374,16 @@ class GpuWorker(threading.Thread):
         self._failures += 1
         with self._stats_lock:
             self._errors += 1
+        if _is_fatal(msg) and self.on_fatal is not None:
+            self._set_state("error", "The graphics card crashed; Dreamer is restarting")
+            if not self._fatal_reported:
+                self._fatal_reported = True
+                log.critical("GPU crashed (%s); asking for a process restart", msg)
+                try:
+                    self.on_fatal(msg)
+                except Exception:
+                    log.exception("on_fatal callback failed")
+            return
         self._set_state("error", msg)
 
     def _maybe_rebuild(self) -> None:

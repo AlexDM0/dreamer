@@ -528,3 +528,34 @@ def test_line_map_follows_the_controlnet_of_the_active_picture_model():
     assert worker._frame_inputs(sketch, job, replace(params, picture_model="tcd"))[1] is not None
     cfg.model.tcd_controlnet = ""
     assert worker._frame_inputs(sketch, job, replace(params, picture_model="tcd"))[1] is None
+
+
+class CrashingBackend(SpyBackend):
+    """The GPU crashed: every frame fails with CUDA's illegal-memory-access error."""
+
+    def generate(self, init_image, line_map):
+        raise RuntimeError("CUDA error: an illegal memory access was encountered")
+
+
+def test_gpu_crash_asks_for_a_process_restart_once():
+    fatal = []
+    worker, rec = _start(CrashingBackend(), Config(backend="mock", size=SIZE), on_fatal=fatal.append)
+    try:
+        for seq in (1, 2):
+            worker.mailbox.put(FrameJob(seq, sketch_png(size=64), "p"))
+        wait_until(lambda: fatal and any("restarting" in msg for _, msg in rec.statuses))
+        assert len(fatal) == 1 and "illegal memory access" in fatal[0]
+    finally:
+        worker.stop()
+
+
+def test_ordinary_failures_do_not_restart_the_process():
+    fatal = []
+    worker, rec = _start(SpyBackend(fail_seed=13), Config(backend="mock", size=SIZE), on_fatal=fatal.append)
+    try:
+        worker.set_params(replace(worker.params, seed=13))
+        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
+        wait_until(lambda: rec.reverts)
+        assert fatal == []
+    finally:
+        worker.stop()

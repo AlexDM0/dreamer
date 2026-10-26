@@ -47,4 +47,16 @@ echo "Press Ctrl+C to stop."
 echo
 
 export SKETCH_CONFIG="$CONFIG"
-exec "$PY" -m server
+# Exit code 75: the GPU crashed and Dreamer asked to be started again (a crashed CUDA context
+# can't recover inside the process). Restart a few times, then give up.
+restarts=0
+while :; do
+    code=0
+    "$PY" -m server || code=$?
+    if [ "$code" -ne 75 ] || [ "$restarts" -ge 5 ]; then
+        exit "$code"
+    fi
+    restarts=$((restarts + 1))
+    echo "The graphics card crashed; restarting Dreamer ($restarts of 5)..."
+    sleep 3
+done

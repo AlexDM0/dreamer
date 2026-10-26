@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import logging
+import logging.handlers
 import socket
 import sys
+from pathlib import Path
 
 import uvicorn
 
@@ -21,14 +23,50 @@ def _lan_address() -> str | None:
         return None
 
 
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+LOG_FILE = "logs/dreamer.log"  # under data_dir; kept after the console window closes
+ALREADY_RUNNING_EXIT_CODE = 3
+
+
+def _log_to_file(data_dir: str) -> None:
+    """Also log to data_dir/logs/dreamer.log (rotated, 3 x 5 MB)."""
+    path = Path(data_dir) / LOG_FILE
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(path, maxBytes=5_000_000, backupCount=3,
+                                                       encoding="utf-8")
+    except OSError as exc:
+        logging.getLogger("dreamer").warning("could not open the log file %s: %s", path, exc)
+        return
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    logging.getLogger().addHandler(handler)
+    logging.captureWarnings(True)
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    """True when another process (usually another Dreamer) already listens on the port.
+    Checked before the models load: two processes loading onto the GPU at once can crash it."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind((host, port))
+        except OSError:
+            return True
+    return False
+
+
 def main() -> int:
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
     try:
         config = load_config()
     except ValueError as exc:
         logging.getLogger("dreamer").error("%s", exc)
         return 2
+    _log_to_file(config.data_dir)
+    if _port_in_use(config.host, config.port):
+        logging.getLogger("dreamer").error(
+            "Port %d is already in use: Dreamer is probably already running. Close the other "
+            "Dreamer window first.", config.port)
+        return ALREADY_RUNNING_EXIT_CODE
     offline.apply(config)  # before anything imports the model libraries
     from .app import create_app
 

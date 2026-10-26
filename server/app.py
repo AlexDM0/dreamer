@@ -7,9 +7,11 @@ import contextlib
 import io
 import json
 import logging
+import os
 import queue
 import secrets
 import sqlite3
+import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from functools import partial
@@ -52,6 +54,9 @@ from .params import LIMITS, GenParams, ParamsStore, defaults_from_config
 from .session import FrameOrigin, Peer, SessionManager
 from .styles import KINDS, LABEL_MAX, StyleStore, clean_text
 from .worker import FrameJob, GpuWorker
+
+# Exit code that asks run.ps1 / run.sh to start Dreamer again (after a GPU crash).
+RESTART_EXIT_CODE = 75
 
 log = logging.getLogger("dreamer.app")
 
@@ -277,6 +282,11 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             session.broadcast_admin(params_msg(previous))
             announce_canvas(before, previous)
 
+        def restart_process(msg: str) -> None:
+            """The GPU crashed: leave with RESTART_EXIT_CODE after the status went out, so
+            run.ps1 / run.sh start a fresh process (a crashed CUDA context can't recover)."""
+            threading.Timer(1.0, os._exit, args=(RESTART_EXIT_CODE,)).start()
+
         factory = None
         if backend is None:
             from .backends import make_backend
@@ -292,7 +302,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         worker = GpuWorker(backend, mailbox, threadsafe(on_picture),
                            threadsafe(session.broadcast_status), config,
                            backend_factory=factory, params=params_store.get(),
-                           on_params_error=threadsafe(params_reverted))
+                           on_params_error=threadsafe(params_reverted),
+                           on_fatal=restart_process)
         runtime.worker = worker
         worker.start()
         stats_task = asyncio.create_task(stats_loop())

@@ -54,5 +54,14 @@ $env:SKETCH_CONFIG = $Config
 # PowerShell 5.1 turns each stderr line into an error record, and "Stop" would kill the
 # server on its first log line; the exit code decides success instead.
 $ErrorActionPreference = "Continue"
-& $python -m server
-exit $LASTEXITCODE
+# Exit code 75: the GPU crashed and Dreamer asked to be started again (a crashed CUDA context
+# can't recover inside the process). Restart a few times, then give up.
+$restarts = 0
+while ($true) {
+    & $python -m server
+    $code = $LASTEXITCODE
+    if ($code -ne 75 -or $restarts -ge 5) { exit $code }
+    $restarts++
+    Write-Host "The graphics card crashed; restarting Dreamer ($restarts of 5)..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 3
+}
