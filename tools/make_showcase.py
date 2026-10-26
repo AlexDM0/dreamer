@@ -505,7 +505,7 @@ class Output:
 KID_CLEAN = """(() => {
   const hidden = (sel) => { const el = document.querySelector(sel); return !el || el.hidden; };
   return document.querySelector('#conn').dataset.state === 'ready'
-    && hidden('#hint') && hidden('#confirm') && hidden('#replaced') && hidden('#pick-sheet') && hidden('#offline')
+    && hidden('#hint') && hidden('#confirm') && hidden('#replaced') && hidden('#pick-sheet') && hidden('#offline') && hidden('#sleep')
     && (%(picker)s || hidden('#bg-picker'))
     && (%(fx)s || !document.querySelector('.fly, .spark'))
     && document.querySelector('#topics .chooser[data-id]') !== null;

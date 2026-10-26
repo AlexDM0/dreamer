@@ -148,9 +148,11 @@ function showConn() {
   updateOffline();
 }
 
-// Banner over the drawing while pictures can't come back. Drawing keeps working; the
-// sketch is sent again when the server answers. Short blips (a reconnect, one busy
-// frame) don't show it.
+// While the computer can't be reached (off, asleep, no Wi-Fi), a full-screen sleeping
+// computer covers everything and the page keeps looking for it; when it answers, the
+// screen goes away by itself and the drawing (kept underneath) is sent again. While it is
+// reachable but busy or in trouble, a banner over the drawing says so and drawing goes on.
+// Short blips (a reconnect, one busy frame) show neither.
 const OFFLINE_DELAY_MS = 2500;
 const BUSY_DELAY_MS = 1500;
 let offlineKind = null;  // what the banner shows now
@@ -166,9 +168,14 @@ function offlineState() {
   return null;
 }
 
+const SLEEP_TEXT = {
+  wifi: ["The iPad can't find the Wi-Fi", "Ask a grown-up to check the Wi-Fi."],
+  server: ["The dream computer is asleep", "Ask a grown-up to wake it up."],
+};
+const SLEEP_RETRY_MS = 3000; // look for the computer this often while the sleep screen is up
+let sleepTimer = 0;
+
 const OFFLINE_TEXT = {
-  wifi: ["The iPad is not on the Wi-Fi", "Keep drawing! Your picture comes back when the Wi-Fi does."],
-  server: ["The dream computer is asleep", "Keep drawing! Ask a grown-up to start Dreamer on the computer."],
   busy: ["The dream computer is waking up…", "Keep drawing, your picture is on its way."],
   error: ["The dream computer has a hiccup", "It keeps trying. Keep drawing!"],
 };
@@ -184,24 +191,48 @@ function updateOffline() {
 }
 
 function setOffline(kind) {
+  const asleep = kind === "wifi" || kind === "server";
+  if (asleep) showSleep(kind); else hideSleep(offlineKind === "wifi" || offlineKind === "server");
   offlineKind = kind;
   const el = $("#offline");
-  el.hidden = !kind;
-  $("#stage").classList.toggle("offline-dim", kind === "wifi" || kind === "server");
-  if (!kind) return;
+  el.hidden = !kind || asleep;
+  if (!kind || asleep) return;
   const [title, sub] = OFFLINE_TEXT[kind];
   $("#offline-title").textContent = title;
   $("#offline-sub").textContent = sub;
   el.dataset.kind = kind;
-  $("#offline-retry").hidden = kind !== "server" && kind !== "wifi";
 }
 
-$("#offline-retry").addEventListener("click", (e) => {
-  const btn = e.currentTarget;
-  btn.disabled = true;
-  btn.textContent = "Trying…";
-  net.retryNow();
-  setTimeout(() => { btn.disabled = false; btn.textContent = "Try again"; }, 1500);
+function showSleep(kind) {
+  const [title, sub] = SLEEP_TEXT[kind];
+  $("#sleep-title").textContent = title;
+  $("#sleep-sub").textContent = sub;
+  const sleep = $("#sleep");
+  if (!sleep.hidden) return;
+  hideHint();
+  $(".app").inert = true; // no taps, no focus, no screen reader behind it
+  sleep.hidden = false;
+  try { sleep.focus({ preventScroll: true }); } catch { /* old Safari */ }
+  clearInterval(sleepTimer);
+  sleepTimer = setInterval(() => net.retryNow(), SLEEP_RETRY_MS);
+}
+
+function hideSleep(wasAsleep) {
+  clearInterval(sleepTimer);
+  const sleep = $("#sleep");
+  if (sleep.hidden) return;
+  sleep.hidden = true;
+  $(".app").inert = false;
+  if (wasAsleep && net.state === "open") showHint("The dream computer is awake! ✨");
+}
+
+// Keys do nothing behind the sleep screen either (the PIN pad and sheets listen globally).
+document.addEventListener("keydown", (e) => {
+  if (!$("#sleep").hidden) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
+// Coming back to the app (iPad woke up): look right away.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && !net.connected) net.retryNow();
 });
 addEventListener("online", () => { net.retryNow(); updateOffline(); });
 addEventListener("offline", updateOffline);

@@ -129,6 +129,8 @@
      dark halo, so it shows on every paper. */
   --pinch-ring-edge: var(--sand-0);
   --pinch-ring-halo: rgb(0 0 0 / 0.45);
+  /* The sleeping computer's screen on the full-screen "asleep" view: night, in any theme. */
+  --brand-night-deep: var(--iris-950);
 
   /* ---------- 3. Scales --------------------------------------------------------- */
 

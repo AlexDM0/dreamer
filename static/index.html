@@ -89,7 +89,6 @@
             <strong id="offline-title"></strong>
             <span id="offline-sub"></span>
           </span>
-          <button type="button" class="offline-btn" id="offline-retry" hidden>Try again</button>
         </div>
         <div class="hint" id="hint" role="status" aria-live="polite" hidden>
           <span class="hint-text" id="hint-text"></span>
@@ -232,6 +231,42 @@
         <button type="button" class="btn big" id="take-over">Draw here</button>
       </div>
     </div>
+  </div>
+
+  <!-- Full screen while the dream computer can't be reached (off, asleep, or no Wi-Fi):
+       a sleeping computer a child understands without reading. Blocks everything else
+       and keeps looking; it goes away by itself when the computer answers. -->
+  <div class="sleep" id="sleep" role="alertdialog" aria-modal="true" aria-labelledby="sleep-title"
+       aria-describedby="sleep-sub" tabindex="-1" hidden>
+    <svg class="sleep-art" viewBox="0 0 360 260" aria-hidden="true">
+      <g class="sleep-stars">
+        <path class="star s1" d="M330 120l3 9 9 3-9 3-3 9-3-9-9-3 9-3z"/>
+        <path class="star s2" d="M300 150l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>
+        <path class="star s3" d="M78 168l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>
+        <path class="star s4" d="M228 22l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>
+        <circle class="star s2" cx="130" cy="30" r="2.5"/>
+        <circle class="star s3" cx="330" cy="96" r="2.5"/>
+        <circle class="star s1" cx="20" cy="120" r="2"/>
+      </g>
+      <path class="sleep-moon" d="M30 30a30 30 0 1 0 22 46a24 24 0 1 1-22-46z"/>
+      <g class="sleep-pc">
+        <path class="pc-stand" d="M160 196h40l8 28h-56z"/>
+        <rect class="pc-stand" x="128" y="220" width="104" height="14" rx="7"/>
+        <rect class="pc-body" x="70" y="62" width="220" height="146" rx="22"/>
+        <rect class="pc-screen" x="86" y="78" width="188" height="114" rx="12"/>
+        <path class="pc-face" d="M128 128q14 12 28 0M204 128q14 12 28 0M168 160q12 8 24 0"/>
+        <ellipse class="pc-blush" cx="124" cy="150" rx="10" ry="6"/>
+        <ellipse class="pc-blush" cx="236" cy="150" rx="10" ry="6"/>
+      </g>
+      <g class="sleep-z">
+        <text class="z z1" x="262" y="70">Z</text>
+        <text class="z z2" x="286" y="44">Z</text>
+        <text class="z z3" x="306" y="20">Z</text>
+      </g>
+    </svg>
+    <h1 class="sleep-title" id="sleep-title">The dream computer is asleep</h1>
+    <p class="sleep-sub" id="sleep-sub">Ask a grown-up to wake it up.</p>
+    <p class="sleep-looking"><span class="sleep-dot" aria-hidden="true"></span>Looking for it…</p>
   </div>
 
   <script type="module" src="/static/app.js"></script>

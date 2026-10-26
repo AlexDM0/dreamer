@@ -120,13 +120,21 @@ async function main() {
     "",
   ].join("\n"));
 
-  const server = spawn(PYTHON, ["-m", "server"], {
-    cwd: ROOT,
-    env: { ...process.env, SKETCH_CONFIG: configPath, PYTHONUNBUFFERED: "1" },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  server.stdout.on("data", (d) => { serverLog += d; });
-  server.stderr.on("data", (d) => { serverLog += d; });
+  const startServer = () => {
+    const proc = spawn(PYTHON, ["-m", "server"], {
+      cwd: ROOT,
+      env: { ...process.env, SKETCH_CONFIG: configPath, PYTHONUNBUFFERED: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    proc.stdout.on("data", (d) => { serverLog += d; });
+    proc.stderr.on("data", (d) => { serverLog += d; });
+    return proc;
+  };
+  const stopServer = async (proc) => {
+    proc.kill("SIGTERM");
+    await new Promise((r) => (proc.exitCode !== null ? r() : proc.once("exit", r)));
+  };
+  let server = startServer();
 
   const browser = await chromium.launch();
   const errors = [];
@@ -428,12 +436,28 @@ async function main() {
     check((await adminCtx.request.get(base + art.picture)).status() === 404, "emptying the trash removes the files");
     await kid.click("#gallery-back");
 
+    // ----- the computer goes away: full-screen sleep screen, blocks the page, comes back by itself
+    await kid.waitForSelector('#conn[data-state="ready"]');
+    await stopServer(server);
+    await kid.waitForSelector("#sleep:not([hidden])", { timeout: 15000 });
+    check(await kid.evaluate(() => document.querySelector(".app").inert), "the sleep screen covers the page when the computer is off");
+    const inkBefore = await inkOn(kid, "#sketch");
+    await stroke(kid, [[0.2, 0.2], [0.8, 0.8]]);
+    check((await inkOn(kid, "#sketch")) === inkBefore && await kid.isHidden("#gallery"),
+          "nothing behind the sleep screen can be drawn on or tapped");
+    await shot(kid, "20-kid-computer-asleep");
+    server = startServer();
+    await waitForHealth(base, server);
+    await kid.waitForSelector("#sleep", { state: "hidden", timeout: 15000 });
+    check(await kid.evaluate(() => !document.querySelector(".app").inert)
+          && (await kid.textContent("#hint-text")).includes("awake"),
+          "the sleep screen goes away by itself when the computer is back");
+
     check(errors.length === 0, `no page errors${errors.length ? ": " + errors.join("; ") : ""}`);
     console.log(`\nPASS (${step} checks)`);
   } finally {
     await browser.close();
-    server.kill("SIGTERM");
-    await new Promise((r) => (server.exitCode !== null ? r() : server.once("exit", r)));
+    await stopServer(server);
     rmSync(tmp, { recursive: true, force: true });
   }
 }

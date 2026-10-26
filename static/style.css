@@ -924,7 +924,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 .hint.pop { animation: hint-in var(--dur-slow) var(--ease-spring); }
 @keyframes hint-in { from { transform: translate(-50%, 20px) scale(0.94); opacity: 0; } }
 
-/* Banner while pictures can't come back (server asleep, Wi-Fi off, model loading). */
+/* Banner while the computer is reachable but not making pictures (loading, a hiccup). */
 .offline {
   position: absolute;
   left: 50%;
@@ -937,7 +937,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   align-items: center;
   gap: var(--space-4);
   min-height: 64px;
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
+  padding: var(--space-2) var(--space-5);
   border-radius: var(--radius-xl);
   background: var(--surface-inverse);
   color: var(--text-inverse);
@@ -947,24 +947,9 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 .offline[hidden] { display: none; }
 .offline-icon { flex: none; width: 32px; height: 32px; fill: var(--warning); }
 .offline[data-kind="busy"] .offline-icon { animation: pulse 1.4s var(--ease-in-out) infinite; }
-.offline-text { display: grid; gap: 2px; padding: var(--space-2) var(--space-2) var(--space-2) 0; }
+.offline-text { display: grid; gap: 2px; padding: var(--space-2) 0; }
 .offline-text strong { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: var(--leading-tight); }
 .offline-text span { font-size: var(--text-base); opacity: 0.85; }
-.offline-btn {
-  flex: none;
-  height: var(--touch-kid);
-  padding: 0 var(--space-5);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--text-on-accent);
-  font-weight: var(--weight-semibold);
-}
-.offline-btn:active { background: var(--accent-pressed); }
-.offline-btn:disabled { opacity: 0.7; }
-.offline-btn[hidden] { display: none; }
-/* The old picture is stale while the server is gone. */
-.stage.offline-dim .pane-picture canvas { filter: grayscale(0.7) brightness(0.85); transition: filter var(--dur-slow); }
 
 /* ---------- Gallery ---------- */
 
@@ -1214,6 +1199,64 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 }
 
 .card-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); margin-top: var(--space-3); }
+
+/* Full screen while the computer can't be reached: night sky, a sleeping computer, Zzz.
+   Above everything (dialogs included); the page underneath is inert. */
+.sleep {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
+  background: var(--brand-night);
+  color: var(--text-on-accent);
+  text-align: center;
+  touch-action: none;
+  outline: none;
+  animation: sleep-in var(--dur-slow) var(--ease-out);
+}
+.sleep[hidden] { display: none; }
+@keyframes sleep-in { from { opacity: 0; } }
+.sleep-art { width: min(440px, 80vw, 52vh); height: auto; overflow: visible; }
+.sleep-moon, .sleep-stars .star, .sleep-z .z { fill: var(--brand-moon); }
+.sleep-stars .star { animation: twinkle 2.6s var(--ease-in-out) infinite; }
+.sleep-stars .s2 { animation-delay: -0.9s; }
+.sleep-stars .s3 { animation-delay: -1.7s; }
+.sleep-stars .s4 { animation-delay: -2.2s; }
+@keyframes twinkle { 50% { opacity: 0.25; } }
+.pc-body { fill: var(--brand-moon); }
+.pc-stand { fill: var(--brand-moon); opacity: 0.8; }
+.pc-screen { fill: var(--brand-night-deep); }
+.pc-face { fill: none; stroke: var(--brand-moon); stroke-width: 7; stroke-linecap: round; }
+.pc-blush { fill: var(--celebrate); opacity: 0.55; }
+.sleep-pc { transform-origin: 180px 230px; animation: breathe 4s var(--ease-in-out) infinite; }
+@keyframes breathe { 50% { transform: scale(1.025); } }
+.sleep-z .z { font: var(--weight-bold) 30px var(--font-rounded); opacity: 0; animation: snooze 3s var(--ease-out) infinite; }
+.sleep-z .z2 { font-size: 24px; animation-delay: 1s; }
+.sleep-z .z3 { font-size: 18px; animation-delay: 2s; }
+@keyframes snooze {
+  0% { opacity: 0; transform: translate(-10px, 14px); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(10px, -14px); }
+}
+.sleep-title {
+  margin: var(--space-2) 0 0;
+  font: var(--weight-bold) clamp(26px, 4.6vw, 44px) / var(--leading-tight) var(--font-rounded);
+}
+.sleep-sub { margin: 0; font: var(--weight-semibold) clamp(18px, 2.8vw, 26px) / var(--leading-tight) var(--font-rounded); opacity: 0.92; }
+.sleep-looking {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-base);
+  opacity: 0.75;
+}
+.sleep-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--brand-moon); animation: pulse 1.4s var(--ease-in-out) infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
