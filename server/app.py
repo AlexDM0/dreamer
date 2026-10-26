@@ -58,6 +58,8 @@ from .worker import FrameJob, GpuWorker
 
 # Exit code that asks run.ps1 / run.sh to start Dreamer again (after a GPU crash).
 RESTART_EXIT_CODE = 75
+# Seconds an admin change must settle before the drawing is redrawn with it.
+REDRAW_DELAY = 0.4
 
 log = logging.getLogger("dreamer.app")
 
@@ -522,8 +524,45 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         peer.send_json({"t": "saved", "artwork": art.public()})
         session.broadcast_admin({"t": "gallery"})
 
+    # The kid's latest sketch (seq, PNG, the peer it came from, its canvas), so an admin
+    # change can redraw it at once; forgotten on Clear / New.
+    last_sketch: dict[str, Any] = {}
+    redraw_timer: list[asyncio.TimerHandle] = []
+
+    def redraw_soon() -> None:
+        """An admin setting changed: make the current drawing's picture again, then refine it,
+        once the change has settled (a dragged slider sends many changes). A model switch the
+        change asked for happens first: the worker applies settings before its next job."""
+        loop = last_sketch.get("loop")
+        if loop is None:
+            return  # nothing drawn yet
+        loop.call_soon_threadsafe(restart_redraw_timer, loop)  # admin handlers may run in threads
+
+    def restart_redraw_timer(loop: asyncio.AbstractEventLoop) -> None:
+        for handle in redraw_timer:
+            handle.cancel()
+        redraw_timer.clear()
+        if "payload" in last_sketch:
+            redraw_timer.append(loop.call_later(REDRAW_DELAY, redraw_now))
+
+    def redraw_now() -> None:
+        redraw_timer.clear()
+        if "payload" not in last_sketch:
+            return
+        cur = session.current()  # the prompt as the settings are now
+        prompt = styles.build_prompt(cur["topic"], cur["style"])
+        canvas = last_sketch["canvas"]
+        origin = FrameOrigin(last_sketch["peer"], last_sketch["payload"], prompt, cur["topic"],
+                             cur["style"], session.epoch, canvas)
+        # Same seq: the kid page shows it as the newest picture of the drawing it has.
+        mailbox.put(FrameJob(last_sketch["seq"], last_sketch["payload"], prompt, owner=origin,
+                             background=canvas["background"] if canvas else None,
+                             orientation=canvas["orientation"] if canvas else None))
+
     def forget_old_drawing() -> None:
         """Drop the waiting sketch, and stop the worker settling / refining the old one."""
+        for key in ("seq", "payload", "peer", "canvas"):
+            last_sketch.pop(key, None)
         mailbox.clear()
         if runtime.worker is not None:
             runtime.worker.reset()
@@ -626,6 +665,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
         mailbox.put(FrameJob(seq, payload, prompt, owner=origin,
                              background=canvas["background"] if canvas else None,
                              orientation=canvas["orientation"] if canvas else None))
+        last_sketch.update(seq=seq, payload=payload, peer=peer, canvas=canvas,
+                           loop=asyncio.get_running_loop())
 
     def same_origin(ws: WebSocket) -> bool:
         """Browsers always send Origin on WebSockets: refuse sockets opened by pages
@@ -725,8 +766,10 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
     # the event loop; its lock keeps the loop's reads consistent meanwhile.
 
     def mutated() -> None:
-        """Push the new lists/defaults to the kid page after any admin change."""
+        """Push the new lists/defaults to the kid page after any admin change, and redraw the
+        drawing on screen (the topic, style or its prompt may have changed)."""
         session.broadcast_styles()
+        redraw_soon()
 
     def params_msg(params: GenParams) -> dict[str, Any]:
         return {"t": "params", "params": params.to_dict()}
@@ -897,6 +940,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
             runtime.worker.set_params(params)
         session.broadcast_admin(params_msg(params))  # keeps other admin phones in sync
         announce_canvas(before, params)
+        if params != before:
+            redraw_soon()
 
     @admin.get("/params")
     async def get_params() -> dict[str, Any]:

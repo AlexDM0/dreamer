@@ -253,3 +253,28 @@ def test_a_slow_client_gets_the_newest_picture_not_a_backlog():
         return ws.sent
 
     assert asyncio.run(run()) == [b"first", b"p49"]
+
+
+def test_admin_change_redraws_the_drawing_on_screen(admin):
+    with admin.websocket_connect("/ws") as ws:
+        hello(ws)
+        ws.send_bytes(sketch_frame(5))
+        recv_until(ws, is_picture(5))
+        assert admin.patch("/api/admin/params", json={"seed": 77}).status_code == 200
+        # Nobody draws: the same drawing comes back with the new settings.
+        _, (_, seq, _) = recv_until(ws, is_picture(5))
+    assert seq == 5
+
+
+def test_admin_change_after_clear_redraws_nothing(admin):
+    with admin.websocket_connect("/ws") as ws:
+        hello(ws)
+        ws.send_bytes(sketch_frame(5))
+        recv_until(ws, is_picture(5))
+        ws.send_json({"t": "clear"})
+        assert admin.patch("/api/admin/params", json={"seed": 78}).status_code == 200
+        time.sleep(0.8)  # longer than the redraw delay
+        ws.send_json({"t": "ping"})
+        seen = []
+        recv_until(ws, lambda kind, value: seen.append((kind, value)) or is_json("pong")(kind, value))
+    assert not any(kind == "bin" for kind, _ in seen)
