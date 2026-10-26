@@ -99,6 +99,8 @@ def main() -> int:
     parser.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
                         help="override a constant in server/refine.py, e.g. ANCHOR_SIGMA=1.5")
     parser.add_argument("--tag", default="", help="suffix for the output files of this run")
+    parser.add_argument("--refine-cn", type=float, default=None,
+                        help="ControlNet strength during refinement only (drawing keeps the default)")
     args = parser.parse_args()
     models = [name for name in args.models.split(",") if name]
     for assignment in args.set:
@@ -138,6 +140,8 @@ def main() -> int:
             backend.set_params(params)
             for _ in range(backend.latency_frames + 1):
                 p0 = backend.generate(init, line_map)
+            if args.refine_cn is not None:
+                backend.set_params(dataclasses.replace(params, controlnet_scale=args.refine_cn))
             started = time.perf_counter()
             steps = list(refine.run(name, backend, p0, init, line_map, draw, args.budget, upscaler))
             if steps:

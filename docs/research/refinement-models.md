@@ -211,4 +211,27 @@ Recommendation: keep SD-Turbo + scribble + anchored. Revisit SD 1.5 + TCD only i
 different, more "illustrated" look overall, as a whole-pipeline swap (it would also unlock
 IP-Adapter for "style from a picture"), not as a refiner.
 
-Still to try: the ControlNet strength lowered for refinement only.
+### ControlNet strength during refinement only (measured)
+
+`tools/refine_lab.py --models anchored --refine-cn <scale>` (drawing at 0.55, refinement at the
+given strength), six drawings:
+
+| refinement ControlNet | max drift | final detail | ms/rung |
+|---|---|---|---|
+| 0.55 (current) | 5.6 | 1.75 | 48 |
+| 0.3 | 5.6 | 1.80 | 47 |
+| 0 (off) | 5.7 | 1.85 | 39 |
+
+The zoom crops are practically identical: the latent anchor already holds the shapes, so the
+ControlNet adds little once the first picture exists. Turning it off would save ~9 ms per rung,
+but switching the ControlNet config back on for the next stroke costs a stream update right
+when the child draws again, so the default stays 0.55.
+
+### SD 1.5 + TCD as a picture model
+
+Now selectable live on the admin page ("Picture model", `server/backends/tcd.py`): plain
+diffusers, strength 1.0, 4 drawing steps; refinement re-renders the same seed at 6/8/12/16/20
+steps. Measured on the RTX 3080: ~0.29 s (2 steps), ~0.41 s (4), ~0.52 s (6), ~0.62 s (8) per
+picture; VAE decode ~80 ms of that, UNet + ControlNet ~65 ms per step; safety check 13 ms;
+switching models 6-10 s. Faster would need TensorRT engines for SD 1.5 (the fork supports SD
+1.5 via its LCM path; TCD's scheduler would have to be added).

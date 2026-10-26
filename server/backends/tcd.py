@@ -28,6 +28,17 @@ SAFETY_MODEL = "Freepik/nsfw_image_detector"
 REFINE_LADDER = (6, 8, 12, 16, 20)
 
 
+class _OutputOnly:
+    """Attention processor wrapper that returns only the output of a (output, cache) pair."""
+
+    def __init__(self, processor: Any) -> None:
+        self.processor = processor
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        result = self.processor(*args, **kwargs)
+        return result[0] if isinstance(result, tuple) else result
+
+
 def _model_attr(config: Any, name: str, default: Any) -> Any:
     return getattr(getattr(config, "model", None), name, default)
 
@@ -71,8 +82,10 @@ class TcdBackend:
             self._base, controlnet=controlnet, torch_dtype=torch.float16, safety_checker=None,
             requires_safety_checker=False).to("cuda")
         # The fork's diffusers build returns (output, kv cache) from attention; the UNet
-        # expects that, the VAE does not, so the VAE gets the plain processor.
-        pipeline.vae.set_default_attn_processor()
+        # expects that, the VAE does not: its processors drop the cache (still fast SDPA;
+        # the plain processor made decoding ~10x slower).
+        pipeline.vae.set_attn_processor({name: _OutputOnly(processor)
+                                         for name, processor in pipeline.vae.attn_processors.items()})
         pipeline.scheduler = TCDScheduler.from_config(pipeline.scheduler.config)
         pipeline.load_lora_weights(self._lora, weight_name=self._lora_file)
         pipeline.fuse_lora()
