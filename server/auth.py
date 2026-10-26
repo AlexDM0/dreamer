@@ -24,6 +24,8 @@ log = logging.getLogger("dreamer.auth")
 
 COOKIE_NAME = "sg_admin"
 COOKIE_MAX_AGE = 30 * 24 * 3600
+# Logins from the iPad's parent gate: short, so the child's device does not stay unlocked.
+SHORT_COOKIE_MAX_AGE = 15 * 60
 MAX_FAILURES = 5
 LOCKOUT_SECONDS = 30.0
 LOCKOUT_MAX_SECONDS = 15 * 60.0
@@ -101,8 +103,8 @@ class AdminAuth:
     def _sign(self, payload: str) -> str:
         return hmac.new(self._key, payload.encode("ascii"), hashlib.sha256).hexdigest()
 
-    def make_cookie(self) -> str:
-        expiry = str(int(self._clock()) + COOKIE_MAX_AGE)
+    def make_cookie(self, max_age: int = COOKIE_MAX_AGE) -> str:
+        expiry = str(int(self._clock()) + max_age)
         return f"{expiry}.{self._sign(expiry)}"
 
     def verify_cookie(self, value: str | None) -> bool:

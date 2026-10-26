@@ -13,7 +13,7 @@ in these shots were made with AI upscale on (2x); the app's default is off.
 - **Short:** A cat drawn with a finger, and the picture Dreamer made of it.
 - **Long:** On the left, a child's drawing of a cat with a fish, seaweed and bubbles, on
   night blue paper. On the right, the same scene as a cartoon picture under the sea: the
-  cat keeps its pose and its tail, the fish becomes a fish friend, the zigzags become
+  cat keeps its ears, face and round body, the fish becomes a fish friend, the zigzags become
   seaweed. Ocean world, cartoon style.
 
 ### 2. `screenshots/ipad-landscape-rocket-live-split.png`
@@ -66,8 +66,8 @@ in these shots were made with AI upscale on (2x); the app's default is off.
 ![](../../screenshots/ipad-portrait-meadow-split.jpg)
 
 - **Short:** Upright works too: a flower meadow in watercolor.
-- **Long:** The iPad held upright. A drawing of four flowers, a sun, clouds and a
-  butterfly on sky blue paper, next to a soft watercolor meadow with the flowers in the
+- **Long:** The iPad held upright. A drawing of four flowers, a sun, clouds and (in the
+  drawing) a butterfly on sky blue paper, next to a soft watercolor meadow with the flowers in the
   same places. Drawings take the iPad's shape in either direction.
 
 ### 8. `screenshots/ipad-landscape-dinosaur-minimised.jpg`
@@ -84,7 +84,7 @@ in these shots were made with AI upscale on (2x); the app's default is off.
 ![](../../screenshots/ipad-landscape-dinosaur-picture.jpg)
 
 - **Short:** When they pause, the picture polishes itself.
-- **Long:** When the drawing pauses, the picture is refined for a moment, within half a
+- **Long:** When the drawing pauses, the picture is refined for a moment, within about a
   second, and (with AI upscale on, as here) made twice the size. A dino friend in crayon
   style on white paper.
 
@@ -102,8 +102,8 @@ in these shots were made with AI upscale on (2x); the app's default is off.
 
 - **Short:** The parent page: fine-tune it from your phone, if you like.
 - **Long:** On the parent's phone, behind a PIN: sliders for creativity, the draw
-  reaction and refinement, plus AI upscale and resolution, each with a short explanation
-  and an ⓘ that opens the help page. Changes show on the iPad within a moment. (This shot
+  reaction and refinement, and the refinement model, most with a short explanation and an
+  ⓘ that opens the help page (AI upscale and resolution follow further down). Changes show on the iPad within a moment. (This shot
   was taken with upscale on; the default is off.)
 
 ### 12. `screenshots/desktop-help-refine.png`
@@ -113,8 +113,8 @@ in these shots were made with AI upscale on (2x); the app's default is off.
 - **Short:** Every setting explained with real pictures.
 - **Long:** Each control on the parent page has a help section with example pictures made
   on the PC. This strip shows the refinement: the picture while drawing, then after
-  steps 3, 5 and 7 of the anchored detail ladder (about 0.1, 0.2 and 0.3 s after the
-  pause). The scene stays the same; only detail is added. Below it, the AI upscale zoomed in.
+  steps 3, 5 and 7 of the anchored detail ladder (about 0.1, 0.2 and 0.3 s after
+  refinement starts, measured with a 1-step draw reaction). The scene stays the same; only detail is added. Below it, the AI upscale zoomed in.
 
 ## Before/after pairs (`screenshots/examples/`)
 

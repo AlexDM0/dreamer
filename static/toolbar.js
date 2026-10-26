@@ -1,4 +1,4 @@
-// Toolbar UI: colours, brush size, clear, view modes, topic/style rows, connection dot.
+// Toolbar UI: colours, brush size, clear, view modes, topic/style pickers, connection dot.
 // Pure UI: it renders state it is given and emits events; app.js wires it up.
 //
 // Events (CustomEvent detail): "color" {color, eraser}, "width" {width}, "clear",
@@ -49,9 +49,12 @@ export class Toolbar extends EventTarget {
     this.scale = 1; // CSS px per canvas px, for the brush preview
     this.topic = null;
     this.style = null;
+    this._items = { topics: [], styles: [] };
+    this.sheetKind = null; // "topics" | "styles" while the picker sheet is open
     this._renderSwatches();
     this._bindBrush();
     this._bindButtons();
+    this._bindSheet();
     this.setItems("topics", null);
     this.setItems("styles", null);
     this._updatePreview();
@@ -101,12 +104,14 @@ export class Toolbar extends EventTarget {
   }
 
   /**
-   * Fill a topic or style row. `items` null shows a "waiting" placeholder row.
+   * Fill a topic or style row: one button showing the current pick, which opens the
+   * picker sheet. `items` null shows a "waiting" placeholder.
    * @param {"topics"|"styles"} kind
    * @param {Array<{id:string,label:string,emoji:string}>|null} items
    * @param {string} [current]
    */
   setItems(kind, items, current) {
+    this._items[kind] = items || [];
     const row = this.$(`#${kind}`);
     row.textContent = "";
     row.classList.toggle("waiting", !items);
@@ -117,49 +122,114 @@ export class Toolbar extends EventTarget {
     row.append(icon);
 
     if (!items) {
-      for (let i = 0; i < 4; i++) {
-        const ph = document.createElement("span");
-        ph.className = "pick placeholder";
-        ph.style.animationDelay = `${i * 120}ms`;
-        row.append(ph);
-      }
+      const ph = document.createElement("span");
+      ph.className = "chooser placeholder";
+      row.append(ph);
       return;
     }
-    for (const item of items) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "pick";
-      b.dataset.id = item.id;
-      b.setAttribute("aria-pressed", "false");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chooser";
+    b.setAttribute("aria-haspopup", "dialog");
+    const emoji = document.createElement("span");
+    emoji.className = "emoji";
+    const label = document.createElement("span");
+    label.className = "label";
+    const chevron = document.createElement("span");
+    chevron.className = "chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6.5 9.5l5.5 5.5 5.5-5.5"/></svg>';
+    b.append(emoji, label, chevron);
+    b.addEventListener("click", () => this.openSheet(kind));
+    row.append(b);
+    if (this.sheetKind === kind) this._fillSheet(kind); // a parent changed the list
+    this.select(kind, current);
+  }
+
+  /** Mark the current topic/style on its button and in the sheet. */
+  select(kind, id) {
+    if (kind === "topics") this.topic = id; else this.style = id;
+    const b = this.$(`#${kind} .chooser`);
+    if (b && b.tagName === "BUTTON") {
+      const item = this._items[kind].find((it) => it.id === id);
+      b.dataset.id = item ? item.id : "";
+      b.querySelector(".emoji").textContent = item ? item.emoji || "✨" : "✨";
+      b.querySelector(".label").textContent = item ? item.label : (kind === "topics" ? "Pick a world" : "Pick a style");
+      b.setAttribute("aria-label", `${kind === "topics" ? "World" : "Style"}: ${item ? item.label : "none"}. Change`);
+    }
+    if (this.sheetKind === kind) {
+      for (const t of this.$("#pick-grid").querySelectorAll(".pick-tile")) {
+        const on = t.dataset.id === id;
+        t.classList.toggle("active", on);
+        t.setAttribute("aria-checked", String(on));
+      }
+    }
+  }
+
+  /** Show the sheet of all worlds or styles. */
+  openSheet(kind) {
+    this.sheetKind = kind;
+    this._fillSheet(kind);
+    const sheet = this.$("#pick-sheet");
+    sheet.dataset.kind = kind;
+    sheet.hidden = false;
+    const grid = this.$("#pick-grid");
+    const active = grid.querySelector(".pick-tile.active") || grid.querySelector(".pick-tile");
+    if (active) {
+      try { active.focus({ preventScroll: true }); } catch { /* old Safari */ }
+      active.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  closeSheet() {
+    const kind = this.sheetKind;
+    if (!kind) return;
+    this.sheetKind = null;
+    this.$("#pick-sheet").hidden = true;
+    try { this.$(`#${kind} .chooser`).focus({ preventScroll: true }); } catch { /* gone */ }
+  }
+
+  get sheetOpen() { return !!this.sheetKind; }
+
+  _fillSheet(kind) {
+    this.$("#pick-title").textContent = kind === "topics" ? "Pick a world" : "Pick a style";
+    const grid = this.$("#pick-grid");
+    grid.textContent = "";
+    const current = kind === "topics" ? this.topic : this.style;
+    for (const item of this._items[kind]) {
+      const t = document.createElement("button");
+      t.type = "button";
+      t.className = "pick-tile";
+      t.dataset.id = item.id;
+      t.setAttribute("role", "radio");
+      const on = item.id === current;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-checked", String(on));
       const emoji = document.createElement("span");
       emoji.className = "emoji";
       emoji.textContent = item.emoji || "✨";
       const label = document.createElement("span");
       label.className = "label";
       label.textContent = item.label;
-      b.append(emoji, label);
-      b.addEventListener("click", () => {
+      t.append(emoji, label);
+      t.addEventListener("click", () => {
         this.select(kind, item.id);
+        this.closeSheet();
         this._emit(kind === "topics" ? "topic" : "style", { id: item.id });
       });
-      row.append(b);
-    }
-    this.select(kind, current, false);
-  }
-
-  /** Highlight the current topic/style and scroll it into view. */
-  select(kind, id, scroll = true) {
-    if (kind === "topics") this.topic = id; else this.style = id;
-    const row = this.$(`#${kind}`);
-    for (const b of row.querySelectorAll("button.pick")) {
-      const on = b.dataset.id === id;
-      b.classList.toggle("active", on);
-      b.setAttribute("aria-pressed", String(on));
-      if (on && scroll) b.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      grid.append(t);
     }
   }
 
   // ---- internals ----
+
+  _bindSheet() {
+    const sheet = this.$("#pick-sheet");
+    this.$("#pick-close").addEventListener("click", () => this.closeSheet());
+    // Tapping the dimmed area around the card closes it too.
+    sheet.addEventListener("click", (e) => { if (e.target === sheet) this.closeSheet(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && this.sheetOpen) this.closeSheet(); });
+  }
 
   _renderSwatches() {
     const box = this.$("#swatches");

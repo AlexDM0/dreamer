@@ -142,7 +142,7 @@ async function main() {
     kid.on("pageerror", (e) => errors.push(`kid: ${e.message}`));
     await kid.goto(base + "/");
     await kid.waitForSelector('#conn[data-state="ready"]', { timeout: 10000 });
-    await kid.waitForSelector("#topics .pick[data-id]");
+    await kid.waitForSelector("#topics .chooser[data-id]");
     check(true, "kid page connects and lists topics");
     const first = await drawing(kid);
     check(first.background === "#000000" && first.orientation === "landscape"
@@ -251,12 +251,15 @@ async function main() {
     await shot(admin, "06-admin-styles");
 
     // ----- the new style reaches the kid page without a reload
-    const btn = kid.locator("#styles .pick", { hasText: "Rainbow Party" });
+    await kid.click("#styles .chooser");
+    const btn = kid.locator("#pick-grid .pick-tile", { hasText: "Rainbow Party" });
     await btn.waitFor({ timeout: 10000 });
-    check(true, "new style button appears on the kid page without reload");
+    check(true, "new style appears in the kid page's style sheet without reload");
     const n = await pictures(kid);
     await btn.click();
-    check(await btn.evaluate((b) => b.classList.contains("active")), "tapping the new style selects it");
+    check(await kid.isHidden("#pick-sheet")
+          && await kid.locator("#styles .chooser").evaluate((b) => b.textContent.includes("Rainbow Party")),
+          "tapping the new style selects it and closes the sheet");
     await kid.waitForFunction((k) => Number(document.querySelector("#stage").dataset.pictures) > k,
                               n, { timeout: 10000 });
     check(true, "choosing a style re-renders the picture");

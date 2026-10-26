@@ -182,6 +182,14 @@ export class Net extends EventTarget {
     ws.onerror = () => { /* onclose follows */ };
   }
 
+  /** Try to reach the server right away instead of waiting for the next retry. */
+  retryNow() {
+    if (this.connected || this.state === "replaced") return;
+    this._backoff = BACKOFF_MIN_MS;
+    if (this.ws) return; // a connection attempt is already under way
+    this._connect();
+  }
+
   /** Reconnect after being replaced by another screen. */
   takeOver() {
     this._setState("connecting");

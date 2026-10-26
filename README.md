@@ -2,7 +2,7 @@
 
 <h3 align="center">Your child draws. Dreamer turns it into a picture, while they draw.</h3>
 
-<p align="center">A drawing game for ages 4–7 on the iPad, powered by a gaming PC with an NVIDIA RTX graphics card in your own home.</p>
+<p align="center">A drawing game for ages 4–7 on the iPad, powered by a gaming PC with an NVIDIA RTX graphics card in your own home. It is not an App Store app: the iPad opens it in Safari, served by your PC.</p>
 
 <p align="center"><img src="screenshots/ipad-landscape-cat-split.jpg" alt="On the left a child's finger drawing of an orange cat with a fish and seaweed on dark blue paper; on the right the same scene as a cartoon picture under the sea" width="860"></p>
 
@@ -14,7 +14,8 @@ together. When your child stops to look, the picture polishes itself for a momen
 There is nothing to type and nothing to read. You choose what the pictures can be about,
 and drawings and pictures never leave your home.
 
-**Needs:** a Windows gaming PC with an NVIDIA RTX graphics card, and an iPad on the same Wi-Fi.
+**Needs:** a Windows PC with an NVIDIA RTX graphics card with 10 GB of graphics memory
+(tested on an RTX 3080), internet for the first start, and an iPad on the same Wi-Fi.
 [More below](#-what-you-need).
 
 ## 📱 Screenshots
@@ -38,7 +39,7 @@ and drawings and pictures never leave your home.
 <img src="screenshots/ipad-portrait-meadow-split.jpg" alt="The iPad held upright: a drawing of flowers and a sun on light blue paper next to a watercolor flower meadow" width="260">
 &nbsp;&nbsp;
 <img src="screenshots/phone-admin-picture-controls-dark.png" alt="The parent page on a phone, with sliders for creativity, draw reaction and refinement" width="180">
-<br><b>Upright works too</b> &nbsp;·&nbsp; <b>7. The parent page on your phone</b>
+<br><b>7. Upright works too</b> &nbsp;·&nbsp; <b>8. The parent page on your phone</b>
 </p>
 
 ## 🎨 From drawing to picture
@@ -85,7 +86,9 @@ a home gaming PC. Left: the drawing on its paper. Right: the polished picture.
   in looks like cartoon, crayon, watercolor, clay and storybook. Hide the ones you don't
   want, change the order, or add your own topic or style in a few words.
 - **A PIN-protected parent page.** Open it on your phone, or tap the Dreamer icon on the
-  iPad and enter your PIN. Wrong guesses lock the PIN pad for longer and longer.
+  iPad and enter your PIN. On the iPad the PIN is asked every time and the login ends after
+  15 minutes, so your child's screen never stays unlocked. Wrong guesses lock the PIN pad
+  for longer and longer.
 - **Watch along.** The parent page shows the live picture from the iPad, and lets you
   switch topic, style and look while your child keeps drawing.
 - **Fine-tune if you like.** Sliders for how creative the pictures are, how closely they
@@ -98,17 +101,20 @@ a home gaming PC. Left: the drawing on its paper. Right: the polished picture.
   sent to the picture model is built on the PC, only from the topics and styles you have
   allowed, and always ends with a fixed phrase asking for friendly, child-appropriate
   pictures.
-- **A safety filter checks every picture.** An image classifier looks at each picture
-  before it is shown. If it flags one, the previous picture stays on screen. Like any
-  classifier it can make mistakes, so it is a safety net, not a guarantee. It is on by
-  default, and the parent page shows a clear warning if it is ever switched off.
+- **A filter checks every picture for nudity and adult content.** An image classifier
+  looks at each picture before it is shown. If it flags one, the previous picture is shown
+  again instead. Like any classifier it can make mistakes, so it is a safety net, not a
+  guarantee. It does not judge whether a picture is scary or sad: choosing the topics and
+  sitting with your child covers that. It is on by default, you can make it stricter or
+  looser on the parent page, and the parent page shows a clear warning if it is ever
+  switched off.
 - **Pictures are made by AI.** They can surprise you: odd details, an extra eye, or
   something that looks different from what your child meant. Sitting with your child
   the first few times, and talking about what the picture shows, works well.
 - **At home, no account.** Dreamer runs on your own PC and talks to the iPad over your
   home Wi-Fi. There is no sign-up. Drawings and pictures never leave your home network. Models are
   downloaded once, on the first start; after that Dreamer runs without contacting the
-  internet.
+  internet, unless you change the picture model in the settings file.
 
 ## 🧸 Made for small hands
 
@@ -126,13 +132,15 @@ No, Dreamer has no built-in timer. Use the iPad's own Screen Time settings, or s
 switch Dreamer off on the PC when drawing time is over.
 
 **Who can see my child's pictures?**
-Anyone on your home Wi-Fi who opens the Dreamer page can see the gallery. Deleting,
-renaming and all settings need your parent PIN. Use Dreamer on a home network you trust,
+Anyone on your home Wi-Fi who opens the Dreamer page can see the gallery, and could
+take over the drawing screen from another device. Deleting, renaming and all settings
+need your parent PIN. Use Dreamer on a home network you trust,
 never on public Wi-Fi, and don't make it reachable from the internet.
 
 **Does anything go to the internet?**
 Drawings and pictures never leave your home network. Models are downloaded once, on the first
-start; after that Dreamer runs without contacting the internet. There is no account.
+start; after that Dreamer runs without contacting the internet, unless you change the
+picture model in the settings file. There is no account.
 
 **Does the PC have to stay on?**
 Yes. The PC makes the pictures, so it has to be on while your child draws, with Dreamer
@@ -140,8 +148,8 @@ running. Dreamer needs the graphics card, so you can't play games on that PC at 
 same time.
 
 **What if a picture isn't right?**
-The safety filter checks every picture, but it is not perfect, and AI pictures can be
-odd. You can move any saved picture to the Trash from the parent page, and hide topics or
+The filter checks every picture for nudity and adult content, but it is not perfect,
+and AI pictures can be odd or a bit scary. You can move any saved picture to the Trash from the parent page, and hide topics or
 styles that don't work well for your child.
 
 ## 🔍 Curious how it works?
@@ -151,13 +159,16 @@ walks through one stroke from the iPad to the picture, with real pictures and me
 
 ## 💻 What you need
 
-- A **Windows gaming PC with an NVIDIA RTX graphics card**. Dreamer is tested on an
-  RTX 3080 with 10 GB of graphics memory.
+- A **Windows PC with an NVIDIA RTX graphics card with 10 GB of graphics memory**. Dreamer
+  is tested on an RTX 3080 (10 GB); it uses about 7.4 GB, plus what Windows itself needs,
+  so cards with 6 or 8 GB are not enough.
 - An **iPad** on the same Wi-Fi network, using Safari (add it to the home screen and it
   opens like an app).
 - Optionally, your phone for the parent page.
-- Setup takes about half an hour, plus a one-time wait on the first start while Dreamer
-  prepares itself for your graphics card. After that, it is ready to draw about 10 seconds
+- Setup is technical: installing Python and Git, running PowerShell scripts, editing a
+  settings file and adding a firewall rule. It takes about half an hour if you are
+  comfortable with that, plus a one-time wait of 10 to 30 minutes on the first start while
+  Dreamer prepares itself for your graphics card. After that, it is ready to draw about 10 seconds
   after starting.
 
 Honest notes: Dreamer is a home project in active development. So far it has run on one

@@ -24,7 +24,8 @@ from pydantic import BaseModel
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import protocol, refine
-from .auth import COOKIE_MAX_AGE, COOKIE_NAME, AdminAuth, LockedOut, load_or_create_secret
+from .auth import (COOKIE_MAX_AGE, COOKIE_NAME, SHORT_COOKIE_MAX_AGE, AdminAuth, LockedOut,
+                   load_or_create_secret)
 from .config import DEFAULT_PIN, KID_THEMES, ORIENTATIONS, VIEW_MODES, Config, canvas_dims
 from .gallery import FILES, DraftAutosaver, GalleryStore, LastFrame, is_blank_sketch, valid_id
 from .imaging import COLOR_RE
@@ -61,6 +62,8 @@ NOTHING_TO_SAVE = "Nothing to save yet"
 
 class LoginBody(BaseModel):
     pin: str
+    # True from the kid page's parent gate: a 15-minute login instead of 30 days.
+    short: bool = False
 
 
 class NewStyleBody(BaseModel):
@@ -626,7 +629,8 @@ def create_app(config: Config, backend: Any = None) -> FastAPI:
                                 headers={"Retry-After": str(int(exc.retry_after) + 1)})
         if not ok:
             raise HTTPException(401, detail="Wrong PIN")
-        response.set_cookie(COOKIE_NAME, auth.make_cookie(), max_age=COOKIE_MAX_AGE,
+        max_age = SHORT_COOKIE_MAX_AGE if body.short else COOKIE_MAX_AGE
+        response.set_cookie(COOKIE_NAME, auth.make_cookie(max_age), max_age=max_age,
                             httponly=True, samesite="strict", path="/")
         return {"ok": True}
 

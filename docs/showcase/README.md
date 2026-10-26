@@ -8,8 +8,9 @@ actual app, driven by scripts. Nothing is mocked up by hand.
 **Settings used for the screenshots:** AI upscale x2 was switched on, so the refined
 pictures are 1280×896. The app's default is upscale off; say "with AI upscale on" when
 showing them. The help-page refine strip (`*-help-refine.png`) shows the current anchored
-model: the drawing picture, then steps 3, 5 and 7, each labelled with its time after the
-pause.
+model: the drawing picture, then steps 3, 5 and 7, each labelled with its time after
+refinement starts (measured with a 1-step draw reaction; refinement itself starts about a
+third of a second after the last stroke).
 
 ## What is in it
 
@@ -46,7 +47,7 @@ All commands run on the Windows PC from the repo folder, with the GPU backend se
 | Only some groups | `.venv\Scripts\python.exe tools\make_showcase.py --only kid` (groups: `kid`, `admin`, `help`, `examples`) | the files of those groups |
 | Help-page example pictures | `.venv\Scripts\python.exe tools\make_help_images.py` | `static/help/*.jpg`, `static/help/data.json` |
 | Refinement research sheets | `.venv\Scripts\python.exe tools\refine_lab.py` | `docs/research/refinement-results.md`, `refinement-results.json`, `docs/research/img/refine-*.png` |
-| ControlNet comparison sheets | `.venv\Scripts\python.exe tools\controlnet_lab.py` | `docs/research/img/controlnet-*.png` and `controlnet-results.json` in `docs/research/` (not generated yet) |
+| ControlNet comparison sheets | `.venv\Scripts\python.exe tools\controlnet_lab.py` | `docs/research/img/controlnet-*.png` and `controlnet-results.json` in `docs/research/` |
 | App icons | `.venv\Scripts\python.exe tools\make_icons.py` | `static/icon-*.png`, `static/dreamer.ico` |
 
 Notes:

@@ -14,7 +14,7 @@ the pictures can be about.
 
 | Fact | Value | Source |
 |---|---|---|
-| First picture after a stroke (live server, default settings) | about 0.1-0.2 s round trip once running; the very first picture after start-up took 733 ms | `docs/gpu-results.md` (128 ms mean round trip at 512 px, 2 steps; first frame 733 ms) |
+| First picture after a stroke (live server, default settings) | about 0.1-0.2 s round trip once running (measured at 512 px, before the 640×448 change); the very first picture after start-up took 733 ms | `docs/gpu-results.md` (128 ms mean round trip at 512 px, 2 steps; first frame 733 ms) |
 | Pictures per second while drawing (backend only, 640×448, ControlNet, 2 steps, the default draw reaction) | about 12-15 *approx.* (67-80 ms) | `static/help/data.json` "steps", `docs/gpu-results.md` (67, 73 and 79 ms in its tables) |
 | Refinement after the child stops (default "anchored" model) | the worker waits 150 ms, settles the drawing picture with one more frame, waits 150 ms again, then runs up to 6 single-step rungs of about 44-48 ms each (about 0.3 s); the last rung lands about 0.6-0.7 s after the pen lifts | `docs/research/refinement-models.md` Results (44 ms/step), `server/refine.py` `ANCHORED_RUNGS`, default `refine_steps` 8 |
 | Superseded: the earlier "continue the path" schedule | 4 → 8 → 12 → 16 → 20 steps, 153 / 286 / 418 / 681 ms per pass, finished about 4 s after the stroke. Do not quote these for the current app | `docs/gpu-results.md`, "draw fast, then refine" |
@@ -23,17 +23,17 @@ the pictures can be about.
 | Picture shape | the iPad's shape: 640×448 landscape, 448×640 portrait (resolution adjustable 512-1024 px) | `server/config.py` `canvas_dims`, `SPEC-addendum-canvas.md` |
 | Switching between a landscape and a portrait drawing | about 8 s pause (pipeline rebuild, engines reused) | `docs/gpu-results.md` |
 | Start-up with prepared engines | about 8-10 s (7.7 s in gpu-results, 9-10 s in vram.json) | `docs/gpu-results.md`, `static/vram.json` "warmup_s" |
-| First-ever start (building the TensorRT engines) | roughly 10-25 min, once | `docs/gpu-results.md` |
+| First-ever start (building the TensorRT engines) | roughly 10-30 min, once | `docs/gpu-results.md` |
 
 ## Safety and privacy
 
 | Fact | Source |
 |---|---|
 | Children never type: every prompt is built on the PC from topics and styles the parent allows, always ending with a fixed child-friendly phrase. | `server/styles.py` (`PROMPT_HEAD`, `SAFETY_TAIL`, `build_prompt`) |
-| Every picture is checked by an image safety classifier (Freepik/nsfw_image_detector, as a TensorRT engine) before it is shown; if it is flagged, the previous picture stays. It costs about 4 ms per picture. | `server/backends/streamdiffusion.py`, `docs/gpu-results.md` |
+| Every picture is checked by an image classifier for nudity and adult content (the StreamDiffusion fork's NSFW detector, as a TensorRT engine) before it is shown; if it is flagged, the PC sends the previous picture again. It does not judge whether a picture is scary. The parent page has a strictness slider. It costs about 4 ms per picture. | `server/backends/streamdiffusion.py`, `docs/gpu-results.md` |
 | Style pictures uploaded by the parent are screened by the same checker while the safety filter is on; with the filter off, uploads are stored unscreened. | `server/backends/streamdiffusion.py` `check_image_safe`, `requirements-gpu.md` |
-| Everything runs on the home network: one Python process on the PC; no account. Drawings and pictures never leave your home network. Models are downloaded once, on the first start (the setup script only fetches the 2.5 MB upscaler); after that Dreamer runs without contacting the internet (`HF_HUB_OFFLINE` once the models are cached). | `docs/setup.md`, `setup.ps1`, `requirements-gpu.md` |
-| The parent page is protected by a PIN, with a growing lock-out after wrong tries. | `docs/setup.md` "Admin page", `server/auth.py` |
+| Everything runs on the home network: one Python process on the PC; no account. Drawings and pictures never leave your home network. Models are downloaded once, on the first start (of the models, the setup script itself only fetches the 2.5 MB upscaler; it also installs PyTorch and packages); after that Dreamer runs without contacting the internet (`HF_HUB_OFFLINE` once the models are cached), unless the picture model is changed in `config.yaml`. | `docs/setup.md`, `setup.ps1`, `requirements-gpu.md` |
+| The parent page is protected by a PIN, with a growing lock-out after wrong tries. From the iPad's Dreamer icon the PIN is asked every time and the login lasts 15 minutes; on the phone it lasts 30 days. | `docs/setup.md` "Admin page", `server/auth.py` |
 
 Be careful with wording: the safety checker is a classifier and can make mistakes; say
 "checks every picture", not "guarantees".
@@ -50,7 +50,7 @@ Be careful with wording: the safety checker is a classifier and can make mistake
 | Upscaler | Real-ESRGAN compact model `realesr-animevideov3` (BSD-3-Clause), 2.5 MB | `server/upscale.py` |
 | GPU memory (above the desktop) | 5.1 GB with engines for 1 step, 7.4 GB for up to 4 steps (default) | `static/vram.json`, `docs/gpu-results.md` |
 | Kid page | plain HTML/CSS/JavaScript, no framework; the paper is a background colour behind a transparent stroke layer | `static/`, `SPEC-addendum-canvas.md` |
-| Tests | 256 automated tests (mock backend) | `pytest -q` |
+| Tests | about 260 automated tests (mock backend; re-count with `pytest -q` before a talk) | `pytest -q` |
 
 ## What it is not (yet)
 

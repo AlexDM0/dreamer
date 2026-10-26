@@ -1,6 +1,8 @@
 // Parent gate: the Dreamer icon in the toolbar opens a PIN pad; the right PIN logs in
 // (the same /api/admin/login as the admin page, so the server's lock-out applies) and
-// opens /admin. Already logged in (the cookie is still valid): straight to /admin.
+// opens /admin. It always asks, even when the iPad still has a valid login, and a login
+// from here lasts 15 minutes (the phone's admin page keeps its 30 days): the child's own
+// screen must never open the parent page by itself.
 
 const PIN_MAX = 12;
 
@@ -28,11 +30,7 @@ export class ParentGate {
     });
   }
 
-  async open() {
-    if (await this._loggedIn()) {
-      location.href = "/admin";
-      return;
-    }
+  open() {
     this.pin = "";
     this.$("#gate-msg").textContent = "";
     this._render();
@@ -52,14 +50,6 @@ export class ParentGate {
     this._render();
   }
 
-  async _loggedIn() {
-    try {
-      return (await fetch("/api/admin/state", { credentials: "same-origin" })).ok;
-    } catch {
-      return false;
-    }
-  }
-
   async _submit() {
     if (!this.pin || this.busy) return;
     this.busy = true;
@@ -68,7 +58,7 @@ export class ParentGate {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin: this.pin }),
+        body: JSON.stringify({ pin: this.pin, short: true }),
       });
       if (res.ok) {
         location.href = "/admin";
