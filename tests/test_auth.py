@@ -141,6 +141,25 @@ def test_login_logout_flow(client):
     assert client.get("/api/admin/state").status_code == 401
 
 
+def test_login_max_age_phone_vs_parent_gate(client):
+    """The phone keeps a 30-day login; the iPad's parent gate asks for a 15-minute one."""
+    long = client.post("/api/admin/login", json={"pin": ADMIN_PIN}).headers["set-cookie"]
+    assert f"max-age={30 * 24 * 3600}" in long.lower()
+    short = client.post("/api/admin/login", json={"pin": ADMIN_PIN, "short": True})
+    assert short.status_code == 200
+    assert "max-age=900" in short.headers["set-cookie"].lower()
+
+
+def test_short_cookie_expires_after_15_minutes():
+    now = [1000.0]
+    auth = AdminAuth("2468", b"secret", clock=lambda: now[0])
+    cookie = auth.make_cookie(15 * 60)
+    now[0] += 15 * 60 - 1
+    assert auth.verify_cookie(cookie)
+    now[0] += 2
+    assert not auth.verify_cookie(cookie)
+
+
 def test_login_lockout_http(client):
     for _ in range(MAX_FAILURES):
         assert client.post("/api/admin/login", json={"pin": "0000"}).status_code == 401

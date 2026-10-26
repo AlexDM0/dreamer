@@ -867,6 +867,14 @@ function renderStats(stats, backend) {
 
 // ----- Log out ----------------------------------------------------------------------
 
+// "Back to drawing" (home-screen app on the iPad only): log out first, so the child's
+// screen is not left logged in to the parent page.
+document.querySelector(".to-drawing").addEventListener("click", async (e) => {
+  e.preventDefault();
+  try { await api("POST", "/api/admin/logout"); } catch { /* go back anyway */ }
+  location.href = "/";
+});
+
 $("logout").addEventListener("click", async () => {
   await attempt(() => api("POST", "/api/admin/logout"));
   showLogin();
