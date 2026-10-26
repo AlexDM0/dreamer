@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <title>Dreamer for parents</title>
+  <!-- The parent page's icon: the Dreamer mark on a dark grown-up tile (the admin page's
+       dark surface) with an amber settings badge, so it can't be mistaken for the kids'
+       icon on the home screen. Made from favicon.svg; keep the two in step. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34302b"/>
+      <stop offset="1" stop-color="#141311"/>
+    </linearGradient>
+    <mask id="crescent" maskUnits="userSpaceOnUse" x="0" y="0" width="128" height="128">
+      <rect width="128" height="128" fill="#fff"/>
+      <circle cx="64" cy="45" r="40" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect width="128" height="128" rx="28" fill="url(#sky)"/>
+
+  <!-- Night sky: two faint stars. -->
+  <circle cx="27" cy="27" r="2.6" fill="#fff8ee" opacity="0.55"/>
+  <circle cx="44" cy="17" r="1.8" fill="#fff8ee" opacity="0.4"/>
+
+  <!-- Crescent moon, horns up, like a cradle. -->
+  <circle cx="64" cy="60" r="44" fill="#fde9c4" mask="url(#crescent)"/>
+
+  <!-- Sleeping head resting in the crescent (the dark ring keeps it apart from the moon). -->
+  <circle cx="56" cy="67" r="17" fill="#fff8ee" stroke="#2a2724" stroke-width="3.5"/>
+  <path d="M47.5 67.5q3 3.4 6 0M58.5 67.5q3 3.4 6 0" fill="none" stroke="#2a2550"
+        stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="47" cy="74" r="2.4" fill="#f28b84" opacity="0.6"/>
+  <circle cx="66" cy="74" r="2.4" fill="#f28b84" opacity="0.6"/>
+
+  <!-- The dream: a thought trail up to a sparkle. -->
+  <circle cx="76" cy="46" r="3" fill="#fff8ee"/>
+  <circle cx="84" cy="36.5" r="4.2" fill="#fff8ee"/>
+  <path d="M100 11 C101.6 20 104 22.4 113 24 C104 25.6 101.6 28 100 37 C98.4 28 96 25.6 87 24 C96 22.4 98.4 20 100 11 Z"
+        fill="#f5b53d"/>
+
+  <!-- Settings badge: three sliders in an amber disc. -->
+  <circle cx="95" cy="95" r="21" fill="#f5b53d" stroke="#141311" stroke-width="4"/>
+  <g stroke="#2a2550" stroke-width="3.2" stroke-linecap="round" fill="none">
+    <path d="M85 87.5h20M85 95h20M85 102.5h20"/>
+  </g>
+  <g fill="#2a2550">
+    <circle cx="99" cy="87.5" r="3.4"/><circle cx="89.5" cy="95" r="3.4"/><circle cx="96" cy="102.5" r="3.4"/>
+  </g>
+</svg>

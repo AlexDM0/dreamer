@@ -1,0 +1,16 @@
+{
+  "name": "Dreamer for parents",
+  "short_name": "Dreamer admin",
+  "description": "Parent controls for Dreamer.",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#141311",
+  "theme_color": "#141311",
+  "icons": [
+    {"src": "/static/admin-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/static/admin-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/static/admin-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
