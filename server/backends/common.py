@@ -1,12 +1,11 @@
-"""Small helpers shared by the GPU backends (torch-free, so the backends stay importable)."""
+"""Small helpers for the GPU backend (torch-free, so the backend stays importable)."""
 from __future__ import annotations
 
 from typing import Any
 
 from PIL import Image
 
-# The StreamDiffusion wrapper's own default seed (StreamDiffusionWrapper(seed=2)); TCD uses
-# the same so both picture models start from the same surprise number.
+# The StreamDiffusion wrapper's own default seed (StreamDiffusionWrapper(seed=2)).
 DEFAULT_SEED = 2
 
 

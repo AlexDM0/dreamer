@@ -114,7 +114,7 @@ class RefineTrace:
     """One refinement run. Made and filled by the worker thread through RefineTraces."""
 
     seq: int
-    model: str           # the refinement model, or "tcd" (the TCD picture model's own)
+    model: str           # the refinement model (server/refine.py)
     sketch_png: bytes
     prompt: str
     background: str | None

@@ -1,5 +1,7 @@
 """Live diffusion params: validation, persistence, admin API, effect on pictures."""
 import json
+import logging
+from dataclasses import replace
 
 import pytest
 from conftest import is_json, is_picture, recv_until, sketch_frame
@@ -133,24 +135,14 @@ def test_init_mode_and_blur_validate():
         apply_changes(GenParams(), {"init_mode": "crayon"})
 
 
-def test_picture_model_and_tcd_steps_validated():
-    from server.params import GenParams, apply_changes
-
-    changed = apply_changes(GenParams(), {"picture_model": "tcd", "tcd_steps": 99})
-    assert changed.picture_model == "tcd" and changed.tcd_steps == 8
-    import pytest
-
-    with pytest.raises(ValueError):
-        apply_changes(GenParams(), {"picture_model": "sdxl"})
-
-
-def test_make_backend_picks_tcd_for_the_real_backend_only():
-    from server.backends import MockBackend, make_backend
-    from server.backends.tcd import TcdBackend
-    from server.config import Config
-
-    assert isinstance(make_backend(Config(backend="mock"), "tcd"), MockBackend)
-    assert isinstance(make_backend(Config(backend="streamdiffusion"), "tcd"), TcdBackend)
+def test_saved_params_of_the_dropped_picture_model_still_load(tmp_path, caplog):
+    # data/params.json from before SD 1.5 + TCD was removed still has its two fields.
+    saved = {"picture_model": "tcd", "tcd_steps": 6, "seed": 9}
+    (tmp_path / "params.json").write_text(json.dumps(saved), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="dreamer.params"):
+        params = ParamsStore(tmp_path, GenParams()).get()
+    assert params == replace(GenParams(), seed=9)
+    assert "picture_model" in caplog.text and "tcd_steps" in caplog.text
 
 
 @pytest.mark.parametrize("side", [64, 320, 1088, 400])

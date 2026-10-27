@@ -140,13 +140,13 @@ def test_save_writes_sketch_steps_and_settings(tmp_path):
 
 # ----- app: endpoints and the admin socket ------------------------------------------------
 
-class OwnRefineMock(MockBackend):
-    """Refines on its own (like TCD): three pictures, each a little brighter."""
+class PathRefineMock(MockBackend):
+    """Continues the drawing's path in three pictures, each a little brighter."""
 
     def __init__(self):
         super().__init__(mock_delay_ms=0)
 
-    def refine_own(self, init_image, line_map, total_steps):
+    def refine_steps(self, init_image, line_map, t_index, first_shown, noise="fresh"):
         base = self.generate(init_image, line_map)
         for level in (4, 8, 40):
             yield Image.eval(base, lambda value, shift=level: min(255, value + shift))
@@ -154,7 +154,10 @@ class OwnRefineMock(MockBackend):
 
 @pytest.fixture
 def refine_client(config):
-    with TestClient(create_app(config, backend=OwnRefineMock())) as client:
+    params_file = Path(config.data_dir) / "params.json"
+    params_file.parent.mkdir(parents=True, exist_ok=True)
+    params_file.write_text(json.dumps({"refine_model": "path"}), encoding="utf-8")
+    with TestClient(create_app(config, backend=PathRefineMock())) as client:
         yield client
 
 
@@ -173,7 +176,7 @@ def test_admin_socket_and_endpoints_serve_the_trace(refine_client, config):
     client = refine_client
     assert client.post("/api/admin/login", json={"pin": ADMIN_PIN}).status_code == 200
     trace = refine_once(client)
-    assert trace["model"] == "tcd" and len(trace["steps"]) == 4 and trace["jumps"] >= 1
+    assert trace["model"] == "path" and len(trace["steps"]) == 4 and trace["jumps"] >= 1
     listing = client.get("/api/admin/refine-traces").json()
     assert listing["traces"][0]["id"] == trace["id"] and listing["thresholds"]["step"] == JUMP_STEP
 
@@ -187,7 +190,7 @@ def test_admin_socket_and_endpoints_serve_the_trace(refine_client, config):
 
     saved = client.post(f"{base}/save").json()
     batch = Path(config.data_dir) / saved["folder"]
-    assert saved["ok"] and saved["name"].endswith("-tcd")
+    assert saved["ok"] and saved["name"].endswith("-path")
     assert sorted(path.name for path in batch.iterdir()) == [
         "settings.json", "sketch.png", "step-00.jpg", "step-01.jpg", "step-02.jpg", "step-03.jpg"]
     settings = json.loads((batch / "settings.json").read_text(encoding="utf-8"))
@@ -241,3 +244,11 @@ def test_replay_batch_reruns_a_saved_batch(tmp_path):
     lines = replay_batch.report(folder, pictures)
     # The mock makes the same pictures again: only JPEG noise between replay and original.
     assert len(lines) == 2 + 4 and float(lines[-1].split("|")[-1]) < 1
+
+
+def test_replay_batch_leaves_out_params_dreamer_no_longer_has():
+    from tools import replay_batch
+
+    cfg = Config(backend="mock", size=SIZE)
+    settings = {"params": {"seed": 9, "picture_model": "turbo", "tcd_steps": 4}}  # an older batch
+    assert replay_batch.batch_params(cfg, settings) == replace(defaults_from_config(cfg), seed=9)

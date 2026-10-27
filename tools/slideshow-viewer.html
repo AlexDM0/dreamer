@@ -121,10 +121,9 @@ function render() {
       head.append(Object.assign(document.createElement("th"), { textContent: step ? `+${step}` : "step 0" }));
     }
     for (const mode of data.modes) {
-      const family = mode.id === "tcd" ? "tcd" : "turbo";
       const row = table.insertRow();
       row.append(Object.assign(document.createElement("th"), { className: "mode", textContent: mode.label }));
-      const info = done[family] && done[family].modes[mode.id];
+      const info = done.turbo && done.turbo.modes[mode.id];
       if (!info) {
         const pending = document.createElement("td");
         pending.className = "none";
@@ -133,8 +132,7 @@ function render() {
         row.append(pending);
         continue;
       }
-      const first = family === "tcd" ? `${folder}/tcd-00.jpg` : `${folder}/turbo-00.jpg`;
-      row.append(cell(first, null, `${seed.label} · ${mode.label} · step 0`));
+      row.append(cell(`${folder}/turbo-00.jpg`, null, `${seed.label} · ${mode.label} · step 0`));
       for (let step = 1; step <= data.more_steps; step++) {
         const src = step <= info.count ? `${folder}/${mode.id}-${String(step).padStart(2, "0")}.jpg` : null;
         row.append(cell(src, info.scores[step - 1], `${seed.label} · ${mode.label} · +${step}`));

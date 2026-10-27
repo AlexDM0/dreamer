@@ -229,6 +229,9 @@ when the child draws again, so the default stays 0.55.
 
 ### SD 1.5 + TCD as a picture model
 
+**Removed on 2026-10-27.** SD 1.5 + TCD was tried as a live picture model and removed: adding
+steps changed the picture too much (see the slideshow comparison). The notes below are history.
+
 Now selectable live on the admin page ("Picture model", `server/backends/tcd.py`): plain
 diffusers, strength 1.0, 4 drawing steps; refinement re-renders the same seed at 6/8/12/16/20
 steps. Measured on the RTX 3080: ~0.29 s (2 steps), ~0.41 s (4), ~0.52 s (6), ~0.62 s (8) per

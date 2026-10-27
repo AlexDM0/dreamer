@@ -264,7 +264,7 @@ class StreamDiffusionBackend:
         self.warmup()
 
     def close(self) -> None:
-        """Drop the pipeline and free its GPU memory (resize, or switching picture model)."""
+        """Drop the pipeline and free its GPU memory (resize, or a rebuild after failures)."""
         old, self._wrapper = self._wrapper, None
         del old
         import gc
@@ -391,7 +391,7 @@ class StreamDiffusionBackend:
           by ``first``'s (Gaussian low-pass on the latent, sigma in latent pixels; ILVR-style),
           so layout, colours and light cannot move; ``anchor_weights`` per rung (default 1).
         - ``gamma``: re-noise with sqrt(1-gamma) * the predicted noise + sqrt(gamma) * fresh
-          noise (TCD-style stochasticity): 0 is deterministic, 1 is fresh noise only.
+          noise (stochastic sampling, as in consistency models): 0 is deterministic, 1 is fresh noise only.
         - ``control_images``: per-rung ControlNet image (None keeps ``line_map``); only used
           while a ControlNet is loaded and on.
         - ``anchor_image``: pin the low frequencies to this picture instead of ``first`` (e.g.

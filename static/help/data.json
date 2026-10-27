@@ -18,9 +18,7 @@
   "refine_steps": 8,
   "refine_model": "anchored",
   "upscale": "off",
-  "resolution": 640,
-  "picture_model": "turbo",
-  "tcd_steps": 4
+  "resolution": 640
  },
  "size": [
   640,

@@ -35,7 +35,7 @@ dreamer/
     config.py          # load_config(path) -> Config dataclass; defaults; canvas_dims()
     session.py         # KidSession manager (single active kid socket), admin watchers
     mailbox.py         # Mailbox (single slot, thread-safe)
-    worker.py          # GpuWorker thread (frames, refinement, uploads, picture-model switch)
+    worker.py          # GpuWorker thread (frames, refinement, uploads, backend rebuild)
     protocol.py        # binary header pack/unpack, message type constants
     styles.py          # StyleStore: topics + styles (presets + styles.json), prompt builder
     auth.py            # admin PIN check, signed session cookie, lockout
@@ -47,12 +47,11 @@ dreamer/
     offline.py         # sets HF_HUB_OFFLINE once the models are cached
     fsutil.py          # atomic-replace helper shared by the stores (Windows retry)
     backends/
-      __init__.py      # make_backend(config, picture_model) -> Backend
+      __init__.py      # make_backend(config) -> Backend
       base.py          # Backend protocol (abstract)
       mock.py          # MockBackend: no GPU, deterministic stylised output
       streamdiffusion.py  # StreamDiffusionBackend (Daydream fork wrapper, SD-Turbo)
-      common.py        # small torch-free helpers shared by the GPU backends
-      tcd.py           # TcdBackend: SD 1.5 + TCD picture model (plain diffusers)
+      common.py        # small torch-free helpers for the GPU backend
   static/
     index.html  style.css  theme.css  app.js  toolbar.js  canvas.js  paper.js  net.js
     view.js  gallery.js  gate.js          # kid page (gate.js = parent PIN gate)
@@ -101,12 +100,6 @@ model:
   engine_dir: engines
   safety_checker: true
   safety_threshold: 0.5
-  # "SD 1.5 + TCD" picture model (selectable live on /admin):
-  tcd_base: stable-diffusion-v1-5/stable-diffusion-v1-5
-  tcd_lora: h1t/TCD-SD15-LoRA            # tcd_lora_file defaults to pytorch_lora_weights.safetensors
-  tcd_controlnet: lllyasviel/control_v11p_sd15_scribble
-  tcd_strength: 1.0
-  tcd_gamma: 0.3
 ```
 
 Unknown keys are ignored with a warning; invalid values raise ValueError at startup.
@@ -137,17 +130,16 @@ Optional members, looked up with `getattr` by the worker (the mock has none of t
   comes out (denoising batch, steps - 1); the worker primes a fresh pipeline and re-runs the
   last sketch once drawing pauses.
 - `set_size(width, height)`: rebuild at another drawing size/orientation (see the canvas addendum).
-- `close()`: free GPU memory; called before another picture model is loaded.
+- `close()`: free GPU memory; called before the backend is rebuilt.
 - `refine_steps(init, line_map, t_index, first_shown, noise)` and
   `latent_ladder(first, line_map, t_index, ...)` (StreamDiffusionBackend): step-by-step
-  refinement generators used by `server/refine.py`; `refine_own(...)` (TcdBackend): refine by
-  re-rendering with more steps from the same seed.
+  refinement generators used by `server/refine.py`.
 
 Phase 1 had only the first five members; the rest came with the params, canvas and refinement work.
 
 All methods are called ONLY from the GPU worker thread (the admin-upload safety check is
-routed through the worker as a job, see Worker). `make_backend(config, picture_model)` returns
-the mock, `StreamDiffusionBackend` (SD-Turbo) or, for picture model `tcd`, `TcdBackend`.
+routed through the worker as a job, see Worker). `make_backend(config)` returns the mock or
+`StreamDiffusionBackend` (SD-Turbo).
 
 - `MockBackend`: no torch. `generate` returns a deterministic stylised version of the
   init image (e.g. posterize + blur + a tint derived from a hash of the prompt) at the same
@@ -171,9 +163,6 @@ the mock, `StreamDiffusionBackend` (SD-Turbo) or, for picture model `tcd`, `TcdB
   Since phase 1 it has been run on the target PC (see docs/gpu-results.md): it also
   implements `set_params`, `set_size`, `close`, `latency_frames`, `refine_steps` and
   `latent_ladder`, and uses the pinned fork commit installed by setup.ps1.
-- `TcdBackend` (`backends/tcd.py`): the "SD 1.5 + TCD" picture model, plain diffusers (no
-  TensorRT), selected live with the `picture_model` param; the worker unloads the SD-Turbo
-  backend first. Implements `refine_own` instead of the StreamDiffusion refinement members.
 
 ## Imaging (`server/imaging.py`)
 
@@ -241,8 +230,8 @@ class Mailbox:
   backend factory again to rebuild (factory passed in, optional).
 - Beyond phase 1: live params are applied before the next frame (SPEC-addendum-params.md);
   once drawing pauses it runs the refinement model (`server/refine.py`, optional upscale via
-  `server/upscale.py`) and sends more pictures with the same seq; it can switch the picture
-  model (`turbo` <-> `tcd`) and the drawing size/orientation by rebuilding the backend; after
+  `server/upscale.py`) and sends more pictures with the same seq; it can switch the drawing
+  size/orientation by rebuilding the backend; after
   the first successful warmup `offline.mark_ready` lets later starts run without internet.
   `FrameJob` also carries the canvas background (see the canvas addendum).
 - `stop()` for clean shutdown (FastAPI lifespan).

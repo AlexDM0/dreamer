@@ -8,10 +8,9 @@ A batch folder holds the sketch as the iPad sent it (sketch.png, the stroke laye
 as it was shown (step-00.jpg = the picture when the brush lifted, step-01.jpg ...) and
 settings.json (server/refine_trace.py). This rebuilds the drawing's inputs like the worker does
 (imaging.decode_sketch, then the init image and line map of server/worker.frame_inputs),
-applies the saved params, prompt and picture size to the picture model the batch used
-(SD-Turbo: StreamDiffusionBackend; SD 1.5 + TCD: TcdBackend), makes the drawing picture and
-runs the same refinement (server/refine.run, or TCD's own refine_own), upscaling like the
-worker if that was on.
+applies the saved params, prompt and picture size to StreamDiffusionBackend (SD-Turbo), makes
+the drawing picture and runs the same refinement (server/refine.run), upscaling like the worker
+if that was on.
 
 It writes replay-step-XX.jpg next to the originals and prints, per step, the recorded change
 scores, the replay's (same metrics: mean absolute difference 0-255 at 1/16 size, to the
@@ -19,13 +18,14 @@ previous step and to step 0), and how far each replayed step is from the origina
 
 The drawing picture is made fresh, so it can differ from the one the child saw (the live
 stream had other noise in it). ``--saved-first`` refines from the saved step-00.jpg instead,
-which isolates the refinement model (TCD's own refinement ignores it).
+which isolates the refinement model.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
@@ -51,8 +51,11 @@ def load_batch(folder: Path) -> dict[str, Any]:
 
 
 def batch_params(config: Any, settings: dict[str, Any], overrides: dict[str, Any] | None = None) -> GenParams:
-    """The batch's params over this machine's defaults, validated like the admin page's."""
-    return apply_changes(defaults_from_config(config), {**settings["params"], **(overrides or {})})
+    """The batch's params over this machine's defaults, validated like the admin page's.
+    Params Dreamer no longer has (an older batch's) are left out."""
+    known = {item.name for item in fields(GenParams)}
+    saved = {name: value for name, value in settings["params"].items() if name in known}
+    return apply_changes(defaults_from_config(config), {**saved, **(overrides or {})})
 
 
 def scores(pictures: list[Image.Image]) -> list[tuple[float | None, float]]:
@@ -96,14 +99,9 @@ def replay(folder: Path, config: Any, backend: Any, upscaler: Any = None, saved_
         if first.size != drawing.size:
             first = first.resize(drawing.size, Image.Resampling.BICUBIC)
 
-    refine_own = getattr(backend, "refine_own", None)
-    if refine_own is not None:
-        upscales_itself = False
-        steps = refine_own(init, line_map, params.refine_steps)
-    else:
-        upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
-        steps = refine.run(params.refine_model, backend, first, init, line_map,
-                           tuple(params.t_index_list), params.refine_steps, upscaler)
+    upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
+    steps = refine.run(params.refine_model, backend, first, init, line_map,
+                       tuple(params.t_index_list), params.refine_steps, upscaler)
     pictures = [drawing]
     try:
         for picture in steps:
@@ -144,11 +142,7 @@ def report(folder: Path, pictures: list[Image.Image]) -> list[str]:
     return lines
 
 
-def make_backend(config: Any, picture_model: str) -> Any:
-    if picture_model == "tcd":
-        from server.backends.tcd import TcdBackend
-
-        return TcdBackend(config)
+def make_backend(config: Any) -> Any:
     from server.backends.streamdiffusion import StreamDiffusionBackend
 
     return StreamDiffusionBackend(config)
@@ -174,15 +168,15 @@ def main() -> int:
     config = load_config(args.config)
     settings = load_batch(folder)
     params = batch_params(config, settings, overrides)
-    if settings.get("backend") not in ("streamdiffusion", "tcd"):
+    if settings.get("backend") != "streamdiffusion":
         print(f"note: recorded on the {settings.get('backend')!r} backend; replaying on the GPU", flush=True)
-    backend = make_backend(config, params.picture_model)
+    backend = make_backend(config)
     width, height = (int(side) for side in settings["picture_size"])
     backend.set_size(width, height)  # before warmup: the pipeline is built at this size
     backend.warmup()
     upscaler = None
     upscales_itself = refine.MODELS.get(params.refine_model, refine.MODELS[refine.DEFAULT_MODEL])[2]
-    if params.upscale == "x2" or (upscales_itself and params.picture_model != "tcd"):
+    if params.upscale == "x2" or upscales_itself:
         from server.upscale import Upscaler
 
         upscaler = Upscaler(REPO_ROOT / config.model.upscaler_model)

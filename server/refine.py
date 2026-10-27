@@ -6,7 +6,7 @@ per refinement step, given:
 
 - ``backend``: the StreamDiffusion backend. Most models run ``latent_ladder`` (single-step
   rungs from the picture on screen, see there); A and B continue the drawing's own denoising
-  path with ``refine_steps``. (The TCD picture model refines itself: ``refine_own``.)
+  path with ``refine_steps``.
 - ``first``: the drawing picture already on screen,
 - ``init`` / ``line_map``: the drawing's img2img start image and ControlNet line map,
 - ``draw_t_index``: the draw steps; ``total_steps``: the refine step budget (params).
@@ -84,7 +84,7 @@ def _union(first: Image.Image, second: Image.Image) -> Image.Image:
 
 
 # Rungs of the latent ladders: single steps at rising t_index (less noise each time), so each
-# rung can only change less than the one before (research: ILVR/TCD-style; see docs).
+# rung can only change less than the one before (research: ILVR, trajectory consistency; see docs).
 # Starting at 38 (not 34) kept the broad terms best (drift 5.6 vs 6.1) for the same detail.
 ANCHORED_RUNGS = (38, 41, 44, 46, 47, 48)
 SDEDIT_RUNGS = (36, 40, 44, 47)

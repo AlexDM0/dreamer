@@ -202,7 +202,6 @@ comes with its own license, which applies to how you use them.
 | [thibaud/controlnet-sd21-scribble-diffusers](https://huggingface.co/thibaud/controlnet-sd21-scribble-diffusers) | following the drawing | see the model card |
 | [Freepik/nsfw_image_detector](https://huggingface.co/Freepik/nsfw_image_detector) | the safety filter | see the model card |
 | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) `realesr-animevideov3` | AI upscale (optional) | BSD-3-Clause |
-| [stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5), [h1t/TCD-SD15-LoRA](https://huggingface.co/h1t/TCD-SD15-LoRA), [lllyasviel/control_v11p_sd15_scribble](https://huggingface.co/lllyasviel/control_v11p_sd15_scribble) | the optional SD 1.5 + TCD picture model | CreativeML OpenRAIL-M (SD 1.5); see each model card |
 
 Dreamer is made for a trusted home Wi-Fi. Never make its port (7860) reachable from the
 internet.

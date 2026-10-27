@@ -13,10 +13,9 @@ _Updated 2026-10-26 to match the code; docs/setup.md is the user guide._ The ori
   - Unless -Mock: installs torch/torchvision/torchaudio for the chosen CUDA tag from https://download.pytorch.org/whl/<tag> (pinned versions as in requirements-gpu.md: torch==2.8.0+cu128 torchvision==0.23.0+cu128 torchaudio==2.8.0+cu128), then, in this order:
     1. the Daydream StreamDiffusion fork at the pinned ref with `[tensorrt,controlnet]` extras;
     2. `diffusers-ipadapter` from the livepeer fork at a pinned commit (the fork imports it on every TensorRT path, but its `ipadapter` extra would also pull insightface, which needs a C++ compiler);
-    3. `peft==0.17.1` with `--no-deps` (loads the TCD LoRA for the "SD 1.5 + TCD" picture model without touching the fork's torch/transformers pins);
-    4. `python -m streamdiffusion.tools.install-tensorrt`; on Linux (`setup.sh`) it then restores the cuDNN version torch needs, because install-tensorrt pins an older one (Windows wheels bundle their own);
-    5. downloads the upscaler model `models/realesr-animevideov3.pth` (Real-ESRGAN compact, 2.5 MB; optional: a failed download only leaves AI upscale unavailable);
-    6. verifies `torch.cuda.is_available()` and prints the GPU name, then runs a GPU convolution (cuDNN check) and imports StreamDiffusion's TensorRT modules.
+    3. `python -m streamdiffusion.tools.install-tensorrt`; on Linux (`setup.sh`) it then restores the cuDNN version torch needs, because install-tensorrt pins an older one (Windows wheels bundle their own);
+    4. downloads the upscaler model `models/realesr-animevideov3.pth` (Real-ESRGAN compact, 2.5 MB; optional: a failed download only leaves AI upscale unavailable);
+    5. verifies `torch.cuda.is_available()` and prints the GPU name, then runs a GPU convolution (cuDNN check) and imports StreamDiffusion's TensorRT modules.
   - Copies `config.example.yaml` to `config.yaml` if missing (and sets backend: mock when -Mock); warns while `admin_pin` is still the example `1234`.
   - Stops on first failure (`$ErrorActionPreference = 'Stop'` plus checking `$LASTEXITCODE` after every native command), prints clear next steps at the end (set `admin_pin`, `.\run.ps1`, open http://<ip>:7860 and /admin, the firewall rule command; the first GPU start builds TensorRT engines into `engines/`, 10 to 30 minutes, once).
 - `run.ps1` uses `.venv\Scripts\python.exe -m server` only; errors with "run .\setup.ps1 first" if .venv is missing. Prints LAN URLs (kid page, admin) using the machine's IPv4 addresses. `Dreamer.cmd` (double-click) runs `run.ps1` and pauses if it fails.

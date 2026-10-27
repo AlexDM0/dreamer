@@ -302,55 +302,15 @@ def test_new_stroke_stops_the_refinement_path():
         worker.stop()
 
 
-class OwnRefineBackend(SpyBackend):
-    """A picture model with its own refinement (like SD 1.5 + TCD)."""
+class ClosableBackend(SpyBackend):
+    """Remembers whether the worker closed it (gave its GPU memory back)."""
 
-    def __init__(self, kind="turbo"):
+    def __init__(self):
         super().__init__()
-        self.kind, self.closed, self.refine_calls = kind, False, []
-
-    def refine_own(self, init_image, line_map, total_steps):
-        self.refine_calls.append(total_steps)
-        for _ in range(2):
-            yield self.generate(init_image, line_map)
+        self.closed = False
 
     def close(self):
         self.closed = True
-
-
-def test_picture_model_switch_rebuilds_the_backend():
-    built = []
-
-    def factory(kind="turbo"):
-        built.append(OwnRefineBackend(kind))
-        return built[-1]
-
-    cfg = Config(backend="mock", size=SIZE)
-    worker, rec = _start(None, cfg, backend_factory=factory,
-                         params=replace(defaults_from_config(cfg), refine_steps=0))
-    try:
-        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
-        rec.wait(1)
-        worker.set_params(replace(worker.params, picture_model="tcd"))
-        worker.mailbox.put(FrameJob(2, sketch_png(size=64), "p"))
-        rec.wait(2)
-        assert [backend.kind for backend in built] == ["turbo", "tcd"]
-        assert built[0].closed and worker.backend is built[1]
-        assert worker.params.picture_model == "tcd"
-    finally:
-        worker.stop()
-
-
-def test_backend_with_own_refinement_refines_on_pause():
-    backend = OwnRefineBackend()
-    cfg = Config(backend="mock", size=SIZE)
-    worker, rec = _start(backend, cfg, params=replace(defaults_from_config(cfg), refine_steps=8))
-    try:
-        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
-        rec.wait(3)  # the drawing picture, then the backend's two refined pictures
-        assert backend.refine_calls == [8]
-    finally:
-        worker.stop()
 
 
 def test_reset_stops_settling_and_refining_the_old_drawing():
@@ -417,7 +377,7 @@ def test_upscaler_is_made_without_upscaling_a_picture(monkeypatch):
     assert len(made) == 1 and upscaled == []
 
 
-class FailingBackend(OwnRefineBackend):
+class FailingBackend(ClosableBackend):
     def generate(self, init_image, line_map):
         raise RuntimeError("CUDA out of memory")
 
@@ -425,8 +385,8 @@ class FailingBackend(OwnRefineBackend):
 def test_rebuild_after_failures_closes_the_old_backend_first():
     built = []
 
-    def factory(kind="turbo"):
-        built.append(FailingBackend(kind) if not built else OwnRefineBackend(kind))
+    def factory():
+        built.append(FailingBackend() if not built else ClosableBackend())
         return built[-1]
 
     cfg = Config(backend="mock", size=SIZE)
@@ -442,7 +402,7 @@ def test_rebuild_after_failures_closes_the_old_backend_first():
         worker.stop()
 
 
-class PickyBackend(OwnRefineBackend):
+class PickyBackend(ClosableBackend):
     """Refuses the safety filter on (like a backend whose config has it off)."""
 
     def set_params(self, params):
@@ -468,66 +428,19 @@ def test_one_refused_saved_param_keeps_the_other_saved_params():
         worker.stop()
 
 
-def test_switch_with_a_refused_param_keeps_the_picture_model_of_the_backend():
-    built = []
-
-    def factory(kind="turbo"):
-        built.append(PickyBackend(kind) if kind == "tcd" else OwnRefineBackend(kind))
-        return built[-1]
-
-    cfg = Config(backend="mock", size=SIZE)
-    cfg.model.safety_checker = False
-    worker, rec = _start(None, cfg, backend_factory=factory,
-                         params=replace(defaults_from_config(cfg), refine_steps=0, seed=7))
-    try:
-        worker.mailbox.put(FrameJob(1, sketch_png(size=64), "p"))
-        rec.wait(1)
-        worker.set_params(replace(worker.params, picture_model="tcd", safety_checker=True))
-        worker.mailbox.put(FrameJob(2, sketch_png(size=64), "p"))
-        rec.wait(2)
-        assert worker.backend is built[1] and built[1].kind == "tcd"
-        assert worker.params.picture_model == "tcd" and worker.params.seed == 7
-        assert not worker.params.safety_checker
-    finally:
-        worker.stop()
-
-
-def test_failed_tcd_switch_while_offline_says_how_to_download(monkeypatch):
-    def factory(kind="turbo"):
-        if kind == "tcd":
-            raise OSError("model not in the local cache")
-        return OwnRefineBackend(kind)
-
-    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
-    cfg = Config(backend="mock", size=SIZE)
-    worker, rec = _start(None, cfg, backend_factory=factory,
-                         params=replace(defaults_from_config(cfg), refine_steps=0))
-    try:
-        wait_until(lambda: worker.state == "ready")
-        worker.set_params(replace(worker.params, picture_model="tcd"))
-        worker.mailbox.put(FrameJob(1, sketch_png(blank=True, size=64), "p"))  # blank: keeps the error
-        rec.wait(1)
-        assert worker.params.picture_model == "turbo" and rec.reverts
-        state, msg = rec.statuses[-1]
-        assert state == "error" and "models-ready.json" in msg and "local cache" in msg
-    finally:
-        worker.stop()
-
-
-def test_line_map_follows_the_controlnet_of_the_active_picture_model():
+def test_no_line_map_without_a_controlnet_in_config():
     from server import imaging
 
     cfg = Config(backend="mock", size=SIZE)
-    cfg.model.controlnet = None  # SD-Turbo without ControlNet; TCD keeps its own
+    cfg.model.controlnet = None  # SD-Turbo without ControlNet
     worker = GpuWorker(MockBackend(mock_delay_ms=0), Mailbox(), lambda *args: None,
                        lambda *args: None, cfg)
     sketch = imaging.decode_sketch(sketch_png(size=64), (384, 256))
     job = FrameJob(1, b"", "p")
     params = replace(worker.params, controlnet_enabled=True)
     assert worker._frame_inputs(sketch, job, params)[1] is None
-    assert worker._frame_inputs(sketch, job, replace(params, picture_model="tcd"))[1] is not None
-    cfg.model.tcd_controlnet = ""
-    assert worker._frame_inputs(sketch, job, replace(params, picture_model="tcd"))[1] is None
+    cfg.model.controlnet = ""
+    assert worker._frame_inputs(sketch, job, params)[1] is None
 
 
 class CrashingBackend(SpyBackend):

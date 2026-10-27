@@ -2,13 +2,13 @@
 
     .venv\\Scripts\\python.exe tools\\make_slideshows.py
     .venv\\Scripts\\python.exe tools\\make_slideshows.py --out D:\\development\\dreamer-slideshows --starts 1,2
-    .venv\\Scripts\\python.exe tools\\make_slideshows.py --modes anchored,tcd --topics ocean --styles cartoon
+    .venv\\Scripts\\python.exe tools\\make_slideshows.py --modes anchored,sdedit --topics ocean --styles cartoon
 
 For six seed drawings (three detailed ones from screenshots/examples, three abstract scribbles
 drawn here), every topic and style in data/styles.json (hidden ones and custom ones too), and
-every start step count (the draw reaction: 1-4 steps; TCD: 1-4 drawing steps), it makes the
-drawing picture (step 0) and then up to 10 refinement steps with each mode: the seven SD-Turbo
-refinement models (server/refine.py) and SD 1.5 + TCD (the same picture with 1..10 more steps).
+every start step count (the draw reaction: 1-4 steps), it makes the drawing picture (step 0)
+and then up to 10 refinement steps with each mode: the seven SD-Turbo refinement models
+(server/refine.py).
 
 Writes thumbnails, per-step change scores (tools/refine_lab.py metrics) and a viewer:
 <out>/index.html (pick topic, style and start steps; all seeds on one page). Resumable: a
@@ -46,7 +46,7 @@ THUMB_QUALITY = 80
 MORE_STEPS = 10
 CREATIVITY = 88  # the default (t_index 6 first), as the admin page computes it
 TURBO_MODES = list(refine.MODELS)
-MODE_LABELS = {name: label for name, (_, label, _) in refine.MODELS.items()} | {"tcd": "SD 1.5 + TCD"}
+MODE_LABELS = {name: label for name, (_, label, _) in refine.MODELS.items()}
 DETAILED_SEEDS = {"house": "House, tree and sun", "cat": "Cat and fish", "dinosaur": "Dinosaur"}
 ABSTRACT_SEEDS = {"spiral": "Spiral scribble", "blobs": "Colour blobs", "zigzag": "Zigzags and loops"}
 
@@ -245,41 +245,11 @@ def run_turbo(config, defaults, seeds, topics, styles, starts, modes, output: Ou
     backend.close()
 
 
-def run_tcd(config, defaults, seeds, topics, styles, starts, output: Output, log) -> None:
-    from server.backends.tcd import TcdBackend
-
-    backend = TcdBackend(config)
-    backend.warmup()
-    for start in starts:
-        for seed in seeds:
-            init, line_map = seed["init"], seed["line_map"]
-            for topic in topics:
-                for style in styles:
-                    key = combo_key(seed["id"], topic["id"], style["id"], start)
-                    if output.done(key, "tcd"):
-                        continue
-                    started = time.perf_counter()
-                    backend.set_prompt(prompt_for(topic, style))
-                    pictures = []
-                    for steps in range(start, start + MORE_STEPS + 1):  # step 0 and 10 more
-                        backend.set_params(dataclasses.replace(defaults, picture_model="tcd", tcd_steps=steps))
-                        pictures.append(backend.generate(init, line_map))
-                    for index, picture in enumerate(pictures):
-                        save_thumb(picture, output.image_path(seed["id"], topic["id"], style["id"], start,
-                                                              f"tcd-{index:02d}"))
-                    meta = {"modes": {"tcd": {"count": len(pictures) - 1,
-                                              "scores": scores(pictures[0], pictures[1:])}},
-                            "seconds": round(time.perf_counter() - started, 2)}
-                    output.finish(key, "tcd", meta)
-                    log(f"tcd {key} {meta['seconds']}s")
-    backend.close()
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--starts", default="1,2,3,4", help="start step counts (draw reaction)")
-    parser.add_argument("--modes", default=",".join(TURBO_MODES + ["tcd"]))
+    parser.add_argument("--modes", default=",".join(TURBO_MODES))
     parser.add_argument("--topics", default="", help="comma-separated ids (default: all)")
     parser.add_argument("--styles", default="", help="comma-separated ids (default: all)")
     parser.add_argument("--seeds", default="", help="comma-separated ids (default: all six)")
@@ -326,11 +296,8 @@ def main() -> int:
     def log(message: str) -> None:
         print(f"[{(time.monotonic() - started) / 60:6.1f} min] {message}", flush=True)
 
-    turbo_modes = [mode for mode in modes if mode != "tcd"]
-    if turbo_modes:
-        run_turbo(config, defaults, seeds, topics, styles, starts, turbo_modes, output, log)
-    if "tcd" in modes:
-        run_tcd(config, defaults, seeds, topics, styles, starts, output, log)
+    if modes:
+        run_turbo(config, defaults, seeds, topics, styles, starts, modes, output, log)
     output.write_index()
     log(f"done: {args.out / 'index.html'}")
     return 0

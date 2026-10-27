@@ -1,4 +1,5 @@
 """Config loading: admin PIN validation and YAML number pitfalls."""
+import logging
 from dataclasses import fields
 from pathlib import Path
 
@@ -63,3 +64,13 @@ def test_invalid_values_are_rejected(tmp_path, text):
 def test_smallest_and_largest_size_load(tmp_path):
     assert _load(tmp_path, "size: 384\n").size == 384
     assert _load(tmp_path, "size: 1024\n").size == 1024
+
+
+def test_old_config_with_the_dropped_tcd_keys_still_loads(tmp_path, caplog):
+    # config.yaml from before SD 1.5 + TCD was removed: its keys are ignored with a warning.
+    text = ("backend: mock\nmodel:\n  tcd_base: stable-diffusion-v1-5/stable-diffusion-v1-5\n"
+            "  tcd_strength: 1.0\n  safety_threshold: 0.4\n")
+    with caplog.at_level(logging.WARNING, logger="dreamer.config"):
+        cfg = _load(tmp_path, text)
+    assert cfg.model.safety_threshold == 0.4 and not hasattr(cfg.model, "tcd_base")
+    assert "model.tcd_base" in caplog.text and "model.tcd_strength" in caplog.text
